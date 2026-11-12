@@ -258,8 +258,86 @@ export const ITEMS = {
   minerale_ferro: { name: 'Minerale di Ferro Grezzo', type: 'material', price: 300, stack: true, glyph: '鉄', color: '#4a5a6a', desc: 'Il fabbro lo richiede per i potenziamenti da +4 a +6.' },
   frammento_obelisco: { name: "Frammento d'Obelisco", type: 'material', price: 1200, stack: true, glyph: '晶', color: '#6a3a8a', desc: 'Il fabbro lo richiede per i potenziamenti da +7 a +9.' },
   tomo_tecnica: { name: 'Tomo della Tecnica', type: 'book', price: 5000, stack: true, glyph: '書', color: '#2a6a4a', desc: "Permette di studiare un'abilità oltre il livello 10 (50% di successo). Si usa dal tasto + nella finestra Abilità." },
-  sigillo_fabbro: { name: 'Sigillo del Fabbro', type: 'seal', price: 8000, stack: true, glyph: '印', color: '#8a7a2a', desc: "Se un potenziamento rischioso fallisce, l'oggetto non viene distrutto (il sigillo si consuma)." },
+  sigillo_fabbro: { name: 'Sigillo del Fabbro', type: 'seal', price: 15000, stack: true, glyph: '印', color: '#8a7a2a', desc: "Se un potenziamento rischioso fallisce, l'oggetto non viene distrutto (da +9 in su scende di un livello). Il sigillo si consuma solo se il potenziamento fallisce." },
+  essenza_celeste: { name: 'Essenza Celeste', type: 'material', price: 6000, stack: true, glyph: '霊', color: '#3a8ac0', desc: 'Il fabbro la richiede per i potenziamenti da +10 a +15. La lasciano i boss e gli obelischi più potenti.' },
+  // Modificatori: si trascinano su un'arma o un'armatura
+  pietra_affinamento: { name: "Pietra dell'Affinamento", type: 'mod', mod: 'refine', price: 2500, stack: true, glyph: '磨', color: '#5a7a8a', desc: "Trascinala su un oggetto: rilancia i valori dei bonus casuali mantenendone i tipi." },
+  pergamena_mutamento: { name: 'Pergamena del Mutamento', type: 'mod', mod: 'reroll', price: 6000, stack: true, glyph: '変', color: '#7a5a2a', desc: "Trascinala su un oggetto: rimescola completamente i bonus casuali (tipi e valori)." },
+  sigillo_ascensione: { name: "Sigillo dell'Ascensione", type: 'mod', mod: 'ascend', price: 40000, stack: true, glyph: '昇', color: '#a05ac0', desc: "Trascinalo su un oggetto: 35% di probabilità di alzarne la rarità di un grado (nuovo bonus e incavi). Si consuma comunque." },
+  scalpello: { name: 'Scalpello del Gioielliere', type: 'mod', mod: 'extract', price: 1500, stack: true, glyph: '鑿', color: '#6a6a6a', desc: "Trascinalo su un oggetto: estrae tutte le gemme incastonate e te le restituisce." },
 };
+
+// ------------------------------------------------------------------ rarità e bonus casuali
+export const RARITIES = [
+  { name: 'Comune', color: '#e8e0d0', mult: 1.0, bonuses: 0, sockets: 0 },
+  { name: 'Pregiato', color: '#6ad86a', mult: 1.05, bonuses: 1, sockets: 0 },
+  { name: 'Raro', color: '#5aa0ff', mult: 1.1, bonuses: 2, sockets: 1 },
+  { name: 'Epico', color: '#c070ff', mult: 1.15, bonuses: 3, sockets: 2 },
+  { name: 'Leggendario', color: '#ff9a30', mult: 1.25, bonuses: 4, sockets: 3 },
+];
+// probabilità (in peso) delle rarità per fonte del bottino
+export const RARITY_WEIGHTS = {
+  mob: [60, 26, 10, 3.4, 0.6],
+  stone: [25, 35, 25, 12, 3],
+  boss: [0, 20, 40, 28, 12],
+};
+// range: valori al tier 3 (livello 20); TIER_SCALE li adatta al tier dell'oggetto.
+export const BONUS_STATS = {
+  hp: { name: 'Vita massima', range: [40, 220], flat: true, slots: ['body', 'head', 'feet'] },
+  def: { name: 'Difesa', range: [4, 26], flat: true, slots: ['body', 'head', 'feet'] },
+  atkPct: { name: 'Attacco', range: [2, 9], slots: ['weapon', 'head'] },
+  matkPct: { name: 'Attacco magico', range: [2, 9], slots: ['weapon', 'head'] },
+  crit: { name: 'Critico', range: [1, 5], slots: ['weapon', 'head', 'feet'] },
+  critDmg: { name: 'Danni critici', range: [4, 20], slots: ['weapon', 'body'] },
+  haste: { name: 'Rapidità', range: [1, 6], slots: ['weapon', 'head', 'feet'] },
+  monDmg: { name: 'Danni ai mostri', range: [3, 14], slots: ['weapon', 'body'] },
+  bossDmg: { name: 'Danni a boss e obelischi', range: [4, 18], slots: ['weapon'] },
+  aoeDmg: { name: 'Danni ad area', range: [4, 16], slots: ['weapon', 'body'] },
+  lifesteal: { name: 'Vita rubata', range: [0.5, 3], slots: ['weapon'] },
+  dmgRed: { name: 'Riduzione danni dai mostri', range: [2, 9], slots: ['body', 'head'] },
+  moveSpd: { name: 'Velocità di movimento', range: [2, 8], slots: ['feet'] },
+  evade: { name: 'Evasione', range: [1, 4], slots: ['feet', 'body'] },
+  resRegen: { name: 'Rigenerazione risorsa', range: [4, 15], slots: ['head', 'body'] },
+  expPct: { name: 'Esperienza', range: [2, 10], slots: ['head', 'feet', 'body'] },
+  taelPct: { name: 'Tael trovati', range: [4, 18], slots: ['feet', 'head'] },
+  dropPct: { name: 'Probabilità di bottino', range: [3, 12], slots: ['feet', 'head'] },
+};
+export const TIER_SCALE = [0, 0.55, 0.75, 1.0, 1.25];
+
+export function bonusText(stat, v) {
+  const b = BONUS_STATS[stat];
+  if (!b) return stat;
+  return `${b.name} +${b.flat ? Math.round(v) : String(v).replace('.', ',') + '%'}`;
+}
+// Qualità del valore rispetto al massimo possibile, da 1 a 5 stelle.
+export function bonusStars(stat, v, tier) {
+  const b = BONUS_STATS[stat];
+  if (!b) return 1;
+  const s = TIER_SCALE[tier] || 1, lo = b.range[0] * s, hi = b.range[1] * s;
+  const q = hi > lo ? (v - lo) / (hi - lo) : 1;
+  return Math.max(1, Math.min(5, Math.ceil(q * 5 + 0.0001)));
+}
+
+// ------------------------------------------------------------------ gemme
+export const GEM_TYPES = {
+  rubino: { name: 'Rubino', stat: 'atkPct', vals: [2, 4, 7], color: '#c0302a', glyph: '紅' },
+  zaffiro: { name: 'Zaffiro', stat: 'matkPct', vals: [2, 4, 7], color: '#2a5ad0', glyph: '藍' },
+  giada: { name: 'Giada', stat: 'hp', vals: [60, 150, 320], color: '#2fae7e', glyph: '翠' },
+  ambra: { name: 'Ambra', stat: 'crit', vals: [1, 2, 3.5], color: '#d89a20', glyph: '琥' },
+  onice: { name: 'Onice', stat: 'def', vals: [6, 14, 28], color: '#3a3a48', glyph: '黒' },
+  perla: { name: 'Perla', stat: 'haste', vals: [1.5, 3, 5], color: '#c8c8d8', glyph: '珠' },
+};
+const GEM_GRADE_NAMES = ['Scheggia', 'Gemma', 'Gemma Perfetta'];
+for (const [type, g] of Object.entries(GEM_TYPES)) {
+  for (let grade = 0; grade < 3; grade++) {
+    const of = /^[AEIOU]/.test(g.name) ? `d'${g.name}` : `di ${g.name}`;
+    ITEMS[`gemma_${type}_${grade}`] = {
+      name: `${GEM_GRADE_NAMES[grade]} ${of}`, type: 'gem', gem: type, grade, stack: true,
+      price: [400, 2500, 15000][grade], glyph: g.glyph, color: g.color, tier: grade + 2,
+      desc: `Trascinala su un oggetto con un incavo libero: ${bonusText(g.stat, g.vals[grade])}.${grade < 2 ? ' Clic destro con 3 gemme uguali per fonderle nel grado successivo.' : ''}`,
+    };
+  }
+}
 
 // ------------------------------------------------------------------ mostri
 // drops: [oggetto, probabilità, min, max]
@@ -295,17 +373,21 @@ export const MOBS = {
 
 // ------------------------------------------------------------------ fabbro
 export const UPGRADE = {
-  max: 9,
-  chance: [95, 90, 80, 70, 60, 50, 40, 30, 20],
-  cost: [300, 600, 1200, 2500, 5000, 10000, 20000, 40000, 80000],
-  mats: [null, null, null, ['minerale_ferro', 1], ['minerale_ferro', 2], ['minerale_ferro', 3], ['frammento_obelisco', 1], ['frammento_obelisco', 2], ['frammento_obelisco', 3]],
+  max: 15,
+  chance: [95, 90, 80, 70, 60, 50, 40, 30, 20, 15, 12, 9, 7, 5, 3],
+  cost: [300, 600, 1200, 2500, 5000, 10000, 20000, 40000, 80000, 120000, 160000, 220000, 300000, 400000, 550000],
+  mats: [null, null, null, ['minerale_ferro', 1], ['minerale_ferro', 2], ['minerale_ferro', 3], ['frammento_obelisco', 1], ['frammento_obelisco', 2], ['frammento_obelisco', 3],
+    ['essenza_celeste', 1], ['essenza_celeste', 1], ['essenza_celeste', 2], ['essenza_celeste', 2], ['essenza_celeste', 3], ['essenza_celeste', 4]],
   safeBelow: 3, // da +0 a +3 un fallimento non distrugge l'oggetto
-};
+  downgradeFrom: 9, // da +9 in su, con il sigillo, un fallimento fa scendere di un livello
+  failBonus: 2, failBonusMax: 20, // perseveranza: +2% per ogni fallimento sullo stesso oggetto, fino a +20%
+}
 
 // ------------------------------------------------------------------ PNG
 export const SHOPS = {
   armi: ['spada_ferro', 'sciabola_bronzo', 'pugnali_osso', 'pugnali_acciaio', 'arco_bambu', 'arco_corno', 'bende_seta', 'artigli_ferro', 'bastone_salice', 'bastone_pruno',
-    'tunica_canapa', 'corazza_lamelle', 'cappello_paglia', 'elmo_bronzo', 'sandali', 'stivali_cuoio'],
+    'tunica_canapa', 'corazza_lamelle', 'cappello_paglia', 'elmo_bronzo', 'sandali', 'stivali_cuoio',
+    'pietra_affinamento', 'pergamena_mutamento', 'scalpello', 'sigillo_fabbro'],
   erbe: ['ginseng_p', 'ginseng_m', 'ginseng_g', 'loto_p', 'loto_m', 'loto_g', 'pergamena_ritorno'],
 };
 

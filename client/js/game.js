@@ -1,7 +1,7 @@
 // Logica di gioco lato client: entità, input, visuale, movimento, combattimento, messaggi dal server.
 import * as THREE from 'three';
 import { heightAt, buildColliders, resolveCollisions, KINGDOMS, PLAY_LIMIT, safeZoneAt } from '/shared/world.js';
-import { SKILLS, ITEMS, MOBS, CLASSES, NPC_ROLES, VIE, BUFFS, RESOURCES, QB_SIZE } from '/shared/data.js';
+import { SKILLS, ITEMS, MOBS, CLASSES, NPC_ROLES, VIE, BUFFS, RESOURCES, QB_SIZE, RARITIES } from '/shared/data.js';
 import { buildModel } from './models.js';
 import { Fx } from './fx.js';
 import { UI } from './ui.js';
@@ -229,9 +229,14 @@ export class Game {
       const s = this.self;
       if (m.exp) this.fx.number(new THREE.Vector3(s.x, s.y + 2.8, s.z), `+${m.exp} esp`, 'gain');
       if (m.tael) { ui.chat('gain', `+${m.tael} tael`); this.sound('coin'); }
-      if (m.item) { ui.chat('gain', `Hai raccolto: <b>${esc(m.item)}</b>${m.n > 1 ? ' x' + m.n : ''}${m.up ? ' +' + m.up : ''}`); this.sound('coin'); }
+      if (m.item) {
+        const R = RARITIES[m.r || 0];
+        ui.chat('gain', `Hai raccolto: <b style="color:${R.color}">${esc(m.item)}</b>${m.n > 1 ? ' x' + m.n : ''}${m.up ? ' +' + m.up : ''}${m.r ? ` (${R.name})` : ''}`);
+        if (m.r >= 3) { ui.notice(`${R.name}: ${m.item}!`); this.sound('lvl'); } else this.sound('coin');
+      }
     });
     n.on('dead', (m) => { this.intent = null; ui.showDeath(m.by, m.lost); this.sound('die'); });
+    n.on('applied', (m) => { ui.chat('sys', esc(m.m)); ui.notice(m.m); this.sound(m.m.includes('non') ? 'die' : 'ok'); });
     n.on('shop', (m) => ui.openShop(m));
     n.on('smith', (m) => ui.openSmith(m));
     n.on('smith_res', (m) => ui.onSmithResult(m));
@@ -325,6 +330,7 @@ export class Game {
       }
       if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
       if (e.key === 'Enter') { chatInput.focus(); e.preventDefault(); return; }
+      if (e.key === 'Alt') e.preventDefault();
       if (e.code === 'Tab') { e.preventDefault(); this.cycleTarget(); return; }
       if (e.code === 'Space') { e.preventDefault(); this.attackKey(); return; }
       if (e.code.startsWith('Digit')) { const n = +e.code.slice(5); const i = n === 0 ? 9 : n - 1; if (i < QB_SIZE) this.useQuickbar(i); return; }
@@ -719,7 +725,8 @@ export class Game {
       const dist = Math.hypot(e.x - s.x, e.z - s.z);
       const k = e.info.k;
       const maxD = k === 'd' ? 25 : 55;
-      if (dist > maxD || (k === 'm' && e.hp <= 0 && e.rig.anim.deadT >= 1)) { if (lbl.style.display !== 'none') lbl.style.display = 'none'; continue; }
+      const dropHidden = k === 'd' && !(e.info.r >= 1 || dist < 2.2 || this.keys.has('AltLeft') || this.keys.has('AltRight'));
+      if (dist > maxD || dropHidden || (k === 'm' && e.hp <= 0 && e.rig.anim.deadT >= 1)) { if (lbl.style.display !== 'none') lbl.style.display = 'none'; continue; }
       v.set(e.x, e.y + (e.rig.height || 2) + 0.35, e.z).project(this.camera);
       if (v.z > 1) { if (lbl.style.display !== 'none') lbl.style.display = 'none'; continue; }
       if (lbl.style.display === 'none') lbl.style.display = '';
@@ -744,7 +751,8 @@ export class Game {
       } else if (k === 'd') {
         const it = ITEMS[e.info.it];
         cls += ' drop' + (e.info.own && e.info.own !== this.myId ? ' own' : '');
-        html += `<div class="ln">${esc(it ? it.name : '?')}${e.info.n > 1 ? ' x' + e.info.n : ''}${e.info.up ? ' +' + e.info.up : ''}</div>`;
+        const rc = e.info.r ? RARITIES[e.info.r].color : null;
+        html += `<div class="ln"${rc ? ` style="color:${rc}"` : ''}>${esc(it ? it.name : '?')}${e.info.n > 1 ? ' x' + e.info.n : ''}${e.info.up ? ' +' + e.info.up : ''}</div>`;
       }
       if (e === this.target) cls += ' target';
       if (showHp) html += `<div class="lhp"><div style="width:${Math.max(0, e.hp / Math.max(1, e.mhp) * 100)}%"></div></div>`;

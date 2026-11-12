@@ -56,7 +56,7 @@ I dati (account e personaggi) stanno in `data/db.json`. Le password sono salvate
 
 | Comando | Effetto |
 |---|---|
-| `/item id [quantità] [+livello]` | Crea un oggetto (`/items` per la lista degli id) |
+| `/item id [quantità] [+livello] [rarità 0-4]` | Crea un oggetto (`/items` per la lista degli id) |
 | `/level n` · `/exp n` · `/tael n` | Imposta livello, aggiunge esperienza o tael |
 | `/tp x z` · `/tp nome` · `/tp fenice\|tigre\|drago` | Teletrasporto |
 | `/spawn mostro [n]` | Evoca mostri (`/mobs` per la lista) |
@@ -81,6 +81,16 @@ I **DoT** rinnovati prima della scadenza conservano fino al 30% del tempo rimast
 
 Nei villaggi ci sono due **fantocci d'addestramento**: con il **misuratore dei danni** (tasto P) vedi DPS e contributo di ogni abilità, per ottimizzare la rotazione.
 
+## Grind dell'equipaggiamento
+
+Ogni arma o armatura che cade ha una **rarità**: Comune, Pregiato, Raro, Epico o Leggendario. Più è alta, più l'oggetto ha statistiche di base, **bonus casuali** (fino a 4) e **incavi** per le gemme (fino a 3).
+
+- **Bonus casuali** (18 tipi): vita, difesa, attacco, attacco magico, critico, danni critici, rapidità, danni ai mostri, danni a boss e obelischi, danni ad area, vita rubata, riduzione dei danni dai mostri, velocità, evasione, rigenerazione della risorsa, esperienza, tael e probabilità di bottino. Il suggerimento valuta ogni valore da ★ a ★★★★★: i valori alti sono più rari.
+- **Modificatori** (si trascinano sull'oggetto): Pietra dell'Affinamento (rilancia i valori), Pergamena del Mutamento (rimescola i bonus), Sigillo dell'Ascensione (35%: rarità +1), Scalpello del Gioielliere (estrae le gemme).
+- **Gemme**: Rubino, Zaffiro, Giada, Ambra, Onice e Perla, ognuna su 3 gradi. Clic destro su 3 gemme uguali per fonderle nel grado successivo.
+- **Fabbro**: potenziamento fino a **+15**. Da +10 serve l'Essenza Celeste. Ogni fallimento aggiunge il 2% di "perseveranza" a quell'oggetto, fino al 20%. Con il Sigillo del Fabbro un fallimento non distrugge l'oggetto: da +9 in su lo fa scendere di un livello. Il pulsante **Smonta** trasforma un oggetto in materiali e restituisce le gemme.
+- **Bottino**: ogni mostro può lasciare equipaggiamento del suo livello; obelischi e boss lasciano oggetti più rari, gemme, modificatori ed essenze. Tieni premuto **Alt** per vedere i nomi di tutti gli oggetti a terra.
+
 ## Sistemi presenti
 
 - **Regni:** Fenice Vermiglia (sud), Tigre Bianca (ovest) e Drago di Giada (est). Ognuno ha un villaggio fortificato che è zona sicura.
@@ -89,8 +99,7 @@ Nei villaggi ci sono due **fantocci d'addestramento**: con il **misuratore dei d
 - **Statistiche:** Vitalità, Forza, Destrezza e Intelletto, con 3 punti per livello.
 - **Mostri:** dai lupi del livello 2 ai guerrieri di terracotta, fino al **Generale Senza Volto** (boss, livello 25).
 - **Obelischi corrotti:** quando vengono colpiti richiamano ondate di mostri all'80, 60, 40 e 20% della vita e rilasciano tomi e materiali.
-- **Fabbro:** potenziamenti da +0 a +9. Fino a +3 un fallimento non distrugge l'oggetto; da +4 in su sì, a meno di usare il Sigillo del Fabbro. Dal +4 servono materiali. Le armi a +7 e oltre brillano.
-- **Negozi:** armaiolo ed erborista. Clic destro su un oggetto dell'inventario per venderlo.
+- **Negozi:** armaiolo (armi, armature e modificatori) ed erborista. Clic destro su un oggetto dell'inventario per venderlo.
 - **Bottino:** gli oggetti a terra appartengono per 20 secondi a chi ha fatto più danni. L'esperienza si divide in base al danno inflitto.
 - **Morte:** si perde il 3% dell'esperienza del livello se si muore contro un mostro. Si può rinascere sul posto o al villaggio.
 - **PvP:** fuori dalle mura, tra regni diversi, dal livello 10.

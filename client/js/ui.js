@@ -2,6 +2,7 @@
 import {
   ITEMS, SKILLS, CLASSES, VIE, STAT_NAMES, STAT_DESC, EQUIP_SLOTS, EQUIP_NAMES, INV_SIZE, QB_SIZE, WEAPON_TYPES, UPGRADE,
   VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BUFFS, RESOURCES, PTS_MAX, STATS_NAMES, skillVal, upgradedStat, equipSlotOf,
+  RARITIES, BONUS_STATS, GEM_TYPES, bonusText, bonusStars,
 } from '/shared/data.js';
 import { KINGDOMS, KINGDOM_IDS, WALL_RADIUS, CENTER, zoneAt } from '/shared/world.js';
 
@@ -12,15 +13,21 @@ const pct = (v) => `${Math.round(v * 100)}%`;
 export function itemIconHtml(s, count) {
   const it = ITEMS[s.id];
   if (!it) return '';
-  const st = it.color ? ` style="background:radial-gradient(${it.color},#120a07)"` : '';
+  const r = s.r || 0;
+  const styles = [];
+  if (it.color) styles.push(`background:radial-gradient(${it.color},#120a07)`);
+  if (r > 0) styles.push(`box-shadow:inset 0 0 0 2px ${RARITIES[r].color}, inset 0 0 10px ${RARITIES[r].color}88`);
+  const st = styles.length ? ` style="${styles.join(';')}"` : '';
   const n = count ?? s.n;
-  return `<div class="icon t${it.tier || 1}"${st}>${it.glyph}${n > 1 ? `<span class="cnt">${n}</span>` : ''}${s.up ? `<span class="upl">+${s.up}</span>` : ''}</div>`;
+  const sockets = (s.s && s.s.length) ? `<span class="sock">${s.s.map(g => `<i style="background:${g ? GEM_TYPES[ITEMS[g].gem].color : '#0008'}"></i>`).join('')}</span>` : '';
+  return `<div class="icon t${it.tier || 1}"${st}>${it.glyph}${n > 1 ? `<span class="cnt">${n}</span>` : ''}${s.up ? `<span class="upl">+${s.up}</span>` : ''}${sockets}</div>`;
 }
 function skillIconHtml(sid, disabled) {
   const sk = SKILLS[sid];
   return `<div class="icon skill${disabled ? ' disabled' : ''}" style="box-shadow:inset 0 0 0 2px #${sk.color.toString(16).padStart(6, '0')}88">${sk.glyph}</div>`;
 }
-function itemNameClass(s) { const it = ITEMS[s.id]; return (s.up || 0) >= 7 ? 'qup' : 'q' + (it.tier || 1); }
+function itemNameClass(s) { return 'r' + (s.r || 0); }
+function rarityColor(s) { return RARITIES[s.r || 0].color; }
 
 export class UI {
   constructor(game) {
@@ -96,8 +103,16 @@ export class UI {
       if (!sl) return;
       const i = +sl.dataset.i;
       if (!this.g.inv || !this.g.inv[i]) return;
+      const it = ITEMS[this.g.inv[i].id];
       if (this.shop) this.g.net.send({ t: 'sell', npc: this.shop.npc, i });
-      else if (this.smith) this.setSmithSlot(i);
+      else if (this.smith && equipSlotOf(it)) this.setSmithSlot(i);
+      else if (it.type === 'gem') {
+        if (it.grade < 2 && this.g.inv[i].n >= 3) {
+          const next = ITEMS[`gemma_${it.gem}_${it.grade + 1}`];
+          this.confirm(`Fondere 3 × ${esc(it.name)} in 1 × <b>${esc(next.name)}</b>?`, () => this.g.net.send({ t: 'combine', i }));
+        } else this.notice(it.grade < 2 ? 'Servono 3 gemme uguali per fonderle. Trascina la gemma su un oggetto per incastonarla.' : 'Trascina la gemma su un oggetto con un incavo libero', true);
+      }
+      else if (it.type === 'mod') this.notice('Trascina il modificatore su un\'arma o un\'armatura', true);
       else this.g.net.send({ t: 'use', i });
     });
     eqEl.addEventListener('contextmenu', (e) => {
@@ -174,6 +189,19 @@ export class UI {
     if (src.kind === 'inv') {
       const s = this.g.inv[src.i];
       if (!s) return;
+      const sit = ITEMS[s.id];
+      if ((sit.type === 'mod' || sit.type === 'gem') && (k === 'inv' || k === 'eq')) {
+        const target = k === 'inv' ? this.g.inv[+tgt.dataset.i] : this.g.eq[tgt.dataset.slot];
+        if (target && equipSlotOf(ITEMS[target.id])) {
+          const tk = k === 'inv' ? { k: 'i', i: +tgt.dataset.i } : { k: 'e', i: tgt.dataset.slot };
+          const tname = `<b style="color:${rarityColor(target)}">${esc(ITEMS[target.id].name)}</b>`;
+          const send = () => net.send({ t: 'apply', i: src.i, tgt: tk });
+          if (sit.mod === 'reroll') this.confirm(`Rimescolare tutti i bonus di ${tname}? Quelli attuali andranno persi.`, send);
+          else if (sit.mod === 'ascend') this.confirm(`Tentare l'ascensione di ${tname}? (35% di successo, il sigillo si consuma comunque)`, send);
+          else send();
+          return;
+        }
+      }
       if (k === 'inv') net.send({ t: 'mv', a: { k: 'i', i: src.i }, b: { k: 'i', i: +tgt.dataset.i } });
       else if (k === 'eq') net.send({ t: 'mv', a: { k: 'i', i: src.i }, b: { k: 'e', i: tgt.dataset.slot } });
       else if (k === 'qb') {
@@ -241,22 +269,42 @@ export class UI {
     const it = ITEMS[s.id];
     if (!it) return '';
     const me = this.g.me || {};
-    const up = s.up || 0;
-    const L = [`<div class="tn ${itemNameClass(s)}">${esc(it.name)}${up ? ' +' + up : ''}</div>`];
+    const up = s.up || 0, r = s.r || 0;
+    const R = RARITIES[r];
+    const isEq = !!equipSlotOf(it);
+    const L = [`<div class="tn" style="color:${R.color}">${esc(it.name)}${up ? ' +' + up : ''}</div>`];
+    if (isEq) L.push(`<div class="tt" style="color:${R.color}">${R.name}</div>`);
     if (it.type === 'weapon') {
       const users = Object.values(CLASSES).filter(c => c.weapons.includes(it.wt)).map(c => c.name).join(', ');
       L.push(`<div class="tt">${WEAPON_TYPES[it.wt].name} — ${users}</div>`);
-    } else if (equipSlotOf(it)) L.push(`<div class="tt">${EQUIP_NAMES[it.type]} — tutte le classi</div>`);
+    } else if (isEq) L.push(`<div class="tt">${EQUIP_NAMES[it.type]} — tutte le classi</div>`);
     if (it.lvl) L.push(`<div class="${me.lvl >= it.lvl ? 'tt' : 'tr'}">Livello richiesto: ${it.lvl}</div>`);
-    if (it.atk) L.push(`<div>Attacco: <b>${upgradedStat(it.atk, up, true)}</b></div>`);
-    if (it.matk) L.push(`<div>Attacco magico: <b>${upgradedStat(it.matk, up, true)}</b></div>`);
-    if (it.def) L.push(`<div>Difesa: <b>${upgradedStat(it.def, up, false)}</b></div>`);
+    const rm = R.mult;
+    if (it.atk) L.push(`<div>Attacco: <b>${Math.round(upgradedStat(it.atk, up, true) * rm)}</b></div>`);
+    if (it.matk) L.push(`<div>Attacco magico: <b>${Math.round(upgradedStat(it.matk, up, true) * rm)}</b></div>`);
+    if (it.def) L.push(`<div>Difesa: <b>${Math.round(upgradedStat(it.def, up, false) * rm)}</b></div>`);
     if (it.range) L.push(`<div>Gittata: ${it.range}</div>`);
     if (it.type === 'weapon') L.push(`<div class="tt">Velocità: ${WEAPON_TYPES[it.wt].aspd < 900 ? 'rapida' : WEAPON_TYPES[it.wt].aspd < 1200 ? 'normale' : 'lenta'}</div>`);
     if (it.speed) L.push(`<div class="tg">Velocità di movimento +${it.speed}%</div>`);
+    if (isEq && s.b && s.b.length) {
+      L.push('<div class="tsep"></div>');
+      for (const [k, v] of s.b) {
+        const st = bonusStars(k, v, it.tier || 1);
+        L.push(`<div class="tb">${esc(bonusText(k, v))} <span class="stars s${st}">${'★'.repeat(st)}${'☆'.repeat(5 - st)}</span></div>`);
+      }
+    }
+    if (isEq && s.s && s.s.length) {
+      L.push('<div class="tsep"></div>');
+      for (const g of s.s) {
+        if (g) { const gi = ITEMS[g], gt = GEM_TYPES[gi.gem]; L.push(`<div><span style="color:${gt.color}">◆</span> ${esc(gi.name)}: ${esc(bonusText(gt.stat, gt.vals[gi.grade]))}</div>`); }
+        else L.push('<div class="tt">◇ Incavo libero</div>');
+      }
+    }
+    if (isEq && s.fs) L.push(`<div style="color:#9ad8ff">Perseveranza del fabbro: +${Math.min(UPGRADE.failBonusMax, s.fs * UPGRADE.failBonus)}%</div>`);
     if (it.desc) L.push(`<div class="td">${esc(it.desc)}</div>`);
-    if (buying) L.push(`<div style="color:#ffe08a">Prezzo: ${it.price} tael</div>`);
-    else L.push(`<div class="tt">Valore: ${Math.floor(it.price / 5 * (1 + up * 0.5)) * (s.n || 1)} tael</div>`);
+    if (isEq && !buying) L.push('<div class="tt">Trascina qui una gemma o un modificatore per applicarlo.</div>');
+    if (buying) L.push(`<div style="color:#ffe08a">Prezzo: ${it.price.toLocaleString('it-IT')} tael</div>`);
+    else L.push(`<div class="tt">Valore: ${(Math.floor(it.price / 5 * (1 + up * 0.5) * (1 + r * 0.6)) * (s.n || 1)).toLocaleString('it-IT')} tael</div>`);
     return L.join('');
   }
 
@@ -480,6 +528,11 @@ export class UI {
         <span>${RESOURCES[me.rt].name}</span><span>${Math.floor(me.res)} / ${me.rmax}</span>
         <span>Rapidità</span><span>${me.haste}% (GCD ${(me.gcd / 1000).toFixed(2)} s)</span>
         <span>Bonus ai danni</span><span>${me.dmgPct}%</span>
+        <span>Moltiplicatore critico</span><span>×${me.cm || 1.6}</span>
+      </div>
+      <div class="via-title" style="margin-top:8px">Bonus dell'equipaggiamento</div>
+      <div class="derived">
+        ${Object.entries(me.g || {}).filter(([k]) => !['hp', 'def', 'atkPct', 'matkPct', 'crit', 'haste'].includes(k)).map(([k, v]) => `<span>${BONUS_STATS[k].name}</span><span>+${v}%</span>`).join('') || '<span>Nessuno</span><span></span>'}
         <span>Attacco</span><span>${me.atk}</span>
         <span>Attacco magico</span><span>${me.matk}</span>
         <span>Difesa</span><span>${me.def}</span>
@@ -533,7 +586,7 @@ export class UI {
     const el = $('shop-items');
     el.innerHTML = m.items.map(id => {
       const it = ITEMS[id];
-      return `<div class="shop-item" data-shop-item="${id}" data-drop="shop"><div class="slot" style="pointer-events:none">${itemIconHtml({ id, n: 1, up: 0 })}</div><div><div class="sn ${itemNameClass({ id })}">${esc(it.name)}</div><div class="sp">${it.price} tael${it.lvl > 1 ? ` — liv. ${it.lvl}` : ''}</div></div></div>`;
+      return `<div class="shop-item" data-shop-item="${id}" data-drop="shop"><div class="slot" style="pointer-events:none">${itemIconHtml({ id, n: 1, up: 0 })}</div><div><div class="sn">${esc(it.name)}</div><div class="sp">${it.price} tael${it.lvl > 1 ? ` — liv. ${it.lvl}` : ''}</div></div></div>`;
     }).join('');
     el.querySelectorAll('.shop-item').forEach(row => {
       row.onclick = (e) => {
@@ -569,24 +622,31 @@ export class UI {
     const seals = (this.g.inv || []).reduce((a, x) => a + (x && x.id === 'sigillo_fabbro' ? x.n : 0), 0);
     if (s) {
       const it = ITEMS[s.id], lv = s.up;
-      if (lv >= UPGRADE.max) info = `<div class="smith-info"><b class="${itemNameClass(s)}">${esc(it.name)} +${lv}</b><br>Questo oggetto ha raggiunto la perfezione.</div>`;
+      const nameHtml = `<b style="color:${rarityColor(s)}">${esc(it.name)}</b>`;
+      if (lv >= UPGRADE.max) info = `<div class="smith-info">${nameHtml} +${lv}<br>Questo oggetto ha raggiunto la perfezione.</div>`;
       else {
         const cost = UPGRADE.cost[lv], mat = UPGRADE.mats[lv];
         const have = mat ? (this.g.inv || []).reduce((a, x) => a + (x && x.id === mat[0] ? x.n : 0), 0) : 0;
         const okT = me.tael >= cost, okM = !mat || have >= mat[1];
         canGo = okT && okM;
         const risky = lv >= UPGRADE.safeBelow;
-        info = `<div class="smith-info"><b class="${itemNameClass(s)}">${esc(it.name)}</b>: +${lv} → <b>+${lv + 1}</b><br>
-          Probabilità di successo: <b>${UPGRADE.chance[lv]}%</b><br>
+        const bonus = Math.min(UPGRADE.failBonusMax, (s.fs || 0) * UPGRADE.failBonus);
+        const fail = !risky ? '<span class="ok">Se fallisce, l\'oggetto resta intatto.</span>'
+          : lv >= UPGRADE.downgradeFrom ? '<span class="bad">Se fallisce, l\'oggetto viene distrutto!</span><br><span class="tt">Con il sigillo: scende di un livello invece di rompersi.</span>'
+          : '<span class="bad">Se fallisce, l\'oggetto viene distrutto!</span><br><span class="tt">Con il sigillo: resta intatto.</span>';
+        info = `<div class="smith-info">${nameHtml}: +${lv} → <b>+${lv + 1}</b><br>
+          Probabilità di successo: <b>${UPGRADE.chance[lv] + bonus}%</b>${bonus ? ` <span style="color:#9ad8ff">(perseveranza +${bonus}%)</span>` : ''}<br>
           Costo: <span class="${okT ? 'ok' : 'bad'}">${cost.toLocaleString('it-IT')} tael</span><br>
           ${mat ? `Materiale: <span class="${okM ? 'ok' : 'bad'}">${ITEMS[mat[0]].name} ${have}/${mat[1]}</span><br>` : ''}
-          ${risky ? '<span class="bad">Se fallisce, l\'oggetto viene distrutto!</span>' : '<span class="ok">Se fallisce, l\'oggetto resta intatto.</span>'}
+          ${fail}
           ${risky ? `<label style="display:inline-flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="smith-seal" style="width:auto" ${seals ? '' : 'disabled'} ${this.sealChecked && seals ? 'checked' : ''}> Usa Sigillo del Fabbro (${seals})</label>` : ''}
           </div>`;
       }
     }
     $('smith-body').innerHTML = `<div class="slot" data-drop="smith">${s ? itemIconHtml(s) : ''}</div>${info}
-      <button class="btn primary" id="smith-go" ${canGo ? '' : 'disabled'}>Potenzia</button><div class="smith-res">${this.smithRes || ''}</div>`;
+      <div class="row" style="justify-content:center"><button class="btn primary" id="smith-go" ${canGo ? '' : 'disabled'}>Potenzia</button>
+      <button class="btn" id="smith-salvage" ${s ? '' : 'disabled'} title="Distrugge l'oggetto e restituisce materiali e gemme">Smonta</button></div>
+      <div class="smith-res">${this.smithRes || ''}</div>`;
     const seal = $('smith-seal');
     if (seal) seal.onchange = () => { this.sealChecked = seal.checked; };
     $('smith-go').onclick = () => {
@@ -595,10 +655,18 @@ export class UI {
       if (st && st.up >= UPGRADE.safeBelow && !this.sealChecked) this.confirm(`Senza sigillo, se il potenziamento fallisce <b>${esc(ITEMS[st.id].name)}</b> verrà distrutto. Procedere?`, go);
       else go();
     };
+    $('smith-salvage').onclick = () => {
+      const st = this.g.inv[this.smithSlot];
+      if (!st) return;
+      this.confirm(`Smontare <b style="color:${rarityColor(st)}">${esc(ITEMS[st.id].name)}${st.up ? ' +' + st.up : ''}</b>? L'oggetto andrà perso; riceverai materiali e le gemme incastonate.`,
+        () => this.g.net.send({ t: 'salvage', npc: this.smith.npc, i: this.smithSlot }));
+    };
   }
   onSmithResult(m) {
-    if (m.ok) { this.smithRes = `<span style="color:#8aff9a">Successo! ${esc(m.name)} è ora +${m.up}.</span>`; this.g.sound('ok'); }
-    else if (m.destroyed) { this.smithRes = `<span style="color:#ff6a4a">Il metallo si è spezzato... ${esc(m.name)} è andato distrutto.</span>`; this.smithSlot = -1; }
+    if (m.salvaged) { this.smithRes = `<span style="color:#ffd060">Smontato: ${esc(m.got.join(', '))}</span>`; this.smithSlot = -1; this.g.sound('coin'); }
+    else if (m.ok) { this.smithRes = `<span style="color:#8aff9a">Successo! ${esc(m.name)} è ora +${m.up}.</span>`; this.g.sound('ok'); }
+    else if (m.destroyed) { this.smithRes = `<span style="color:#ff6a4a">Il metallo si è spezzato... ${esc(m.name)} è andato distrutto.</span>`; this.smithSlot = -1; this.g.sound('die'); }
+    else if (m.down) this.smithRes = `<span style="color:#ffd060">Fallito: il Sigillo ha salvato l'oggetto, che scende a +${m.up}.</span>`;
     else if (m.sealUsed) this.smithRes = '<span style="color:#ffd060">Fallito, ma il Sigillo del Fabbro ha protetto l\'oggetto.</span>';
     else this.smithRes = '<span style="color:#ffb060">Fallito. L\'oggetto è rimasto intatto.</span>';
     this.renderSmith();

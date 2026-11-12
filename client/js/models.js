@@ -1,6 +1,6 @@
 // Modelli procedurali low-poly per personaggi, mostri, PNG e oggetti a terra, con animazioni semplici.
 import * as THREE from 'three';
-import { ITEMS, CLASSES, MOBS } from '/shared/data.js';
+import { ITEMS, CLASSES, MOBS, RARITIES } from '/shared/data.js';
 import { KINGDOMS } from '/shared/world.js';
 import { lam } from './world3d.js';
 
@@ -358,11 +358,12 @@ export function buildDropModel(info) {
   const it = ITEMS[info.it];
   const root = new THREE.Group();
   const body = new THREE.Group(); root.add(body);
-  const col = it && it.color ? new THREE.Color(it.color).getHex() : ({ 1: 0xc8c0b0, 2: 0x8ac0e0, 3: 0x8ae0a0, 4: 0xffc860 }[it?.tier] || 0xd8c890);
+  const col = info.r ? new THREE.Color(RARITIES[info.r].color).getHex() : it && it.color ? new THREE.Color(it.color).getHex() : 0xd8c890;
   const bag = mesh(G('drop', () => new THREE.OctahedronGeometry(0.28, 0)), glow(col, 0.5), 0, 0.5, 0);
   body.add(bag);
-  const beam = new THREE.Mesh(G('beam', () => new THREE.CylinderGeometry(0.05, 0.12, 2.2, 6, 1, true)), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
-  beam.position.y = 1.1;
+  const tall = 1 + (info.r || 0) * 0.6;
+  const beam = new THREE.Mesh(G('beam' + tall, () => new THREE.CylinderGeometry(0.05 * tall, 0.12 * tall, 2.2 * tall, 6, 1, true)), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
+  beam.position.y = 1.1 * tall;
   body.add(beam);
   const rig = { root, body, height: 1.0, drop: true };
   return finish(rig, 0.8);

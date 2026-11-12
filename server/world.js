@@ -3,7 +3,7 @@
 import {
   CLASSES, VIE, SKILLS, BUFFS, RESOURCES, ITEMS, MOBS, UPGRADE, SHOPS, NPC_ROLES, WEAPON_TYPES, GUARD_LINES,
   INV_SIZE, QB_SIZE, STACK_MAX, STAT_MAX, EQUIP_SLOTS, MAX_LEVEL, VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BOOK_CHANCE,
-  PTS_MAX, GCD_MS, GCD_MIN_MS, DATA_VERSION,
+  PTS_MAX, GCD_MS, GCD_MIN_MS, DATA_VERSION, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
   expToNext, skillVal, upgradedStat, equipSlotOf,
 } from '../shared/data.js';
 import {
@@ -27,6 +27,49 @@ function expMod(plvl, mlvl) {
   return Math.max(0.1, 1 + (d + 4) * 0.15);
 }
 
+// ------------------------------------------------------------------ oggetti con rarità e bonus
+const GEAR_BY_TIER = {};
+for (const [id, it] of Object.entries(ITEMS)) {
+  if (!equipSlotOf(it)) continue;
+  (GEAR_BY_TIER[it.tier] || (GEAR_BY_TIER[it.tier] = [])).push(id);
+}
+function tierForLevel(l) { return l < 10 ? 1 : l < 20 ? 2 : l < 30 ? 3 : 4; }
+
+export function rollRarity(source) {
+  const w = RARITY_WEIGHTS[source] || RARITY_WEIGHTS.mob;
+  let r = Math.random() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < w.length; i++) { if ((r -= w[i]) <= 0) return i; }
+  return 0;
+}
+
+function rollValue(stat, tier) {
+  const b = BONUS_STATS[stat], s = TIER_SCALE[tier] || 1;
+  const q = Math.pow(Math.random(), 1.6); // i valori alti sono più rari
+  const v = (b.range[0] + (b.range[1] - b.range[0]) * q) * s;
+  return b.flat ? Math.max(1, Math.round(v)) : Math.max(0.1, Math.round(v * 10) / 10);
+}
+
+function rollBonuses(slot, tier, count, exclude) {
+  const pool = Object.keys(BONUS_STATS).filter(k => BONUS_STATS[k].slots.includes(slot) && !exclude.includes(k));
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  return pool.slice(0, Math.max(0, count)).map(k => [k, rollValue(k, tier)]);
+}
+
+export function makeEquip(id, r = 0, up = 0) {
+  const it = ITEMS[id];
+  r = Math.max(0, Math.min(4, r | 0));
+  return { id, n: 1, up, r, b: rollBonuses(equipSlotOf(it), it.tier || 1, RARITIES[r].bonuses, []), s: Array(RARITIES[r].sockets).fill(null), fs: 0 };
+}
+
+function normalizeEquip(s) {
+  if (!s) return s;
+  if (s.r === undefined) s.r = 0;
+  if (!s.b) s.b = [];
+  if (!s.s) s.s = [];
+  if (!s.fs) s.fs = 0;
+  return s;
+}
+
 export function newCharacter(name, cls, kingdom) {
   const c = CLASSES[cls];
   const sp = villageSpawn(kingdom);
@@ -34,11 +77,11 @@ export function newCharacter(name, cls, kingdom) {
   const ch = {
     name, cls, kingdom, lvl: 1, exp: 0, statPts: 0, skillPts: 0,
     stats: { ...c.start }, via: null, skills: {}, v: DATA_VERSION,
-    inv, equip: { weapon: { id: c.startWeapon, n: 1, up: 0 }, head: null, body: { id: 'tunica_canapa', n: 1, up: 0 }, feet: { id: 'sandali', n: 1, up: 0 } },
+    inv, equip: { weapon: makeEquip(c.startWeapon), head: null, body: makeEquip('tunica_canapa'), feet: makeEquip('sandali') },
     tael: 300, x: sp.x, z: sp.z, hp: -1, mp: -1, qb: Array(QB_SIZE).fill(null), created: Date.now(),
   };
   let i = 0;
-  for (const id of c.extraItems) inv[i++] = { id, n: 1, up: 0 };
+  for (const id of c.extraItems) inv[i++] = makeEquip(id);
   inv[i++] = { id: 'ginseng_p', n: 10, up: 0 };
   inv[i++] = { id: 'loto_p', n: 6, up: 0 };
   inv[i++] = { id: 'pergamena_ritorno', n: 1, up: 0 };
@@ -185,18 +228,48 @@ export class World {
     });
   }
 
-  spawnDrop(id, n, x, z, owner) {
+  spawnDrop(id, n, x, z, owner, source = 'mob') {
     const it = ITEMS[id];
-    const make = (cnt) => this.add({
-      kind: 'drop', item: { id, n: cnt, up: 0 }, x: x + rand(-1.6, 1.6), z: z + rand(-1.6, 1.6),
-      owner: owner || 0, ownerUntil: NOW() + 20000, expire: NOW() + 90000,
+    if (it.stack) return this.dropInstance({ id, n, up: 0 }, x, z, owner);
+    for (let i = 0; i < n; i++) this.dropInstance(makeEquip(id, rollRarity(source)), x, z, owner);
+  }
+
+  dropInstance(inst, x, z, owner) {
+    return this.add({
+      kind: 'drop', item: inst, x: x + rand(-1.8, 1.8), z: z + rand(-1.8, 1.8),
+      owner: owner || 0, ownerUntil: NOW() + 20000, expire: NOW() + 120000,
     });
-    if (it.stack) make(n); else for (let i = 0; i < n; i++) make(1);
+  }
+
+  // Bottino aggiuntivo per fascia di livello: equipaggiamento casuale, gemme, modificatori, essenze.
+  extraDrops(m, top) {
+    const d = m.d, lv = d.lvl;
+    const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
+    const mul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100);
+    const owner = top ? top.id : 0;
+    const roll = (ch) => Math.random() < ch * mul;
+    const rolls = d.boss ? 3 : d.stone ? 2 : 1;
+    const gearChance = d.boss ? 1 : d.stone ? 0.7 : 0.05;
+    for (let i = 0; i < rolls; i++) {
+      if (!roll(gearChance)) continue;
+      const pool = GEAR_BY_TIER[d.boss ? 4 : tierForLevel(lv)];
+      this.dropInstance(makeEquip(pool[randi(0, pool.length - 1)], rollRarity(source)), m.x, m.z, owner);
+    }
+    const gems = Object.keys(GEM_TYPES);
+    if (roll(d.boss ? 0.8 : d.stone ? 0.45 : lv >= 5 ? 0.015 : 0)) {
+      const grade = d.boss ? (Math.random() < 0.25 ? 2 : 1) : d.stone && lv >= 15 ? 1 : 0;
+      this.spawnDrop(`gemma_${gems[randi(0, gems.length - 1)]}_${grade}`, 1, m.x, m.z, owner);
+    }
+    if (lv >= 8 && roll(d.boss ? 0.6 : d.stone ? 0.3 : 0.008)) this.spawnDrop('pietra_affinamento', d.boss ? 2 : 1, m.x, m.z, owner);
+    if (roll(d.boss ? 0.4 : d.stone ? 0.12 : lv >= 12 ? 0.002 : 0)) this.spawnDrop('pergamena_mutamento', 1, m.x, m.z, owner);
+    if (roll(d.boss ? 0.25 : d.stone && lv >= 15 ? 0.05 : 0)) this.spawnDrop('sigillo_ascensione', 1, m.x, m.z, owner);
+    if (roll(d.boss ? 0.9 : d.stone && lv >= 15 ? 0.3 : lv >= 18 ? 0.01 : 0)) this.spawnDrop('essenza_celeste', d.boss ? randi(2, 4) : 1, m.x, m.z, owner);
   }
 
   // ------------------------------------------------------------ giocatori
   addPlayer(sess, ch) {
     migrate(ch);
+    for (const s of [...ch.inv, ...Object.values(ch.equip)]) if (s && equipSlotOf(ITEMS[s.id])) normalizeEquip(s);
     const p = {
       kind: 'player', sess, ch, name: ch.name, cls: ch.cls, kingdom: ch.kingdom, lvl: ch.lvl,
       x: ch.x, z: ch.z, r: 0, hp: ch.hp, buffs: [], hots: [], dots: [], debuffs: [], cds: {},
@@ -257,36 +330,51 @@ export class World {
     const c = CLASSES[p.cls], s = p.ch.stats, L = p.lvl, eq = p.ch.equip;
     const pas = (p.ch.via && VIE[p.ch.via].passive) || {};
     let watk = 0, wmatk = 0, def = 0, spdPct = 0, range = 2.2, aspd = 1000;
+    const rm = (s) => RARITIES[(s && s.r) || 0].mult;
     if (eq.weapon) {
       const it = ITEMS[eq.weapon.id];
       const wt = WEAPON_TYPES[it.wt];
-      watk = upgradedStat(it.atk, eq.weapon.up, true);
-      wmatk = upgradedStat(it.matk, eq.weapon.up, true);
+      watk = upgradedStat(it.atk, eq.weapon.up, true) * rm(eq.weapon);
+      wmatk = upgradedStat(it.matk, eq.weapon.up, true) * rm(eq.weapon);
       range = it.range || wt.range; aspd = wt.aspd;
     }
     for (const k of ['head', 'body', 'feet']) if (eq[k]) {
       const it = ITEMS[eq[k].id];
-      def += upgradedStat(it.def, eq[k].up, false);
+      def += upgradedStat(it.def, eq[k].up, false) * rm(eq[k]);
       spdPct += it.speed || 0;
     }
+    // bonus casuali e gemme
+    const g = {};
+    for (const slot of EQUIP_SLOTS) {
+      const s = eq[slot];
+      if (!s) continue;
+      for (const [k, v] of s.b || []) g[k] = (g[k] || 0) + v;
+      for (const gem of s.s || []) if (gem && ITEMS[gem]) { const gi = ITEMS[gem], gt = GEM_TYPES[gi.gem]; g[gt.stat] = (g[gt.stat] || 0) + gt.vals[gi.grade]; }
+    }
+    for (const k in g) g[k] = Math.round(g[k] * 10) / 10;
+    p.gear = g;
     const b = this.buffTotals(p);
     const prim = c.primary === 'dex' ? s.dex : s.str;
     const sec = c.primary === 'dex' ? s.str : s.dex;
-    p.maxHp = Math.round((c.hp[0] + L * c.hp[1] + s.vit * c.hp[2]) * (1 + (pas.hpPct || 0) / 100));
+    p.maxHp = Math.round((c.hp[0] + L * c.hp[1] + s.vit * c.hp[2] + (g.hp || 0)) * (1 + (pas.hpPct || 0) / 100));
     p.rmax = p.rtype === 'mana' ? Math.round(c.mp[0] + L * c.mp[1] + s.int * c.mp[2]) : RESOURCES[p.rtype].fixedMax;
-    p.atk = Math.round((watk + prim * 2 + sec * 0.5 + L * 2) * (1 + (b.atkPct || 0) / 100));
-    p.matk = Math.round((wmatk + s.int * 2.5 + L * 2) * (1 + (b.matkPct || 0) / 100));
-    p.def = Math.round((def + s.vit * 1.2 + L) * (1 + (b.defPct || 0) / 100));
-    p.crit = Math.min(50, 2 + s.dex * 0.4 + (b.critPct || 0));
-    p.evade = Math.min(15, s.dex * 0.2);
-    p.haste = b.hastePct || 0;
+    p.atk = Math.round((watk + prim * 2 + sec * 0.5 + L * 2) * (1 + ((b.atkPct || 0) + (g.atkPct || 0)) / 100));
+    p.matk = Math.round((wmatk + s.int * 2.5 + L * 2) * (1 + ((b.matkPct || 0) + (g.matkPct || 0)) / 100));
+    p.def = Math.round((def + (g.def || 0) + s.vit * 1.2 + L) * (1 + (b.defPct || 0) / 100));
+    p.crit = Math.min(60, 2 + s.dex * 0.4 + (b.critPct || 0) + (g.crit || 0));
+    p.critMult = 1.6 + (g.critDmg || 0) / 100;
+    p.evade = Math.min(25, s.dex * 0.2 + (g.evade || 0));
+    p.haste = (b.hastePct || 0) + (g.haste || 0);
     p.aspd = Math.round(aspd / (1 + p.haste / 100 + s.dex * 0.004));
-    p.speed = 8 * (1 + spdPct / 100);
+    p.speed = 8 * (1 + (spdPct + (g.moveSpd || 0)) / 100);
+    p.monDmg = g.monDmg || 0; p.bossDmg = g.bossDmg || 0; p.aoeDmg = g.aoeDmg || 0;
+    p.lifesteal = g.lifesteal || 0; p.dmgRed = Math.min(50, g.dmgRed || 0);
+    p.expPct = g.expPct || 0; p.taelPct = g.taelPct || 0; p.dropPct = g.dropPct || 0;
     p.range = range;
     p.hpRegen = b.hpRegen || 0;
     p.dmgPct = b.dmgPct || 0;
     p.dmgTaken = b.dmgTaken || 0;
-    p.resRegenPct = b.resRegenPct || 0;
+    p.resRegenPct = (b.resRegenPct || 0) + (g.resRegen || 0);
     p.threat = pas.threat || 1;
     p.healPct = pas.healPct || 0;
     if (p.hp > p.maxHp) p.hp = p.maxHp;
@@ -316,7 +404,7 @@ export class World {
       }
       case 'mob': return { ...base, k: 'm', ty: e.type, n: e.name, lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp };
       case 'npc': return { ...base, k: 'n', role: e.role, kd: e.kingdom, n: e.name };
-      case 'drop': return { ...base, k: 'd', it: e.item.id, n: e.item.n, up: e.item.up, own: e.owner };
+      case 'drop': return { ...base, k: 'd', it: e.item.id, n: e.item.n, up: e.item.up, r: e.item.r || 0, own: e.owner };
     }
     return base;
   }
@@ -332,6 +420,7 @@ export class World {
       haste: r1(p.haste), gcd: this.gcdMs(p), dmgPct: r1(p.dmgPct),
       sp: ch.statPts, kp: ch.skillPts, st: ch.stats, via: ch.via, sk: ch.skills, tael: ch.tael, qb: ch.qb,
       buffs: p.buffs.map(b => ({ b: b.id, ms: b.until - t })), dead: p.dead ? 1 : 0,
+      g: p.gear, cm: r2(p.critMult),
     };
   }
 
@@ -413,8 +502,12 @@ export class World {
         d.next += d.every || 1000;
         const src = this.ents.get(d.src) || { kind: 'env', id: 0, name: 'Veleno', x: e.x, z: e.z };
         let v = d.dmg, crit = false;
-        if (src.kind === 'player' && Math.random() * 100 < src.crit) { v = Math.round(v * 1.6); crit = true; }
-        const m = this.mitigate(e, v);
+        if (src.kind === 'player') {
+          if (Math.random() * 100 < src.crit) { v = Math.round(v * (src.critMult || 1.6)); crit = true; }
+          if (e.kind === 'mob') { v *= 1 + (src.monDmg || 0) / 100; if (e.d.boss || e.d.stone) v *= 1 + (src.bossDmg || 0) / 100; }
+          v = Math.round(v);
+        }
+        const m = this.mitigate(e, v, src);
         const ev = { k: 'hit', s: src.id, d: e.id, v: m.dmg, dot: 1, sk: d.sid };
         if (crit) ev.c = 1;
         if (m.ab) ev.ab = m.ab;
@@ -571,8 +664,15 @@ export class World {
 
   hit(src, tgt, base, opts = {}) {
     let mult = 1, crit = false;
-    if (src.kind === 'player' && Math.random() * 100 < src.crit) { crit = true; mult = 1.6; }
-    if (src.kind === 'player' && tgt.kind === 'player') mult *= 0.6;
+    if (src.kind === 'player') {
+      if (Math.random() * 100 < src.crit) { crit = true; mult = src.critMult || 1.6; }
+      if (tgt.kind === 'mob') {
+        mult *= 1 + (src.monDmg || 0) / 100;
+        if (tgt.d.boss || tgt.d.stone) mult *= 1 + (src.bossDmg || 0) / 100;
+      }
+      if (opts.aoe) mult *= 1 + (src.aoeDmg || 0) / 100;
+      if (tgt.kind === 'player') mult *= 0.6;
+    }
     const ev = { k: 'hit', s: src.id, d: tgt.id, sk: opts.sk || 'auto' };
     if (opts.auto) ev.a = opts.auto;
     if (opts.i) ev.i = opts.i;
@@ -581,19 +681,21 @@ export class World {
       return { miss: true };
     }
     const def = tgt.def * (1 - (opts.ignoreDef || 0) / 100);
-    const m = this.mitigate(tgt, this.calcDamage(base, def, mult));
+    const m = this.mitigate(tgt, this.calcDamage(base, def, mult), src);
     ev.v = m.dmg;
     if (crit) ev.c = 1;
     if (m.ab) ev.ab = m.ab;
     this.fx(tgt, ev);
     this.applyDamage(tgt, m.dmg, src, opts.threat || 1);
+    if (src.kind === 'player' && src.lifesteal && m.dmg > 0 && !src.dead) this.heal(src, m.dmg * src.lifesteal / 100, 'silent');
     return { crit, dmg: m.dmg };
   }
 
   // Riduzioni dei danni subiti (effetti difensivi e scudi).
-  mitigate(tgt, dmg) {
+  mitigate(tgt, dmg, src) {
     if (tgt.kind !== 'player') return { dmg };
     if (tgt.dmgTaken) dmg = Math.max(1, Math.round(dmg * (1 + tgt.dmgTaken / 100)));
+    if (src && src.kind === 'mob' && tgt.dmgRed) dmg = Math.max(1, Math.round(dmg * (1 - tgt.dmgRed / 100)));
     let ab = 0;
     if (tgt.shield > 0 && tgt.shieldUntil > NOW()) {
       ab = Math.min(tgt.shield, dmg);
@@ -634,9 +736,11 @@ export class World {
     const before = q.hp;
     q.hp = Math.min(q.maxHp, q.hp + amt);
     const v = Math.round(q.hp - before);
-    q.selfDirty = true; this.touch(q);
-    if (v > 0 && !quiet) this.fx(q, { k: 'heal', d: q.id, v });
-    else if (v > 0) this.send(q, { t: 'fx', k: 'heal', d: q.id, v, q: 1 });
+    if (q.kind === 'player') { q.resDirty = true; }
+    this.touch(q);
+    if (quiet === 'silent' || v <= 0) return;
+    if (!quiet) this.fx(q, { k: 'heal', d: q.id, v });
+    else this.send(q, { t: 'fx', k: 'heal', d: q.id, v, q: 1 });
   }
 
   stun(e, sec) {
@@ -662,19 +766,22 @@ export class World {
     for (const [pid, v] of m.aggro) {
       const p = this.ents.get(pid);
       if (!p || p.kind !== 'player' || p.dead || dist(p, m) > 80) continue;
-      const exp = Math.max(1, Math.round(d.exp * (total > 0 ? v / total : 1) * expMod(p.lvl, d.lvl) * this.cfg.rates.exp));
+      const exp = Math.max(1, Math.round(d.exp * (total > 0 ? v / total : 1) * expMod(p.lvl, d.lvl) * this.cfg.rates.exp * (1 + (p.expPct || 0) / 100)));
       this.gainExp(p, exp);
       if (v > tv) { tv = v; top = p; }
     }
     if (!top && killer && killer.kind === 'player') top = killer;
     if (top && d.tael) {
-      const amt = Math.round(randi(d.tael[0], d.tael[1]) * this.cfg.rates.tael);
+      const amt = Math.round(randi(d.tael[0], d.tael[1]) * this.cfg.rates.tael * (1 + (top.taelPct || 0) / 100));
       top.ch.tael += amt; top.selfDirty = true;
       this.send(top, { t: 'gain', tael: amt });
     }
+    const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
+    const dmul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100);
     for (const [id, ch, mn = 1, mx = 1] of d.drops || []) {
-      if (Math.random() < ch * this.cfg.rates.drop) this.spawnDrop(id, randi(mn, mx), m.x, m.z, top ? top.id : 0);
+      if (Math.random() < ch * dmul) this.spawnDrop(id, randi(mn, mx), m.x, m.z, top ? top.id : 0, source);
     }
+    this.extraDrops(m, top);
     if (m.spawner) m.spawner.pending.push(NOW() + d.respawn * 1000 * rand(0.9, 1.15));
     if (d.boss) this.broadcast({ t: 'notice', m: `${top ? top.name : 'Un eroe'} ha sconfitto ${d.name}!` });
     m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = [];
@@ -763,6 +870,9 @@ export class World {
       case 'buy': return this.onBuy(p, msg.npc, msg.it, msg.n | 0);
       case 'sell': return this.onSell(p, msg.npc, msg.i | 0);
       case 'up': return this.onUpgrade(p, msg.npc, msg.i | 0, !!msg.seal);
+      case 'salvage': return this.onSalvage(p, msg.npc, msg.i | 0);
+      case 'apply': return this.onApply(p, msg.i | 0, msg.tgt);
+      case 'combine': return this.onCombine(p, msg.i | 0);
       case 'respawn': return this.respawn(p, msg.mode);
       case 'cancel': if (p.casting) this.cancelCast(p); return;
     }
@@ -944,7 +1054,7 @@ export class World {
     let crit = false, offensive = false;
     const strikeOne = (tgt, i = 0) => {
       if (!sk.mult || !this.canAttack(p, tgt)) return;
-      const r = this.hit(p, tgt, dmgFor(tgt), { ...opts, i });
+      const r = this.hit(p, tgt, dmgFor(tgt), { ...opts, i, aoe: sk.type === 'aoe_self' || sk.type === 'aoe_target' });
       if (r.crit) crit = true;
     };
     const control = (tgt) => {
@@ -1133,7 +1243,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /aiuto. Chat: !testo = grido al regno, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /via nome, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /via nome, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'online': return sys(`In linea (${this.players.size}): ${[...this.players].map(q => `${q.name} [${q.lvl}]`).join(', ')}`);
       case 'pos': return sys(`Posizione: ${Math.round(p.x)}, ${Math.round(p.z)}`);
@@ -1144,8 +1254,11 @@ export class World {
         const id = a[0];
         if (!ITEMS[id]) return sys('Oggetto inesistente. Scrivi /items per la lista.');
         const n = clamp(parseInt(a[1], 10) || 1, 1, STACK_MAX), up = clamp(parseInt(a[2], 10) || 0, 0, UPGRADE.max);
-        const left = this.addItem(p, id, n, up);
-        return sys(left ? 'Inventario pieno.' : `Ricevuto: ${ITEMS[id].name} x${n}${up ? ' +' + up : ''}`);
+        const r = clamp(parseInt(a[3], 10) || 0, 0, 4);
+        let left = 0;
+        if (ITEMS[id].stack) left = this.addItem(p, id, n);
+        else for (let k = 0; k < n; k++) left += this.addItem(p, id, 1, up, makeEquip(id, r, up));
+        return sys(left ? 'Inventario pieno.' : `Ricevuto: ${ITEMS[id].name} x${n}${up ? ' +' + up : ''}${r ? ' (' + RARITIES[r].name + ')' : ''}`);
       }
       case 'level': {
         const L = clamp(parseInt(a[0], 10) || 1, 1, MAX_LEVEL), diff = L - p.lvl;
@@ -1195,7 +1308,7 @@ export class World {
   }
 
   // ------------------------------------------------------------ inventario
-  addItem(p, id, n = 1, up = 0) {
+  addItem(p, id, n = 1, up = 0, inst = null) {
     const it = ITEMS[id], inv = p.ch.inv;
     if (it.stack) {
       for (let i = 0; i < INV_SIZE && n > 0; i++) {
@@ -1204,7 +1317,10 @@ export class World {
       }
       for (let i = 0; i < INV_SIZE && n > 0; i++) if (!inv[i]) { const k = Math.min(n, STACK_MAX); inv[i] = { id, n: k, up: 0 }; n -= k; }
     } else {
-      for (let i = 0; i < INV_SIZE && n > 0; i++) if (!inv[i]) { inv[i] = { id, n: 1, up }; n--; }
+      for (let i = 0; i < INV_SIZE && n > 0; i++) if (!inv[i]) {
+        inv[i] = inst ? normalizeEquip({ ...inst, n: 1, b: (inst.b || []).map(x => [...x]), s: [...(inst.s || [])] }) : makeEquip(id, 0, up);
+        inst = null; n--;
+      }
     }
     p.invDirty = true;
     return n;
@@ -1303,9 +1419,11 @@ export class World {
     if (d.owner && d.owner !== p.id && NOW() < d.ownerUntil) return this.err(p, 'Questo bottino appartiene a un altro giocatore');
     const it = ITEMS[d.item.id];
     if (!this.canAdd(p, d.item.id, d.item.n)) return this.err(p, 'Inventario pieno');
-    this.addItem(p, d.item.id, d.item.n, d.item.up);
+    this.addItem(p, d.item.id, d.item.n, d.item.up, it.stack ? null : d.item);
     this.remove(d);
-    this.send(p, { t: 'gain', item: it.name, n: d.item.n, up: d.item.up });
+    const r = d.item.r || 0;
+    this.send(p, { t: 'gain', item: it.name, n: d.item.n, up: d.item.up, r });
+    if (r >= 4) this.broadcast({ t: 'sys', m: `${p.name} ha trovato un oggetto Leggendario: ${it.name}!` });
   }
 
   onUse(p, i) {
@@ -1427,7 +1545,7 @@ export class World {
     const s = p.ch.inv[i];
     if (!npc || !s) return;
     const it = ITEMS[s.id];
-    const val = Math.floor(it.price / 5 * (1 + (s.up || 0) * 0.5)) * s.n;
+    const val = Math.floor(it.price / 5 * (1 + (s.up || 0) * 0.5) * (1 + (s.r || 0) * 0.6)) * s.n;
     p.ch.inv[i] = null;
     p.ch.tael += val;
     p.invDirty = true; p.selfDirty = true;
@@ -1436,7 +1554,7 @@ export class World {
 
   onUpgrade(p, npcId, i, useSeal) {
     if (!this.nearNpc(p, npcId, ['fabbro'])) return;
-    const s = p.ch.inv[i];
+    const s = normalizeEquip(p.ch.inv[i]);
     if (!s) return;
     const it = ITEMS[s.id];
     if (!equipSlotOf(it)) return this.err(p, 'Il fabbro lavora solo armi e armature');
@@ -1448,15 +1566,105 @@ export class World {
     if (useSeal && this.countItem(p, 'sigillo_fabbro') < 1) useSeal = false;
     p.ch.tael -= cost;
     if (mat) this.takeItem(p, mat[0], mat[1]);
-    const ok = Math.random() * 100 < UPGRADE.chance[lv];
-    let destroyed = false, sealUsed = false;
-    if (ok) s.up++;
-    else if (risky) {
-      if (useSeal) { this.takeItem(p, 'sigillo_fabbro', 1); sealUsed = true; }
-      else { p.ch.inv[i] = null; destroyed = true; }
+    const bonus = Math.min(UPGRADE.failBonusMax, (s.fs || 0) * UPGRADE.failBonus);
+    const ok = Math.random() * 100 < UPGRADE.chance[lv] + bonus;
+    let destroyed = false, sealUsed = false, down = false;
+    if (ok) { s.up++; s.fs = 0; }
+    else {
+      s.fs = (s.fs || 0) + 1;
+      if (risky) {
+        if (useSeal) {
+          this.takeItem(p, 'sigillo_fabbro', 1); sealUsed = true;
+          if (lv >= UPGRADE.downgradeFrom) { s.up--; down = true; }
+        } else { p.ch.inv[i] = null; destroyed = true; }
+      }
     }
     p.invDirty = true; p.selfDirty = true;
-    this.send(p, { t: 'smith_res', ok, destroyed, sealUsed, up: s.up, name: it.name, i });
-    if (ok && s.up >= 7) this.broadcast({ t: 'sys', m: `${p.name} ha portato ${it.name} a +${s.up}!` });
+    this.send(p, { t: 'smith_res', ok, destroyed, sealUsed, down, up: s.up, name: it.name, i, fs: s.fs });
+    if (ok && s.up >= 10) this.broadcast({ t: 'sys', m: `${p.name} ha portato ${it.name} a +${s.up}!` });
+  }
+
+  // Smonta un oggetto in materiali (e restituisce le gemme incastonate).
+  onSalvage(p, npcId, i) {
+    if (!this.nearNpc(p, npcId, ['fabbro'])) return;
+    const s = normalizeEquip(p.ch.inv[i]);
+    if (!s || !equipSlotOf(ITEMS[s.id])) return this.err(p, 'Si possono smontare solo armi e armature');
+    const t = ITEMS[s.id].tier || 1, r = s.r || 0, up = s.up || 0;
+    const out = [['minerale_ferro', t + r]];
+    if (r >= 2 || up >= 7) out.push(['frammento_obelisco', Math.max(r - 1, 0) + (up >= 7 ? Math.floor(up / 3) : 0)]);
+    if (r >= 4 || up >= 10) out.push(['essenza_celeste', 1 + (up >= 12 ? 1 : 0)]);
+    for (const gem of s.s) if (gem) out.push([gem, 1]);
+    p.ch.inv[i] = null;
+    const got = [];
+    for (const [id, n] of out) {
+      if (n <= 0) continue;
+      const left = this.addItem(p, id, n);
+      if (left) this.spawnDrop(id, left, p.x, p.z, p.id);
+      got.push(`${ITEMS[id].name} x${n}`);
+    }
+    this.send(p, { t: 'smith_res', salvaged: 1, name: ITEMS[s.id].name, got });
+    this.sys(p, `Smontato ${ITEMS[s.id].name}: ${got.join(', ')}.`);
+  }
+
+  // Applica un modificatore o una gemma a un oggetto (dall'inventario o equipaggiato).
+  onApply(p, i, tgt) {
+    const m = p.ch.inv[i];
+    if (!m || !tgt) return;
+    const mi = ITEMS[m.id];
+    if (mi.type !== 'mod' && mi.type !== 'gem') return;
+    const target = tgt.k === 'e' ? (EQUIP_SLOTS.includes(tgt.i) ? p.ch.equip[tgt.i] : null) : p.ch.inv[tgt.i | 0];
+    if (!target || !equipSlotOf(ITEMS[target.id])) return this.err(p, 'Si applica solo ad armi e armature');
+    normalizeEquip(target);
+    const it = ITEMS[target.id], slot = equipSlotOf(it), tier = it.tier || 1;
+    const consume = () => { m.n--; if (m.n <= 0) p.ch.inv[i] = null; };
+    let msg = '';
+    if (mi.type === 'gem') {
+      const free = target.s.indexOf(null);
+      if (free < 0) return this.err(p, target.s.length ? 'Nessun incavo libero (usa lo Scalpello per liberarli)' : 'Questo oggetto non ha incavi');
+      target.s[free] = m.id; consume();
+      msg = `${mi.name} incastonata in ${it.name}.`;
+    } else if (mi.mod === 'refine') {
+      if (!target.b.length) return this.err(p, 'Questo oggetto non ha bonus da affinare');
+      target.b = target.b.map(([k]) => [k, rollValue(k, tier)]); consume();
+      msg = `Bonus di ${it.name} affinati.`;
+    } else if (mi.mod === 'reroll') {
+      if (!target.b.length) return this.err(p, 'Questo oggetto non ha bonus da rimescolare');
+      target.b = rollBonuses(slot, tier, target.b.length, []); consume();
+      msg = `Bonus di ${it.name} rimescolati.`;
+    } else if (mi.mod === 'ascend') {
+      if (target.r >= 4) return this.err(p, "L'oggetto è già Leggendario");
+      consume();
+      if (Math.random() < 0.35) {
+        target.r++;
+        const R = RARITIES[target.r];
+        target.b.push(...rollBonuses(slot, tier, R.bonuses - target.b.length, target.b.map(x => x[0])));
+        while (target.s.length < R.sockets) target.s.push(null);
+        msg = `Ascensione riuscita! ${it.name} è ora ${R.name}.`;
+        if (target.r >= 4) this.broadcast({ t: 'sys', m: `${p.name} ha elevato ${it.name} a Leggendario!` });
+      } else msg = "L'ascensione non è riuscita: il sigillo si è dissolto.";
+    } else if (mi.mod === 'extract') {
+      const gems = target.s.filter(Boolean);
+      if (!gems.length) return this.err(p, 'Nessuna gemma da estrarre');
+      consume();
+      target.s = target.s.map(() => null);
+      for (const gem of gems) { const left = this.addItem(p, gem, 1); if (left) this.spawnDrop(gem, 1, p.x, p.z, p.id); }
+      msg = gems.length === 1 ? `Estratta 1 gemma da ${it.name}.` : `Estratte ${gems.length} gemme da ${it.name}.`;
+    }
+    if (tgt.k === 'e') this.recalc(p);
+    p.invDirty = true; p.selfDirty = true;
+    this.send(p, { t: 'applied', m: msg });
+  }
+
+  onCombine(p, i) {
+    const s = p.ch.inv[i];
+    if (!s) return;
+    const it = ITEMS[s.id];
+    if (it.type !== 'gem' || it.grade >= 2) return this.err(p, 'Questa gemma non si può fondere');
+    if (this.countItem(p, s.id) < 3) return this.err(p, 'Servono 3 gemme uguali');
+    const next = `gemma_${it.gem}_${it.grade + 1}`;
+    this.takeItem(p, s.id, 3);
+    const left = this.addItem(p, next, 1);
+    if (left) this.spawnDrop(next, 1, p.x, p.z, p.id);
+    this.send(p, { t: 'applied', m: `Fusione riuscita: ${ITEMS[next].name}.` });
   }
 }
