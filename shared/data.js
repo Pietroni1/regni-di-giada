@@ -281,6 +281,7 @@ export const ITEMS = {
   tomo_tecnica: { name: 'Tomo della Tecnica', type: 'book', price: 5000, stack: true, glyph: '書', color: '#2a6a4a', desc: "Permette di studiare un'abilità oltre il livello 10 (50% di successo). Si usa dal tasto + nella finestra Abilità." },
   sigillo_fabbro: { name: 'Sigillo del Fabbro', type: 'seal', price: 15000, stack: true, glyph: '印', color: '#8a7a2a', desc: "Se un potenziamento rischioso fallisce, l'oggetto non viene distrutto (da +9 in su scende di un livello). Il sigillo si consuma solo se il potenziamento fallisce." },
   essenza_celeste: { name: 'Essenza Celeste', type: 'material', price: 6000, stack: true, glyph: '霊', color: '#3a8ac0', desc: 'Il fabbro la richiede per i potenziamenti da +10 a +15. La lasciano i boss e gli obelischi più potenti.' },
+  sigillo_prova: { name: 'Sigillo della Prova', type: 'key', price: 0, glyph: '鍵', color: '#a02a2a', tier: 4, desc: 'Apre una Prova del Sigillo nella Cripta delle Mille Lanterne (dal Custode Yun). Completala in tempo per far salire il livello del sigillo.' },
   // Modificatori: si trascinano su un'arma o un'armatura
   pietra_affinamento: { name: "Pietra dell'Affinamento", type: 'mod', mod: 'refine', price: 2500, stack: true, glyph: '磨', color: '#5a7a8a', desc: "Trascinala su un oggetto: rilancia i valori dei bonus casuali mantenendone i tipi." },
   pergamena_mutamento: { name: 'Pergamena del Mutamento', type: 'mod', mod: 'reroll', price: 6000, stack: true, glyph: '変', color: '#7a5a2a', desc: "Trascinala su un oggetto: rimescola completamente i bonus casuali (tipi e valori)." },
@@ -392,6 +393,12 @@ export const MOBS = {
     drops: [['benda_bandito', 0.25], ['ginseng_m', 0.04], ['minerale_ferro', 0.02]] },
   soldato_terracotta: { name: 'Soldato di Terracotta', lvl: 20, hp: 650, atk: 58, def: 22, exp: 210, speed: 4.2, aggro: 9, range: 2.5, aspd: 1700, model: 'terracotta', color: 0xb07a52, scale: 0.95, respawn: 12, tael: [30, 60],
     drops: [['coccio_terracotta', 0.25], ['ginseng_g', 0.02], ['minerale_ferro', 0.04]] },
+  sentinella_cripta: { name: 'Sentinella di Bronzo', lvl: 26, hp: 2600, atk: 72, def: 40, exp: 420, speed: 4, aggro: 11, range: 2.7, aspd: 1900, model: 'terracotta', color: 0x8a6a3a, scale: 1.25, respawn: 0, dungeon: true, tael: [60, 120], drops: [] },
+  ombra_cripta: { name: 'Ombra Velata', lvl: 26, hp: 1400, atk: 66, def: 20, exp: 300, speed: 6.5, aggro: 13, range: 2.3, aspd: 1300, model: 'shade', color: 0x3a2a5a, scale: 1, respawn: 0, dungeon: true, tael: [40, 90], drops: [] },
+  lanterna_cripta: { name: 'Lanterna Insonne', lvl: 26, hp: 1300, atk: 78, def: 18, exp: 320, speed: 3.5, aggro: 13, range: 12, ranged: true, magic: true, aspd: 2100, model: 'lantern', color: 0x8a5aff, scale: 1.05, respawn: 0, dungeon: true, tael: [40, 90], drops: [] },
+  custode_insonne: { name: 'Shen, il Custode Insonne', lvl: 28, hp: 60000, atk: 135, def: 50, exp: 15000, speed: 4.2, aggro: 16, range: 3.6, aspd: 2200, model: 'custode', color: 0x1a2a4a, scale: 2.0, respawn: 0, dungeon: true, boss: true, dungeonBoss: true, tael: [3000, 5000], drops: [] },
+  lanterna_instabile: { name: 'Lanterna Instabile', lvl: 26, hp: 900, atk: 0, def: 10, exp: 0, speed: 2.6, aggro: 40, range: 1.5, aspd: 99999, model: 'lantern', color: 0xff4a20, scale: 0.8, respawn: 0, dungeon: true, explode: { after: 10, radius: 6, mult: 2.2 }, drops: [] },
+  eco_spirito: { name: 'Eco Inquieta', lvl: 24, hp: 500, atk: 40, def: 10, exp: 60, speed: 5, aggro: 20, range: 10, ranged: true, magic: true, aspd: 1800, model: 'lantern', color: 0xa0d8ff, scale: 0.6, respawn: 0, dungeon: true, drops: [] },
   obelisco_minore: { name: 'Obelisco Corrotto', lvl: 8, hp: 3000, atk: 0, def: 12, exp: 900, stone: true, waves: ['lupo_alfa', 'bandito'], wave: 3, model: 'obelisk', color: 0x8a3ac0, scale: 1, respawn: 300, tael: [200, 400],
     drops: [['tomo_tecnica', 0.12], ['minerale_ferro', 0.6, 1, 3], ['ginseng_m', 0.5, 2, 4], ['frammento_obelisco', 0.08], ['pergamena_ritorno', 0.3]] },
   obelisco_abisso: { name: "Obelisco dell'Abisso", lvl: 18, hp: 9000, atk: 0, def: 30, exp: 3500, stone: true, waves: ['terracotta', 'spirito_lanterna'], wave: 3, model: 'obelisk', color: 0xd03a4a, scale: 1.3, respawn: 420, tael: [600, 1200],
@@ -425,6 +432,7 @@ export const NPC_ROLES = {
   maestro: { name: 'Eremita Shou', title: 'Maestro delle Vie' },
   guardia: { name: 'Guardia', title: 'Guardia del villaggio' },
   stalliere: { name: 'Mastro Bo', title: 'Stalliere' },
+  custode: { name: 'Custode Yun', title: 'Guardiano delle Prove' },
 };
 
 export const GUARD_LINES = [
@@ -433,3 +441,65 @@ export const GUARD_LINES = [
   'Gli obelischi corrotti richiamano mostri quando vengono colpiti. Affrontali in compagnia.',
   'Oltre le mura vale la legge della spada: i guerrieri degli altri regni possono attaccarti.',
 ];
+
+// ------------------------------------------------------------------ Prove del Sigillo
+// Coordinate locali rispetto all'origine dell'istanza. rooms: rettangoli calpestabili [x1, z1, x2, z2].
+export const DUNGEON = {
+  name: 'Cripta delle Mille Lanterne', trial: 'Prova del Sigillo',
+  minLevel: 20, startKey: 2, timeLimit: 900, deathPenalty: 5, forcesNeeded: 100, maxKey: 30,
+  originX: 1200, slotSpacing: 400, boundsMin: [-15, -15], boundsMax: [82, 125],
+  spawn: [0, -5],
+  rooms: [
+    [-10, -10, 10, 10], [-4, 9, 4, 31], [-15, 30, 15, 60], [14, 41, 41, 49], [40, 30, 70, 60], [51, 59, 59, 81], [33, 80, 77, 120],
+  ],
+  // muri: [x1, z1, x2, z2] (segmenti orizzontali o verticali)
+  walls: [
+    [-10, -10, 10, -10], [-10, -10, -10, 10], [10, -10, 10, 10], [-10, 10, -4, 10], [4, 10, 10, 10],
+    [-4, 10, -4, 30], [4, 10, 4, 30],
+    [-15, 30, -4, 30], [4, 30, 15, 30], [-15, 60, 15, 60], [-15, 30, -15, 60], [15, 30, 15, 41], [15, 49, 15, 60],
+    [15, 41, 40, 41], [15, 49, 40, 49],
+    [40, 30, 40, 41], [40, 49, 40, 60], [40, 30, 70, 30], [70, 30, 70, 60], [40, 60, 51, 60], [59, 60, 70, 60],
+    [51, 60, 51, 80], [59, 60, 59, 80],
+    [33, 80, 51, 80], [59, 80, 77, 80], [33, 80, 33, 120], [77, 80, 77, 120], [33, 120, 77, 120],
+  ],
+  packs: [
+    { x: 0, z: 22, mobs: ['sentinella_cripta', 'sentinella_cripta', 'ombra_cripta'] },
+    { x: -7, z: 44, mobs: ['ombra_cripta', 'ombra_cripta', 'ombra_cripta', 'lanterna_cripta'] },
+    { x: 8, z: 53, mobs: ['sentinella_cripta', 'sentinella_cripta', 'lanterna_cripta', 'lanterna_cripta'] },
+    { x: 28, z: 45, mobs: ['ombra_cripta', 'ombra_cripta', 'ombra_cripta'] },
+    { x: 54, z: 39, mobs: ['sentinella_cripta', 'sentinella_cripta', 'lanterna_cripta', 'lanterna_cripta'] },
+    { x: 62, z: 53, mobs: ['ombra_cripta', 'ombra_cripta', 'ombra_cripta', 'ombra_cripta'] },
+    { x: 55, z: 70, mobs: ['sentinella_cripta', 'sentinella_cripta'] },
+  ],
+  boss: { type: 'custode_insonne', x: 55, z: 106 },
+  forces: { sentinella_cripta: 5, ombra_cripta: 4, lanterna_cripta: 5, eco_spirito: 1 },
+};
+
+// Modificatori settimanali (a rotazione). Dal livello 3 ne è attivo uno, dal livello 6 due.
+export const AFFIXES = {
+  pietra: { name: 'Pelle di Pietra', glyph: '岩', desc: 'I nemici normali hanno il 25% di vita e il 15% di danni in più.' },
+  tiranno: { name: 'Re Tiranno', glyph: '王', desc: 'Il boss ha il 30% di vita e il 15% di danni in più.' },
+  furia: { name: 'Furia Ancestrale', glyph: '怒', desc: 'Sotto il 30% di vita i nemici infliggono il 40% di danni in più.' },
+  brace: { name: 'Sangue di Brace', glyph: '炎', desc: 'I nemici sconfitti lasciano a terra braci ardenti per 6 secondi.' },
+  eco: { name: 'Eco degli Spiriti', glyph: '霊', desc: 'I nemici sconfitti possono liberare un\'Eco Inquieta da abbattere.' },
+};
+const AFFIX_ROTATION = [['pietra', 'furia'], ['tiranno', 'brace'], ['pietra', 'eco'], ['tiranno', 'furia'], ['pietra', 'brace'], ['tiranno', 'eco']];
+export function weeklyAffixes(now = Date.now()) {
+  const week = Math.floor((now - Date.UTC(2024, 0, 1)) / (7 * 86400000));
+  return AFFIX_ROTATION[((week % AFFIX_ROTATION.length) + AFFIX_ROTATION.length) % AFFIX_ROTATION.length];
+}
+export function activeAffixes(level, now = Date.now()) {
+  const w = weeklyAffixes(now);
+  return level >= 6 ? w : level >= 3 ? [w[0]] : [];
+}
+// Moltiplicatori per livello del sigillo e numero di giocatori.
+export function trialScale(level, players) {
+  return { hp: Math.pow(1.1, level - 2) * (0.45 + 0.15 * Math.max(1, Math.min(5, players))), dmg: Math.pow(1.08, level - 2) };
+}
+// Avanzamento del sigillo in base al tempo impiegato.
+export function keyChange(elapsed, limit) {
+  if (elapsed > limit) return -1;
+  if (elapsed <= limit * 0.6) return 3;
+  if (elapsed <= limit * 0.8) return 2;
+  return 1;
+}

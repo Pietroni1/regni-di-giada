@@ -106,6 +106,7 @@ export const VILLAGE_LAYOUT = {
     { role: 'guardia', x: -5, z: 36.5, face: 0 },
     { role: 'guardia', x: 5, z: 36.5, face: 0 },
     { role: 'stalliere', x: -31, z: -3.5, face: Math.PI / 2 },
+    { role: 'custode', x: 7.5, z: -18.4, face: 0 },
   ],
   lanterns: [[-4, 18], [4, 18], [-4, 28], [4, 28], [-14, -8], [14, -8], [-14, 8], [14, 8]],
   trees: [[-28, -25], [28, -25], [-12, 25], [12, 25], [-30, 28], [30, 28]],
@@ -178,7 +179,10 @@ export function roadDistance(x, z) {
 }
 
 // ---------------------------------------------------------------- altezza
+export const DUNGEON_X = 800; // oltre questa x ci sono le istanze delle Prove (pavimento piatto)
+
 export function heightAt(x, z) {
+  if (x > DUNGEON_X) return 0;
   let h = (fbm(x * 0.011, z * 0.011, 4, 11) - 0.43) * 30;
   h += (fbm(x * 0.045 + 100, z * 0.045 - 50, 2, 5) - 0.5) * 3;
   const edge = Math.max(Math.abs(x), Math.abs(z));
@@ -210,6 +214,7 @@ export function safeZoneAt(x, z) {
 }
 
 export function zoneAt(x, z) {
+  if (x > DUNGEON_X) return { name: 'Cripta delle Mille Lanterne', dungeon: true };
   const safe = safeZoneAt(x, z);
   if (safe) return { name: KINGDOMS[safe].villageName, safe };
   if (Math.max(Math.abs(x), Math.abs(z)) > 236) return { name: 'Monti Nebbiosi' };

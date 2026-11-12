@@ -3,12 +3,12 @@
 import {
   CLASSES, VIE, SKILLS, BUFFS, RESOURCES, ITEMS, MOBS, UPGRADE, SHOPS, NPC_ROLES, WEAPON_TYPES, GUARD_LINES,
   INV_SIZE, QB_SIZE, STACK_MAX, STAT_MAX, EQUIP_SLOTS, MAX_LEVEL, VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BOOK_CHANCE,
-  PTS_MAX, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
+  PTS_MAX, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, weeklyAffixes, trialScale, keyChange, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
   expToNext, skillVal, upgradedStat, equipSlotOf,
 } from '../shared/data.js';
 import {
   KINGDOMS, KINGDOM_IDS, CENTER, heightAt, villageFrame, toWorld, VILLAGE_LAYOUT, safeZoneAt, villageSpawn,
-  PLAY_LIMIT, mulberry32,
+  PLAY_LIMIT, mulberry32, DUNGEON_X,
 } from '../shared/world.js';
 
 const VIEW = 105;
@@ -118,6 +118,9 @@ export class World {
     this.spawners = [];
     this.nextId = 1;
     this.parties = new Map();
+    this.instances = new Map();
+    this.instSlots = [];
+    this.nextInst = 1;
     this.nextParty = 1;
     this.regenAcc = 0;
     this.initNpcs();
@@ -304,7 +307,7 @@ export class World {
     this.recalc(p);
     const R = RESOURCES[p.rtype];
     p.res = p.rtype === 'mana' ? (ch.mp >= 0 ? Math.min(ch.mp, p.rmax) : p.rmax) : Math.round(R.start * p.rmax);
-    if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || p.hp === 0) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || p.hp === 0 || p.x > DUNGEON_X) {
       const sp = villageSpawn(p.kingdom); p.x = sp.x; p.z = sp.z; p.hp = p.maxHp;
     }
     if (p.hp < 0 || p.hp > p.maxHp) p.hp = p.maxHp;
@@ -317,6 +320,7 @@ export class World {
   }
 
   removePlayer(p) {
+    this.leaveTrial(p, true);
     this.leaveParty(p, true);
     p.online = false;
     this.saveChar(p);
@@ -498,6 +502,7 @@ export class World {
       if (e.kind === 'mob') this.updateMob(e, dt, t);
       else if (e.kind === 'drop' && t > e.expire) this.remove(e);
     }
+    for (const inst of [...this.instances.values()]) this.updateTrial(inst, t, regen);
     for (const sp of this.spawners) {
       for (let i = sp.pending.length - 1; i >= 0; i--) {
         if (sp.pending[i] <= t) { sp.pending.splice(i, 1); this.spawnFromSpawner(sp); }
@@ -597,6 +602,7 @@ export class World {
       return;
     }
     if (m.temp && !m.target && t - m.lastActive > 60000) { this.remove(m); return; }
+    if (d.explode && m.explodeAt && t >= m.explodeAt) return this.explodeLantern(m);
     if (m.stunUntil > t) return;
     const spd = d.speed * (m.slowUntil > t ? 0.5 : 1);
     let tgt = m.target ? this.ents.get(m.target) : null;
@@ -619,7 +625,7 @@ export class World {
     }
     if (tgt) {
       m.lastActive = t;
-      const leash = m.temp ? 70 : (d.boss ? 42 : 34);
+      const leash = m.inst ? 9999 : m.temp ? 70 : (d.boss ? 42 : 34);
       if (dist(m, m.spawn) > leash) {
         m.state = 'return'; m.target = null; m.aggro.clear();
       } else {
@@ -629,9 +635,10 @@ export class World {
         else {
           const nr = Math.atan2(tgt.x - m.x, tgt.z - m.z);
           if (Math.abs(nr - m.r) > 0.05) { m.r = nr; this.touch(m); }
-          if (t >= m.nextAttack) { m.nextAttack = t + d.aspd; this.mobAttack(m, tgt); }
+          if (t >= m.nextAttack) { m.nextAttack = t + d.aspd * (m.aspdMul || 1); this.mobAttack(m, tgt); }
         }
-        if (d.boss) this.bossLogic(m, t);
+        if (d.dungeonBoss) this.trialBossLogic(m, t);
+        else if (d.boss) this.bossLogic(m, t);
         return;
       }
     }
@@ -652,7 +659,10 @@ export class World {
   }
 
   mobAttack(m, tgt) {
-    this.hit(m, tgt, m.atk, { auto: m.d.ranged ? (m.d.magic ? 3 : 2) : 1 });
+    let base = m.atk;
+    const inst = m.inst ? this.instances.get(m.inst) : null;
+    if (inst && inst.affixes.includes('furia') && m.hp / m.maxHp < 0.3) base *= 1.4;
+    this.hit(m, tgt, base, { auto: m.d.ranged ? (m.d.magic ? 3 : 2) : 1 });
   }
 
   bossLogic(m, t) {
@@ -844,6 +854,7 @@ export class World {
       const each = Math.max(1, Math.round(amt / Math.max(1, members.length)));
       for (const q of members) { q.ch.tael += each; q.selfDirty = true; this.send(q, { t: 'gain', tael: each }); }
     }
+    if (m.inst) { this.trialMobDied(m); m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = []; return; }
     const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
     const dmul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100);
     for (const [id, ch, mn = 1, mx = 1] of d.drops || []) {
@@ -921,6 +932,7 @@ export class World {
       this.broadcast({ t: 'sys', m: `${killer.name} (${KINGDOMS[killer.kingdom].short}) ha sconfitto ${p.name} (${KINGDOMS[p.kingdom].short}).` });
     }
     this.fx(p, { k: 'die', d: p.id });
+    if (p.inst) { const inst = this.instances.get(p.inst); if (inst && !inst.done) inst.deaths++; }
     this.send(p, { t: 'dead', by: killer.name || 'sconosciuto', lost });
   }
 
@@ -933,7 +945,8 @@ export class World {
       if (p.rtype === 'mana') p.res = Math.round(p.rmax * 0.5);
     } else {
       if (el < 3000) return;
-      const sp = villageSpawn(p.kingdom);
+      const inst = p.inst ? this.instances.get(p.inst) : null;
+      const sp = inst ? { x: inst.ox + DUNGEON.spawn[0], z: inst.oz + DUNGEON.spawn[1] } : villageSpawn(p.kingdom);
       p.x = sp.x; p.z = sp.z; p.hp = p.maxHp;
       if (p.rtype === 'mana') p.res = p.rmax;
     }
@@ -942,8 +955,14 @@ export class World {
     this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z), alive: 1 });
   }
 
+  clampPos(p, x, z) {
+    const inst = p.inst ? this.instances.get(p.inst) : null;
+    if (inst) return [clamp(x, inst.ox + DUNGEON.boundsMin[0], inst.ox + DUNGEON.boundsMax[0]), clamp(z, inst.oz + DUNGEON.boundsMin[1], inst.oz + DUNGEON.boundsMax[1])];
+    return [clamp(x, -PLAY_LIMIT, PLAY_LIMIT), clamp(z, -PLAY_LIMIT, PLAY_LIMIT)];
+  }
+
   teleport(p, x, z) {
-    p.x = clamp(x, -PLAY_LIMIT, PLAY_LIMIT); p.z = clamp(z, -PLAY_LIMIT, PLAY_LIMIT);
+    [p.x, p.z] = this.clampPos(p, x, z);
     this.touch(p);
     this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z) });
   }
@@ -973,6 +992,8 @@ export class World {
       case 'respawn': return this.respawn(p, msg.mode);
       case 'cancel': if (p.casting) this.cancelCast(p); if (p.mountUntil) { p.mountUntil = 0; this.send(p, { t: 'castend', ok: 0 }); } return;
       case 'mount': return this.onMount(p);
+      case 'trial': return this.onTrial(p, msg.npc, msg.a);
+      case 'tleave': return this.leaveTrial(p);
       case 'stable': return this.onStable(p, msg.npc, msg.a);
       case 'pinv': return this.onPartyInvite(p, msg.id ? this.ents.get(msg.id) : this.playerByName(msg.n));
       case 'preply': return this.onPartyReply(p, !!msg.ok);
@@ -991,7 +1012,7 @@ export class World {
     if (p.stunUntil > t) { this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z) }); return; }
     const maxD = p.speed * Math.max(dt, 0.12) * 1.6 + 1.2;
     if (Math.hypot(x - p.x, z - p.z) > maxD) { this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z) }); return; }
-    p.x = clamp(x, -PLAY_LIMIT, PLAY_LIMIT); p.z = clamp(z, -PLAY_LIMIT, PLAY_LIMIT);
+    [p.x, p.z] = this.clampPos(p, x, z);
     if (Number.isFinite(+msg.r)) p.r = +msg.r;
     if (p.casting && Math.hypot(p.x - p.casting.x, p.z - p.casting.z) > 0.35) this.cancelCast(p);
     if (p.mountUntil && Math.hypot(p.x - p.mountX, p.z - p.mountZ) > 0.35) { p.mountUntil = 0; this.send(p, { t: 'castend', ok: 0 }); }
@@ -1340,6 +1361,267 @@ export class World {
     }
   }
 
+  // ------------------------------------------------------------ Prove del Sigillo
+  sendTrialInfo(p, npcId) {
+    const key = p.ch.inv.find(s => s && s.id === 'sigillo_prova');
+    const party = this.partyOf(p);
+    this.send(p, {
+      t: 'trial', npc: npcId, key: key ? key.kl : null, best: p.ch.trialBest || 0, week: weeklyAffixes(),
+      leader: !party || party.leader === p.id, party: party ? party.members.length : 1, minLevel: DUNGEON.minLevel,
+    });
+  }
+
+  onTrial(p, npcId, action) {
+    const npc = this.nearNpc(p, npcId, ['custode']);
+    if (!npc) return;
+    if (action === 'key') {
+      if (p.lvl < DUNGEON.minLevel) return this.err(p, `Serve il livello ${DUNGEON.minLevel}`);
+      if (p.ch.inv.some(s => s && s.id === 'sigillo_prova')) return this.err(p, 'Hai già un Sigillo della Prova');
+      if (this.addItem(p, 'sigillo_prova', 1, 0, { id: 'sigillo_prova', n: 1, kl: DUNGEON.startKey })) return this.err(p, 'Inventario pieno');
+      this.sys(p, `Hai ricevuto un Sigillo della Prova +${DUNGEON.startKey}.`);
+      return this.sendTrialInfo(p, npcId);
+    }
+    if (action === 'open') return this.openTrial(p, npc);
+  }
+
+  openTrial(p, npc) {
+    if (p.inst) return;
+    const key = p.ch.inv.find(s => s && s.id === 'sigillo_prova');
+    if (!key) return this.err(p, 'Ti serve un Sigillo della Prova');
+    const party = this.partyOf(p);
+    if (party && party.leader !== p.id) return this.err(p, 'Solo il capogruppo può aprire la prova');
+    const members = (party ? party.members.map(id => this.ents.get(id)) : [p])
+      .filter(q => q && q.kind === 'player' && q.online && !q.dead && !q.inst && dist(q, npc) < 40);
+    if (!members.includes(p)) return;
+    const low = members.find(q => q.lvl < DUNGEON.minLevel);
+    if (low) return this.err(p, `${low.name} non ha ancora il livello ${DUNGEON.minLevel}`);
+    let slot = 0;
+    while (this.instSlots[slot]) slot++;
+    const ox = DUNGEON.originX + slot * DUNGEON.slotSpacing, oz = 0;
+    const kl = key.kl || DUNGEON.startKey;
+    const inst = {
+      id: this.nextInst++, slot, ox, oz, kl, affixes: activeAffixes(kl), members: new Set(members.map(q => q.id)), owner: p.id, key,
+      players: members.length, start: NOW(), deaths: 0, forces: 0, bossDead: false, bossId: 0, done: false, result: null,
+      mobs: new Set(), hazards: [], timers: [], closeAt: 0, lastSend: 0, overtime: false,
+    };
+    this.instSlots[slot] = inst;
+    this.instances.set(inst.id, inst);
+    const sc = trialScale(kl, members.length);
+    for (const pack of DUNGEON.packs) {
+      pack.mobs.forEach((type, i) => {
+        const a = i / pack.mobs.length * Math.PI * 2;
+        this.spawnTrialMob(inst, type, ox + pack.x + Math.cos(a) * 2.4, oz + pack.z + Math.sin(a) * 2.4, sc);
+      });
+    }
+    const boss = this.spawnTrialMob(inst, DUNGEON.boss.type, ox + DUNGEON.boss.x, oz + DUNGEON.boss.z, sc);
+    boss.r = Math.PI;
+    inst.bossId = boss.id;
+    for (const q of members) {
+      q.inst = inst.id;
+      if (q.mounted) { q.mounted = false; this.recalc(q); q.vis++; }
+      q.known.clear(); q.knownVis.clear();
+      this.teleport(q, ox + DUNGEON.spawn[0] + rand(-2, 2), oz + DUNGEON.spawn[1] + rand(-1, 1));
+      this.send(q, { t: 'dg_start', ox, oz, kl, affixes: inst.affixes });
+      this.send(q, { t: 'notice', m: `${DUNGEON.trial} +${kl}: ${Math.round(DUNGEON.timeLimit / 60)} minuti. Buona fortuna!` });
+    }
+    this.sendTrialState(inst);
+  }
+
+  spawnTrialMob(inst, type, x, z, sc) {
+    const m = this.spawnMob(type, x, z, null, false);
+    const d = m.d;
+    let hpMul = sc.hp, dmgMul = sc.dmg;
+    if (inst.affixes.includes('pietra') && !d.boss) { hpMul *= 1.25; dmgMul *= 1.15; }
+    if (inst.affixes.includes('tiranno') && d.boss) { hpMul *= 1.3; dmgMul *= 1.15; }
+    m.maxHp = m.hp = Math.max(1, Math.round(d.hp * hpMul));
+    m.atk = Math.round(d.atk * dmgMul);
+    m.lvl = d.lvl + Math.max(0, inst.kl - 2);
+    m.inst = inst.id;
+    if (d.explode) { m.explodeAt = NOW() + d.explode.after * 1000; m.explodeDmg = Math.round(120 * sc.dmg * d.explode.mult); }
+    inst.mobs.add(m.id);
+    return m;
+  }
+
+  instMembers(inst) { return [...inst.members].map(id => this.ents.get(id)).filter(q => q && q.kind === 'player'); }
+  instBroadcast(inst, obj) { for (const q of this.instMembers(inst)) this.send(q, obj); }
+
+  trialBossLogic(m, t) {
+    const inst = this.instances.get(m.inst);
+    if (!inst) return;
+    if (!m.ringAt) { m.ringAt = t + 8000; m.addsAt = t + 16000; }
+    if (t >= m.ringAt) {
+      m.ringAt = t + 14000;
+      const x = m.x, z = m.z, r = 9;
+      this.fx(m, { k: 'warn', x: r1(x), z: r1(z), r, ms: 2500 });
+      this.instBroadcast(inst, { t: 'notice', m: 'Anello di fiamme: allontanati da Shen!' });
+      inst.timers.push({ at: t + 2500, fn: () => {
+        if (m.hp <= 0) return;
+        this.fx(m, { k: 'slam', s: m.id, x: r1(x), z: r1(z), r });
+        for (const q of this.instMembers(inst)) if (!q.dead && Math.hypot(q.x - x, q.z - z) < r) this.hit(m, q, m.atk * 2.5, {});
+      } });
+    }
+    if (t >= m.addsAt) {
+      m.addsAt = t + 24000;
+      this.fx(m, { k: 'wave', s: m.id });
+      this.instBroadcast(inst, { t: 'notice', m: 'Shen evoca le Lanterne Instabili: distruggetele prima che esplodano!' });
+      const sc = trialScale(inst.kl, inst.players);
+      for (let i = 0; i < 3; i++) {
+        const a = Math.random() * Math.PI * 2;
+        this.spawnTrialMob(inst, 'lanterna_instabile', inst.ox + 55 + Math.cos(a) * 15, inst.oz + 100 + Math.sin(a) * 12, sc);
+      }
+    }
+    if (!m.enraged && m.hp / m.maxHp < 0.3) {
+      m.enraged = true; m.aspdMul = 0.7; m.atk = Math.round(m.atk * 1.2);
+      this.instBroadcast(inst, { t: 'notice', m: 'Shen è in furia!' });
+    }
+  }
+
+  explodeLantern(m) {
+    const inst = this.instances.get(m.inst);
+    const r = m.d.explode.radius;
+    this.fx(m, { k: 'slam', s: m.id, x: r1(m.x), z: r1(m.z), r });
+    if (inst) for (const q of this.instMembers(inst)) if (!q.dead && Math.hypot(q.x - m.x, q.z - m.z) < r) this.hit(m, q, m.explodeDmg, {});
+    m.hp = 0; this.touch(m);
+    this.fx(m, { k: 'die', d: m.id });
+    if (inst) inst.mobs.delete(m.id);
+    m.removeAt = NOW() + 500;
+  }
+
+  trialMobDied(m) {
+    const inst = this.instances.get(m.inst);
+    if (!inst) return;
+    inst.mobs.delete(m.id);
+    if (inst.done) return;
+    const d = m.d;
+    inst.forces += DUNGEON.forces[m.type] || 0;
+    if (d.dungeonBoss) {
+      inst.bossDead = true;
+      if (inst.forces < DUNGEON.forcesNeeded) this.instBroadcast(inst, { t: 'notice', m: `Shen è caduto! Mancano ancora forze nemiche (${Math.round(inst.forces)}%/${DUNGEON.forcesNeeded}%).` });
+    }
+    if (inst.affixes.includes('brace') && !d.boss && !d.explode) {
+      inst.hazards.push({ x: m.x, z: m.z, r: 3, until: NOW() + 6000, dmg: Math.max(1, Math.round(m.atk * 0.35)) });
+      this.fx(m, { k: 'hazard', x: r1(m.x), z: r1(m.z), r: 3, ms: 6000 });
+    }
+    if (inst.affixes.includes('eco') && !d.boss && !d.explode && m.type !== 'eco_spirito' && Math.random() < 0.25) {
+      this.spawnTrialMob(inst, 'eco_spirito', m.x, m.z, trialScale(inst.kl, inst.players));
+    }
+    if (inst.bossDead && inst.forces >= DUNGEON.forcesNeeded) this.completeTrial(inst);
+  }
+
+  completeTrial(inst) {
+    inst.done = true;
+    const elapsed = (NOW() - inst.start) / 1000 + inst.deaths * DUNGEON.deathPenalty;
+    const change = keyChange(elapsed, DUNGEON.timeLimit);
+    const oldKl = inst.kl, newKl = clamp(oldKl + change, DUNGEON.startKey, DUNGEON.maxKey);
+    if (inst.key) inst.key.kl = newKl;
+    const owner = this.ents.get(inst.owner);
+    if (owner) owner.invDirty = true;
+    inst.result = { elapsed: Math.round(elapsed), change, oldKl, newKl, inTime: change > 0 };
+    inst.closeAt = NOW() + 120000;
+    for (const q of this.instMembers(inst)) {
+      if (change > 0) q.ch.trialBest = Math.max(q.ch.trialBest || 0, oldKl);
+      this.trialRewards(q, oldKl, change > 0);
+    }
+    const mm = Math.floor(elapsed / 60), ss = String(Math.round(elapsed % 60)).padStart(2, '0');
+    this.instBroadcast(inst, { t: 'notice', m: change > 0 ? `Prova completata in ${mm}:${ss}! Sigillo +${oldKl} → +${newKl}` : `Prova completata fuori tempo (${mm}:${ss}). Sigillo +${oldKl} → +${newKl}` });
+    if (change >= 2) this.broadcast({ t: 'sys', m: `${this.instMembers(inst).map(q => q.name).join(', ')} hanno completato la ${DUNGEON.trial} +${oldKl} in ${mm}:${ss}!` });
+    this.sendTrialState(inst);
+  }
+
+  trialRewards(q, kl, inTime) {
+    const got = [];
+    const give = (id, n = 1, inst = null) => {
+      const left = this.addItem(q, id, n, 0, inst);
+      if (left) { if (inst) this.dropInstance(inst, q.x, q.z, q.id); else this.spawnDrop(id, left, q.x, q.z, q.id); }
+    };
+    const rolls = Math.min(6, 1 + Math.floor(kl / 2) + (inTime ? 1 : 0));
+    const pool = GEAR_BY_TIER[4];
+    for (let i = 0; i < rolls; i++) {
+      let r = rollRarity('boss');
+      if (kl >= 6) r = Math.max(r, 2);
+      if (kl >= 10) r = Math.max(r, 3);
+      const it = makeEquip(pool[randi(0, pool.length - 1)], r);
+      give(it.id, 1, it);
+      got.push(`${ITEMS[it.id].name} (${RARITIES[r].name})`);
+    }
+    const ess = Math.ceil(kl / 2);
+    give('essenza_celeste', ess); got.push(`Essenza Celeste x${ess}`);
+    const gems = Object.keys(GEM_TYPES);
+    const gem = `gemma_${gems[randi(0, gems.length - 1)]}_${kl >= 8 ? 2 : 1}`;
+    give(gem); got.push(ITEMS[gem].name);
+    const stones = 1 + Math.floor(kl / 4);
+    give('pietra_affinamento', stones); got.push(`Pietra dell'Affinamento x${stones}`);
+    const tael = 1500 * kl * (inTime ? 1 : 0.5);
+    q.ch.tael += tael; got.push(`${tael.toLocaleString('it-IT')} tael`);
+    this.gainExp(q, Math.round(expToNext(q.lvl) * 0.05 * (1 + kl * 0.1) * (inTime ? 1 : 0.5)));
+    q.selfDirty = true;
+    this.send(q, { t: 'dg_reward', got });
+  }
+
+  sendTrialState(inst) {
+    const boss = this.ents.get(inst.bossId);
+    const elapsed = NOW() - inst.start;
+    this.instBroadcast(inst, {
+      t: 'dg', kl: inst.kl, affixes: inst.affixes, elapsed, limit: DUNGEON.timeLimit * 1000, penalty: inst.deaths * DUNGEON.deathPenalty * 1000,
+      forces: Math.round(inst.forces * 10) / 10, need: DUNGEON.forcesNeeded, deaths: inst.deaths,
+      boss: inst.bossDead ? 0 : boss ? Math.round(boss.hp / boss.maxHp * 1000) / 10 : 100, bossDead: inst.bossDead ? 1 : 0,
+      done: inst.done ? 1 : 0, result: inst.result, closeIn: inst.closeAt ? Math.max(0, inst.closeAt - NOW()) : 0,
+    });
+  }
+
+  updateTrial(inst, t, regen) {
+    if (inst.timers.length) inst.timers = inst.timers.filter(tm => { if (t >= tm.at) { tm.fn(); return false; } return true; });
+    if (regen && inst.hazards.length) {
+      inst.hazards = inst.hazards.filter(h => h.until > t);
+      const env = { kind: 'env', id: 0, name: 'Braci ardenti' };
+      for (const h of inst.hazards) for (const q of this.instMembers(inst)) {
+        if (q.dead || Math.hypot(q.x - h.x, q.z - h.z) > h.r) continue;
+        this.fx(q, { k: 'hit', s: 0, d: q.id, v: h.dmg, dot: 1, sk: 'brace' });
+        this.applyDamage(q, h.dmg, env);
+      }
+    }
+    if (!inst.done && !inst.overtime && (t - inst.start) / 1000 + inst.deaths * DUNGEON.deathPenalty > DUNGEON.timeLimit) {
+      inst.overtime = true;
+      this.instBroadcast(inst, { t: 'notice', m: 'Tempo scaduto! Potete completare la prova, ma il sigillo scenderà.' });
+    }
+    if (t - inst.lastSend >= 1000) { inst.lastSend = t; this.sendTrialState(inst); }
+    if (inst.closeAt && t >= inst.closeAt) this.closeTrial(inst);
+  }
+
+  leaveTrial(p, silent) {
+    if (!p.inst) return;
+    const inst = this.instances.get(p.inst);
+    p.inst = null;
+    if (inst) {
+      inst.members.delete(p.id);
+      if (!inst.done && p.id === inst.owner && inst.key) {
+        inst.key.kl = Math.max(DUNGEON.startKey, inst.kl - 1);
+        p.invDirty = true;
+        inst.key = null;
+        if (!silent) this.sys(p, `Hai abbandonato la prova: il sigillo scende a +${Math.max(DUNGEON.startKey, inst.kl - 1)}.`);
+      }
+      if (!inst.members.size) this.closeTrial(inst);
+    }
+    if (!silent) {
+      const sp = villageSpawn(p.kingdom);
+      if (p.dead) { p.dead = false; p.hp = p.maxHp; this.touch(p); p.selfDirty = true; }
+      p.known.clear(); p.knownVis.clear();
+      this.teleport(p, sp.x, sp.z);
+      this.send(p, { t: 'dg_end' });
+    }
+  }
+
+  closeTrial(inst) {
+    for (const q of this.instMembers(inst)) this.leaveTrial(q);
+    for (const id of inst.mobs) { const m = this.ents.get(id); if (m) this.remove(m); }
+    for (const e of [...this.ents.values()]) {
+      if (e.kind === 'mob' && e.inst === inst.id) this.remove(e);
+      if (e.kind === 'drop' && e.x > inst.ox - 30 && e.x < inst.ox + 100) this.remove(e);
+    }
+    this.instSlots[inst.slot] = null;
+    this.instances.delete(inst.id);
+  }
+
   // ------------------------------------------------------------ gruppi
   playerByName(n) {
     const name = String(n || '').toLowerCase();
@@ -1447,7 +1729,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /via nome, /destriero livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -1493,6 +1775,13 @@ export class World {
       }
       case 'heal': p.hp = p.maxHp; if (p.rtype !== 'ira') p.res = p.rmax; p.selfDirty = true; this.touch(p); return;
       case 'risorsa': p.res = p.rmax; p.selfDirty = true; return;
+      case 'sigillo': {
+        const L = clamp(parseInt(a[0], 10) || DUNGEON.startKey, DUNGEON.startKey, DUNGEON.maxKey);
+        const key = p.ch.inv.find(x => x && x.id === 'sigillo_prova');
+        if (key) key.kl = L; else this.addItem(p, 'sigillo_prova', 1, 0, { id: 'sigillo_prova', n: 1, kl: L });
+        p.invDirty = true;
+        return sys(`Sigillo della Prova impostato a +${L}.`);
+      }
       case 'destriero': {
         const L = clamp(parseInt(a[0], 10) || 1, 1, HORSE.maxLevel);
         p.ch.horse = { lvl: L, exp: 0 }; this.recalc(p); p.vis++; this.touch(p); p.selfDirty = true;
@@ -1619,6 +1908,7 @@ export class World {
   onDropItem(p, i) {
     const s = p.ch.inv[i];
     if (!s || p.dead) return;
+    if (ITEMS[s.id].type === 'key') return this.err(p, 'Il Sigillo della Prova non si può gettare');
     p.ch.inv[i] = null;
     p.invDirty = true;
     this.add({ kind: 'drop', item: { ...s }, x: p.x + rand(-1, 1), z: p.z + rand(-1, 1), owner: 0, ownerUntil: 0, expire: NOW() + 60000 });
@@ -1727,6 +2017,7 @@ export class World {
     if (n.role === 'armi' || n.role === 'erbe') return this.send(p, { t: 'shop', npc: n.id, role: n.role, items: SHOPS[n.role] });
     if (n.role === 'fabbro') return this.send(p, { t: 'smith', npc: n.id });
     if (n.role === 'stalliere') return this.send(p, { t: 'stable', npc: n.id });
+    if (n.role === 'custode') return this.sendTrialInfo(p, n.id);
     let m;
     if (n.role === 'maestro') {
       const c = CLASSES[p.cls];
@@ -1757,6 +2048,7 @@ export class World {
     const npc = this.nearNpc(p, npcId, ['armi', 'erbe']);
     const s = p.ch.inv[i];
     if (!npc || !s) return;
+    if (ITEMS[s.id].type === 'key') return this.err(p, 'Il Sigillo della Prova non si può vendere');
     const it = ITEMS[s.id];
     const val = Math.floor(it.price / 5 * (1 + (s.up || 0) * 0.5) * (1 + (s.r || 0) * 0.6)) * s.n;
     p.ch.inv[i] = null;
