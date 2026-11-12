@@ -1,7 +1,7 @@
 // Logica di gioco lato client: entità, input, visuale, movimento, combattimento, messaggi dal server.
 import * as THREE from 'three';
 import { heightAt, buildColliders, resolveCollisions, KINGDOMS, PLAY_LIMIT, safeZoneAt } from '/shared/world.js';
-import { SKILLS, ITEMS, MOBS, CLASSES, NPC_ROLES, skillMp } from '/shared/data.js';
+import { SKILLS, ITEMS, MOBS, CLASSES, NPC_ROLES, VIE, BUFFS, RESOURCES, QB_SIZE } from '/shared/data.js';
 import { buildModel } from './models.js';
 import { Fx } from './fx.js';
 import { UI } from './ui.js';
@@ -77,6 +77,20 @@ class CEnt {
   destroy() { this.g.removeRig(this.rig); this.label.remove(); }
 }
 
+// Registra i danni inflitti, divisi per abilità (si azzera dopo 6 s senza danni).
+class DpsMeter {
+  constructor() { this.reset(); }
+  reset() { this.seg = null; }
+  add(sk, v, crit) {
+    const now = performance.now();
+    if (!this.seg || now - this.seg.last > 6000) this.seg = { start: now, last: now, total: 0, by: {} };
+    const s = this.seg;
+    s.last = now; s.total += v;
+    const a = s.by[sk] || (s.by[sk] = { v: 0, n: 0, c: 0 });
+    a.v += v; a.n++; if (crit) a.c++;
+  }
+}
+
 export class Game {
   constructor(renderer, scene, camera, world, net) {
     this.renderer = renderer; this.scene = scene; this.camera = camera; this.world = world; this.net = net;
@@ -92,6 +106,8 @@ export class Game {
     this.yaw = 0; this.pitch = 0.5; this.dist = 15; this.camTarget = new THREE.Vector3();
     this.intent = null; this.target = null; this.nextAttack = 0; this.lastMoveSent = 0; this.lastSent = { x: 0, z: 0 };
     this.stunUntil = 0; this.slowUntil = 0;
+    this.gcdUntil = 0; this.gcdTotal = 1000; this.casting = null; this.queued = null; this.queuedAt = 0;
+    this.dots = {}; this.meter = new DpsMeter();
     this.raycaster = new THREE.Raycaster();
     this.active = false;
     this.ui.initMinimap(world.terrain);
@@ -149,6 +165,27 @@ export class Game {
       ui.onMe();
       if (first) this.ui.renderQuickbar();
     });
+    n.on('r', (m) => {
+      if (!this.me) return;
+      this.me.hp = m.hp; this.me.res = m.res; this.me.pts = m.pts;
+      if (this.self) this.self.hp = m.hp;
+      ui.onRes();
+    });
+    n.on('cast', (m) => {
+      const now = performance.now();
+      this.casting = { sid: m.s, until: now + m.ms, total: m.ms };
+      if (m.gcd) { this.gcdUntil = now + m.gcd; this.gcdTotal = m.gcd; }
+      if (this.self) this.self.rig.anim.channel = m.ms / 1000;
+    });
+    n.on('castend', () => { this.casting = null; if (this.self) this.self.rig.anim.channel = 0; });
+    n.on('skfail', (m) => {
+      this.localLock[m.s] = 0;
+      if (this.optimistic && this.optimistic.sid === m.s) { this.gcdUntil = this.optimistic.prev; this.optimistic = null; }
+    });
+    n.on('dot', (m) => {
+      (this.dots[m.d] || (this.dots[m.d] = {}))[m.s] = performance.now() + m.ms;
+      if (this.target && this.target.id === m.d) this.ui.renderTargetDots(performance.now());
+    });
     n.on('inv', (m) => {
       this.inv = m.inv; this.eq = m.eq;
       if (this.self) {
@@ -161,7 +198,12 @@ export class Game {
       ui.onInv();
     });
     n.on('fx', (m) => this.onFx(m));
-    n.on('cd', (m) => { const now = performance.now(); this.cds[m.s] = { until: now + m.ms, total: m.ms }; });
+    n.on('cd', (m) => {
+      const now = performance.now();
+      if (m.ms) this.cds[m.s] = { until: now + m.ms, total: m.ms };
+      if (m.gcd) { this.gcdUntil = now + m.gcd; this.gcdTotal = m.gcd; }
+      this.optimistic = null;
+    });
     n.on('pos', (m) => {
       if (!this.self) return;
       const from = { x: this.self.x, y: this.self.y, z: this.self.z };
@@ -201,6 +243,7 @@ export class Game {
     const near = (e) => e && this.self && Math.hypot(e.x - this.self.x, e.z - this.self.z) < 70;
     switch (m.k) {
       case 'hit': {
+        if (m.s === this.myId && m.v > 0) this.meter.add(m.sk || 'auto', m.v, m.c);
         if (m.a && s) {
           if (d) s.face(d);
           if (!s.self || m.a !== 1) s.rig.anim.attack();
@@ -211,7 +254,7 @@ export class Game {
         if (m.v > 0) d.rig.anim.hit();
         const pos = new THREE.Vector3(d.x, d.y + (d.rig.height || 2) + 0.3, d.z);
         if (m.miss) { if (d.self || (s && s.self)) this.fx.number(pos, 'Schivato', 'miss'); return; }
-        if (d.self) { this.fx.number(pos, `-${m.v}`, m.dot ? 'dot' : 'hurt'); }
+        if (d.self) { this.fx.number(pos, m.ab ? `-${m.v} (${m.ab} assorbiti)` : `-${m.v}`, m.dot ? 'dot' : 'hurt'); }
         else if (s && s.self) { this.fx.number(pos, m.c ? `${m.v}!` : `${m.v}`, m.dot ? 'dot' : m.c ? 'crit' : 'mine'); if (!m.dot) this.sound(m.c ? 'crit' : 'hit'); }
         else if (m.dot && near(d)) this.fx.number(pos, `${m.v}`, 'dot');
         if (d.info.k === 'm' || d.info.k === 'p') { d.hp = Math.max(0, d.hp - m.v); d.labelKey = ''; }
@@ -236,6 +279,9 @@ export class Game {
           case 'arrow': this.fx.arrow(s, tgt, sk.color); this.fx.ring(tgt, sk.color, 1.6, 0.3); break;
           case 'rain': this.fx.rain(at, sk.color, sk.radius || 5); break;
           case 'wind': this.fx.wind(s, sk.color, sk.radius || 6); this.fx.ring(s, sk.color, sk.radius || 6, 0.6); break;
+          case 'taunt': this.fx.ring(tgt, sk.color, 3, 0.5, (tgt.rig?.height || 2) + 0.3); this.fx.aura(s, sk.color); break;
+          case 'mark': this.fx.ring(tgt, sk.color, 2.2, 0.6, 0.2); this.fx.sparkles(tgt, sk.color, 10, 0.9); break;
+          case 'shield': this.fx.aura(tgt, sk.color); this.fx.sparkles(tgt, sk.color, 12, 1.0); break;
           case 'slash': default: this.fx.slash(s, sk.color); break;
         }
         if (s.self) this.sound('skill');
@@ -253,6 +299,13 @@ export class Game {
       case 'slam': this.fx.quake({ x: m.x, y: groundY(m.x, m.z), z: m.z }, 0xff4020, m.r); if (s) s.rig.anim.attack(); return;
       case 'wave': if (s) { this.fx.ring(s, 0xc060ff, 10, 0.9); this.fx.disc(s, 0x8a3ac0, 8, 0.8); this.fx.sparkles(s, 0xd080ff, 20, 1.2); } return;
       case 'tp': if (s) this.fx.column(s, 0x8ad0ff); return;
+      case 'cast': if (s && !s.self) s.rig.anim.channel = m.ms / 1000; return;
+      case 'castend': if (s && !s.self) s.rig.anim.channel = 0; return;
+      case 'proc': {
+        const b = BUFFS[m.b];
+        if (s && s.self && b) { this.sound('proc'); this.fx.ring(s, 0xffd060, 1.8, 0.4, 1.2); this.ui.chat('gain', `Effetto attivo: <b>${esc(b.name)}</b>`); }
+        return;
+      }
     }
   }
 
@@ -274,11 +327,12 @@ export class Game {
       if (e.key === 'Enter') { chatInput.focus(); e.preventDefault(); return; }
       if (e.code === 'Tab') { e.preventDefault(); this.cycleTarget(); return; }
       if (e.code === 'Space') { e.preventDefault(); this.attackKey(); return; }
-      if (e.code.startsWith('Digit')) { const n = +e.code.slice(5); if (n >= 1 && n <= 8) this.useQuickbar(n - 1); return; }
+      if (e.code.startsWith('Digit')) { const n = +e.code.slice(5); const i = n === 0 ? 9 : n - 1; if (i < QB_SIZE) this.useQuickbar(i); return; }
       switch (e.code) {
         case 'KeyI': this.ui.toggle('win-inventory'); return;
         case 'KeyC': this.ui.toggle('win-character'); return;
         case 'KeyK': this.ui.toggle('win-skills'); return;
+        case 'KeyP': this.ui.toggle('win-dps'); return;
         case 'KeyH': case 'F1': e.preventDefault(); this.ui.toggle('win-help'); return;
         case 'KeyZ': this.pickupNear(); return;
         case 'Escape': if (!this.ui.closeAll()) { this.setTarget(null); this.intent = null; } return;
@@ -425,42 +479,109 @@ export class Game {
     }
   }
 
+  // ------------------------------------------------------------ abilità
+  lvlOf(sid) {
+    const sk = SKILLS[sid], me = this.me;
+    if (!sk || !me || sk.cls !== this.cls || me.lvl < sk.lvl) return 0;
+    if (sk.via && sk.via !== me.via) return 0;
+    return Math.max(1, me.sk[sid] || 0);
+  }
+
+  chainList() {
+    const me = this.me;
+    if (!me) return null;
+    const v = me.via && VIE[me.via].passive.chain;
+    return v || CLASSES[this.cls].chain || null;
+  }
+
+  hasBuffWith(key, sid) { return (this.me.buffs || []).some(b => { const d = BUFFS[b.b]; return d && d[key] && d[key].includes(sid); }); }
+
+  costOf(sk) {
+    const me = this.me;
+    if (!sk.cost || this.hasBuffWith('free', sk.id)) return 0;
+    let c = sk.cost;
+    for (const b of me.buffs || []) { const cm = BUFFS[b.b] && BUFFS[b.b].costMod; if (cm && cm[sk.id]) c += cm[sk.id]; }
+    c = Math.max(0, c);
+    return me.rt === 'mana' ? Math.round(me.rmax * c / 100) : c;
+  }
+
+  // Stato del tasto nella barra rapida: '' pronto, 'proc' potenziato, 'nores' risorsa insufficiente, 'unusable'.
+  skillState(sid) {
+    const sk = SKILLS[sid], me = this.me;
+    if (!this.lvlOf(sid)) return 'unusable';
+    if (sk.req && (!this.eq || !this.eq.weapon || ITEMS[this.eq.weapon.id].wt !== sk.req)) return 'unusable';
+    const proc = this.hasBuffWith('free', sid) || this.hasBuffWith('instant', sid) || (me.buffs || []).some(b => {
+      const d = BUFFS[b.b];
+      return d && ((d.skillDmg && d.skillDmg[sid]) || (sk.spend && d.spenderDmg) || (d.behind && d.consume && d.consume.includes(sid)));
+    });
+    if (this.costOf(sk) > me.res) return 'nores';
+    if (sk.spend && sk.type !== 'heal_aoe' && me.pts < (sk.minPts || 1)) return 'unusable';
+    if (sk.execute) { const t = this.target; return t && t.mhp && t.hp / t.mhp <= sk.execute ? 'proc' : 'unusable'; }
+    if (sk.spend && sk.type !== 'heal_aoe' && me.pts >= 5) return 'proc';
+    return proc ? 'proc' : '';
+  }
+
   useSkill(sid) {
     const sk = SKILLS[sid], me = this.me;
     if (!sk || !me || me.dead) return;
-    const lvl = me.sk[sid] || 0;
-    if (lvl <= 0) return this.ui.notice('Non hai ancora appreso questa abilità', true);
+    if (!this.lvlOf(sid)) return this.ui.notice(sk.via && me.via !== sk.via ? "Appartiene a un'altra Via" : `Si sblocca al livello ${sk.lvl}`, true);
     const now = performance.now();
-    if (this.cds[sid] && this.cds[sid].until > now + 100) return this.ui.notice('Abilità in ricarica', true);
-    if ((this.localLock[sid] || 0) > now) return;
-    if (me.mp < skillMp(sk, lvl)) return this.ui.notice('Chi insufficiente', true);
-    if (sk.req) {
-      const w = this.eq?.weapon;
-      if (!w || ITEMS[w.id].wt !== sk.req) return this.ui.notice(sk.req === 'bow' ? 'Serve un arco equipaggiato' : 'Servono dei pugnali equipaggiati', true);
+    const busyUntil = Math.max(sk.offgcd ? 0 : this.gcdUntil, sk.offgcd ? 0 : (this.casting ? this.casting.until : 0), this.cds[sid] ? this.cds[sid].until : 0);
+    if (busyUntil > now + 30) {
+      if (busyUntil - now < 450) { this.queued = sid; this.queuedAt = now; }
+      else if (this.cds[sid] && this.cds[sid].until > now + 450) this.ui.notice('Abilità in ricarica', true);
+      return;
     }
-    if (sk.type === 'strike' || sk.type === 'aoe_target') {
-      let t = this.target && this.isHostile(this.target) ? this.target : this.nearestHostile();
+    if ((this.localLock[sid] || 0) > now) return;
+    const st = this.skillState(sid);
+    if (st === 'nores') return this.ui.notice(`${RESOURCES[me.rt].name} insufficiente`, true);
+    if (st === 'unusable') {
+      if (sk.req) return this.ui.notice(sk.req === 'bow' ? 'Serve un arco equipaggiato' : 'Servono dei pugnali equipaggiati', true);
+      if (sk.execute) return this.ui.notice(`Il bersaglio deve essere sotto il ${Math.round(sk.execute * 100)}% di vita`, true);
+      return this.ui.notice(`Servono almeno ${sk.minPts || 1} ${(CLASSES[this.cls].pts || {}).name || 'punti'}`, true);
+    }
+    if (['strike', 'aoe_target', 'debuff', 'taunt'].includes(sk.type)) {
+      const t = this.target && this.isHostile(this.target) ? this.target : this.nearestHostile();
       if (!t) return this.ui.notice('Nessun bersaglio', true);
       this.setTarget(t);
-      this.intent = { type: 'skill', sid, id: t.id };
+      const d = Math.hypot(t.x - this.self.x, t.z - this.self.z) - (t.radius || 0.5);
+      if (d > this.skillRange(sk) - 0.25) { this.intent = { type: 'skill', sid, id: t.id }; return; }
+      this.self.face(t);
+      this.castSkill(sid, t.id);
+      if (!this.intent || this.intent.id !== t.id) this.intent = { type: 'attack', id: t.id };
       return;
     }
     let id = null;
-    if ((sk.type === 'heal_target' || sk.type === 'hot_target') && this.target && this.target.info.k === 'p' && this.target.info.kd === this.kd) id = this.target.id;
+    if (['heal_target', 'hot_target', 'shield', 'heal_aoe'].includes(sk.type) && this.target && this.target.info.k === 'p' && this.target.info.kd === this.kd) id = this.target.id;
     this.castSkill(sid, id);
   }
 
   castSkill(sid, id) {
-    this.localLock[sid] = performance.now() + 400;
+    const sk = SKILLS[sid], now = performance.now();
+    this.localLock[sid] = now + 300;
+    if (!sk.offgcd) {
+      this.optimistic = { sid, prev: this.gcdUntil };
+      this.gcdUntil = now + (this.me.gcd || 1000); this.gcdTotal = this.me.gcd || 1000;
+    }
+    if (this.queued === sid) this.queued = null;
     this.net.send({ t: 'skill', s: sid, id });
   }
 
   skillRange(sk) { return sk.range === 'weapon' ? this.me.range : (sk.range || 2.5); }
 
+  processQueue(now) {
+    if (!this.queued) return;
+    if (now - this.queuedAt > 700) { this.queued = null; return; }
+    const sk = SKILLS[this.queued];
+    const busy = Math.max(sk.offgcd ? 0 : this.gcdUntil, sk.offgcd ? 0 : (this.casting ? this.casting.until : 0), this.cds[this.queued] ? this.cds[this.queued].until : 0);
+    if (busy <= now + 20) { const q = this.queued; this.queued = null; this.useSkill(q); }
+  }
+
   // ------------------------------------------------------------ aggiornamento
   update(dt) {
     if (!this.active || !this.self) return;
     const now = performance.now();
+    this.processQueue(now);
     this.updateSelf(dt, now);
     for (const e of this.ents.values()) e.update(dt);
     this.updateCamera(dt);
@@ -497,6 +618,7 @@ export class Game {
       }
     }
     const spd = me.spd * (this.slowUntil > now ? 0.5 : 1);
+    if ((mx || mz) && this.casting) { this.net.send({ t: 'cancel' }); this.casting = null; s.rig.anim.channel = 0; }
     if (mx || mz) {
       let nx = s.x + mx * spd * dt, nz = s.z + mz * spd * dt;
       [nx, nz] = resolveCollisions(nx, nz, 0.5, this.colliders);
@@ -532,13 +654,14 @@ export class Game {
     }
     const e = this.ents.get(it.id);
     if (!e) { this.intent = null; return null; }
+    if (this.casting) return null;
     const d = Math.hypot(e.x - s.x, e.z - s.z) - (e.radius || 0.5);
     if (it.type === 'attack') {
       if (!this.isHostile(e)) { this.intent = null; return null; }
       const range = this.me.range;
       if (d > range - 0.25) return toward(e.x, e.z, 0);
       s.face(e);
-      if (now >= this.nextAttack) {
+      if (now >= this.nextAttack && !(this.casting && CLASSES[this.cls].autoMagic)) {
         this.net.send({ t: 'atk', id: e.id });
         this.nextAttack = now + this.me.aspd;
         s.rig.anim.attack();
@@ -550,8 +673,8 @@ export class Game {
       const sk = SKILLS[it.sid];
       if (d > this.skillRange(sk) - 0.25) return toward(e.x, e.z, 0);
       s.face(e);
-      this.castSkill(it.sid, e.id);
       this.intent = { type: 'attack', id: e.id };
+      this.useSkill(it.sid);
       return null;
     }
     if (it.type === 'npc') {
@@ -649,6 +772,7 @@ export class Game {
       else if (kind === 'lvl') { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.25, 'triangle', 0.06), i * 110)); }
       else if (kind === 'ok') { tone(784, 0.12, 'triangle', 0.06); setTimeout(() => tone(1175, 0.2, 'triangle', 0.06), 100); }
       else if (kind === 'die') tone(220, 0.8, 'sawtooth', 0.05, 55);
+      else if (kind === 'proc') { tone(880, 0.1, 'triangle', 0.05, 1320); setTimeout(() => tone(1320, 0.14, 'triangle', 0.04, 1760), 70); }
     } catch { /* audio non disponibile */ }
   }
 }

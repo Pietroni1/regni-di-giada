@@ -48,7 +48,7 @@ I dati (account e personaggi) stanno in `data/db.json`. Le password sono salvate
 
 ## Comandi
 
-**Controlli:** WASD per muoversi, clic sinistro per muoversi, attaccare, parlare o raccogliere. Tasto destro trascinato o Q/E per ruotare la visuale, rotella per lo zoom. Spazio attacca, Tab cambia bersaglio, 1-8 usa la barra rapida, Z raccoglie, I/C/K/H aprono le finestre, Invio apre la chat.
+**Controlli:** WASD per muoversi, clic sinistro per muoversi, attaccare, parlare o raccogliere. Tasto destro trascinato o Q/E per ruotare la visuale, rotella per lo zoom. Spazio attacca, Tab cambia bersaglio, 1-9 e 0 usano la barra rapida, Z raccoglie, I/C/K/P/H aprono inventario, personaggio, abilità, misuratore dei danni e guida, Invio apre la chat.
 
 **Chat:** `!testo` grida a tutto il regno, `@nome testo` sussurra, `/online` mostra chi è in linea, `/pos` mostra la posizione.
 
@@ -60,16 +60,32 @@ I dati (account e personaggi) stanno in `data/db.json`. Le password sono salvate
 | `/level n` · `/exp n` · `/tael n` | Imposta livello, aggiunge esperienza o tael |
 | `/tp x z` · `/tp nome` · `/tp fenice\|tigre\|drago` | Teletrasporto |
 | `/spawn mostro [n]` | Evoca mostri (`/mobs` per la lista) |
-| `/heal` | Cura completa |
+| `/heal` · `/risorsa` | Cura completa · risorsa al massimo |
+| `/via nome` | Cambia la Via del personaggio (per provare le specializzazioni) |
 | `/rate exp\|drop\|tael valore` | Cambia i moltiplicatori al volo (vengono salvati) |
 | `/annuncio testo` | Messaggio a tutto il server |
 | `/save` | Salvataggio immediato |
 
+## Combattimento a rotazione
+
+Le abilità condividono un **tempo di ricarica globale** (GCD) di 1 secondo, ridotto dalla Rapidità; alcune sono "fuori dal GCD". Gli incantesimi con **tempo di lancio** si interrompono se ti muovi. Puoi premere il tasto successivo poco prima che finisca il GCD: l'abilità parte appena possibile (coda).
+
+| Classe | Risorsa | Punti | Meccanica |
+|---|---|---|---|
+| Lama | Ira (sale colpendo e subendo colpi, cala fuori dal combattimento) | — | Fulmine: Squarcio critico → Scintilla (Lama del Tuono gratuita +30%); Ferita Aperta da tenere attiva; Colpo di Grazia sotto il 25%. Montagna: difensore con minaccia ×4 e Sfida |
+| Ombra | Energia | Punti combo (5) | Generatori e tecniche finali; Pugnalata più forte alle spalle; veleno; Tiro Mirato reso istantaneo dal Colpo Rapido |
+| Monaco | Chi | Sfere (5) | Sequenza Pugno → Calcio → Palmo (Loto: Palmo → Fiore → Palmo) = Forma Perfetta: +2 Sfere e prossima tecnica finale +40% |
+| Mistico | Mana | Cariche celesti (5) | Tempesta: Marchio del Tuono può rendere istantaneo il Fulmine Celeste; Giudizio consuma le Cariche. Benedizione: guaritore con scudi e cure ad area |
+
+I **DoT** rinnovati prima della scadenza conservano fino al 30% del tempo rimasto. Le abilità si sbloccano con il livello (Via dal 5, poi ai livelli 7, 9, 12 e 15) e si potenziano con i punti abilità e i Tomi della Tecnica.
+
+Nei villaggi ci sono due **fantocci d'addestramento**: con il **misuratore dei danni** (tasto P) vedi DPS e contributo di ogni abilità, per ottimizzare la rotazione.
+
 ## Sistemi presenti
 
 - **Regni:** Fenice Vermiglia (sud), Tigre Bianca (ovest) e Drago di Giada (est). Ognuno ha un villaggio fortificato che è zona sicura.
-- **Classi:** Lama, Ombra, Monaco e Mistico. Al livello 5 si sceglie una delle due **Vie** della classe, in modo definitivo.
-- **Abilità:** livelli 1-10 con i punti abilità, 11-20 con i Tomi della Tecnica (50% di successo).
+- **Classi:** Lama, Ombra, Monaco e Mistico. Al livello 5 si sceglie una delle due **Vie** della classe, in modo definitivo: danni, difensore o guaritore.
+- **Abilità:** 7-8 per Via, livelli 1-10 con i punti abilità, 11-20 con i Tomi della Tecnica (50% di successo).
 - **Statistiche:** Vitalità, Forza, Destrezza e Intelletto, con 3 punti per livello.
 - **Mostri:** dai lupi del livello 2 ai guerrieri di terracotta, fino al **Generale Senza Volto** (boss, livello 25).
 - **Obelischi corrotti:** quando vengono colpiti richiamano ondate di mostri all'80, 60, 40 e 20% della vita e rilasciano tomi e materiali.

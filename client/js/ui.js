@@ -1,7 +1,7 @@
 // Interfaccia di gioco (DOM): finestre, inventario, abilità, barra rapida, negozi, chat, minimappa.
 import {
   ITEMS, SKILLS, CLASSES, VIE, STAT_NAMES, STAT_DESC, EQUIP_SLOTS, EQUIP_NAMES, INV_SIZE, QB_SIZE, WEAPON_TYPES, UPGRADE,
-  VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BUFF_NAMES, skillVal, skillMp, upgradedStat, equipSlotOf,
+  VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BUFFS, RESOURCES, PTS_MAX, STATS_NAMES, skillVal, upgradedStat, equipSlotOf,
 } from '/shared/data.js';
 import { KINGDOMS, KINGDOM_IDS, WALL_RADIUS, CENTER, zoneAt } from '/shared/world.js';
 
@@ -35,6 +35,7 @@ export class UI {
     this.setupTooltips();
     $('btn-respawn-here').onclick = () => this.g.net.send({ t: 'respawn', mode: 'here' });
     $('btn-respawn-town').onclick = () => this.g.net.send({ t: 'respawn', mode: 'town' });
+    $('dps-reset').onclick = () => { this.g.meter.reset(); this.renderDps(); };
   }
 
   // ------------------------------------------------------------ finestre
@@ -78,6 +79,7 @@ export class UI {
     if (id === 'win-character') this.renderCharacter();
     if (id === 'win-skills') this.renderSkills();
     if (id === 'win-smith') this.renderSmith();
+    if (id === 'win-dps') this.renderDps();
   }
 
   buildStaticSlots() {
@@ -86,7 +88,7 @@ export class UI {
     const invEl = $('inv-slots');
     invEl.innerHTML = Array.from({ length: INV_SIZE }, (_, i) => `<div class="slot" data-drop="inv" data-i="${i}"></div>`).join('');
     const qb = $('quickbar');
-    qb.innerHTML = Array.from({ length: QB_SIZE }, (_, i) => `<div class="slot qb" data-drop="qb" data-i="${i}"><span class="key">${i + 1}</span><div class="qc"></div><div class="cool"></div></div>`).join('');
+    qb.innerHTML = Array.from({ length: QB_SIZE }, (_, i) => `<div class="slot qb" data-drop="qb" data-i="${i}"><span class="key">${(i + 1) % 10}</span><div class="qc"></div><div class="cool"></div></div>`).join('');
     // clic destro sull'inventario: usa / vendi / metti nel fabbro
     invEl.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -203,7 +205,7 @@ export class UI {
     const tip = $('tooltip');
     document.addEventListener('mousemove', (e) => {
       if (this.drag?.active) return;
-      const el = e.target.closest?.('[data-drop], [data-skill], [data-shop-item], .buff');
+      const el = e.target.closest?.('[data-drop], [data-skill], [data-skill-info], [data-shop-item], .buff');
       if (!el) { this.hideTip(); return; }
       const html = this.tipFor(el);
       if (!html) { this.hideTip(); return; }
@@ -220,6 +222,7 @@ export class UI {
 
   tipFor(el) {
     if (el.dataset.skill) return this.skillTip(el.dataset.skill);
+    if (el.dataset.skillInfo) return this.skillTip(el.dataset.skillInfo);
     if (el.dataset.shopItem) return this.itemTip({ id: el.dataset.shopItem, n: 1, up: 0 }, true);
     if (el.classList.contains('buff')) return el.dataset.tip;
     const k = el.dataset.drop;
@@ -260,25 +263,40 @@ export class UI {
   skillTip(sid) {
     const sk = SKILLS[sid];
     const me = this.g.me || {};
-    const lvl = me.sk?.[sid] || 0;
+    const lvl = this.g.lvlOf(sid);
     const show = Math.max(1, lvl);
+    const cls = CLASSES[sk.cls];
+    const resName = RESOURCES[cls.res].name;
+    const ptsName = cls.pts ? cls.pts.name : 'punti';
     const L = [`<div class="tn">${esc(sk.name)}</div>`];
     L.push(`<div class="tt">${sk.via ? VIE[sk.via].name : 'Abilità di base'} — Livello ${lvl}/${SKILL_MAX}</div>`);
-    L.push(`<div>Costo: ${skillMp(sk, show)} chi — Ricarica: ${sk.cd}s</div>`);
-    if (sk.mult) L.push(`<div>Danno: <b>${pct(skillVal(sk.mult, show))}</b> ${sk.dmg === 'magic' ? "dell'attacco magico" : sk.dmg === 'hybrid' ? 'di attacco fisico e magico' : "dell'attacco"}${sk.hits ? ` × ${sk.hits} colpi` : ''}</div>`);
+    if (!lvl) L.push(`<div class="tr">Si sblocca al livello ${sk.lvl}${sk.via && me.via !== sk.via ? ` (${VIE[sk.via].name})` : ''}</div>`);
+    const line = [];
+    if (sk.cost) line.push(`Costo: ${sk.cost}${cls.res === 'mana' ? '% del Mana' : ' ' + resName}`);
+    if (sk.gen) line.push(`<span class="tg">+${sk.gen} ${resName}</span>`);
+    if (line.length) L.push(`<div>${line.join(' · ')}</div>`);
+    L.push(`<div class="tt">${sk.cast ? `Lancio ${String(sk.cast).replace('.', ',')} s` : 'Istantaneo'}${sk.cd ? ` · Ricarica ${String(sk.cd).replace('.', ',')} s` : ''}${sk.offgcd ? ' · fuori dal GCD' : ''}</div>`);
+    if (sk.pts) L.push(`<div class="tg">Genera ${sk.pts} ${ptsName}${sk.behind ? ` (+${sk.behind.pts} alle spalle)` : ''}</div>`);
+    if (sk.spend && sk.type !== 'heal_aoe') L.push(`<div style="color:#ffc860">Consuma tutti i ${ptsName}${sk.minPts ? ` (minimo ${sk.minPts})` : ''}</div>`);
+    if (sk.mult) L.push(`<div>Danno: <b>${pct(skillVal(sk.mult, show))}</b>${sk.spend ? ' per punto' : ''} ${sk.dmg === 'magic' ? "dell'attacco magico" : sk.dmg === 'hybrid' ? 'di attacco fisico e magico' : "dell'attacco"}${sk.hits ? ` × ${sk.hits} colpi` : ''}</div>`);
+    if (sk.dot) L.push(`<div>Nel tempo: ${pct(skillVal(sk.dot.mult, show))} ogni ${String(sk.dot.every).replace('.', ',')} s per ${sk.dot.durPerPt ? sk.dot.durPerPt + ' s per punto' : sk.dot.dur + ' s'}</div>`);
     if (sk.radius) L.push(`<div class="tt">Area: ${sk.radius} m</div>`);
     if (sk.range) L.push(`<div class="tt">Distanza: ${sk.range === 'weapon' ? "quella dell'arma" : sk.range + ' m'}</div>`);
-    if (sk.stun) L.push(`<div>Stordimento: ${skillVal(sk.stun, show).toFixed(1)}s</div>`);
-    if (sk.dot) L.push(`<div>Veleno: ${pct(skillVal(sk.dot.mult, show))} al secondo per ${sk.dot.dur}s</div>`);
-    if (sk.slow) L.push(`<div>Rallenta per ${sk.slow.dur}s</div>`);
-    if (sk.buff) for (const k in sk.buff) L.push(`<div class="tg">${BUFF_NAMES[k]} +${skillVal(sk.buff[k], show).toFixed(1)}${k === 'hpRegen' ? '% al secondo' : '%'}</div>`);
-    if (sk.dur && sk.buff) L.push(`<div class="tt">Durata: ${sk.dur}s</div>`);
+    if (sk.stun) L.push(`<div>Stordimento: ${skillVal(sk.stun, show).toFixed(1)} s</div>`);
+    if (sk.slow) L.push(`<div>Rallenta per ${sk.slow.dur} s</div>`);
+    if (sk.execute) L.push(`<div style="color:#ffc860">Solo sotto il ${Math.round(sk.execute * 100)}% di vita del bersaglio</div>`);
+    if (sk.ignoreDef) L.push(`<div>Ignora il ${sk.ignoreDef}% della difesa</div>`);
+    const bf = BUFFS[sk.buff || sk.debuff];
+    if (bf && bf.stats) for (const k in bf.stats) L.push(`<div class="tg">${STATS_NAMES[k]} ${skillVal(bf.stats[k], show) > 0 ? '+' : ''}${skillVal(bf.stats[k], show).toFixed(1)}%</div>`);
+    if (bf && bf.vuln) L.push(`<div class="tg">Il bersaglio subisce +${skillVal(bf.vuln, show).toFixed(0)}% danni da te</div>`);
+    if (bf && bf.dur && sk.type !== 'strike') L.push(`<div class="tt">Durata: ${bf.dur >= 60 ? bf.dur / 60 + ' min' : bf.dur + ' s'}</div>`);
     if (sk.heal) {
       const v = skillVal(sk.heal, show);
-      if (sk.type === 'heal_target') L.push(`<div class="tg">Cura: ${pct(v)} dell'attacco magico + 40</div>`);
-      else if (sk.type.startsWith('hot')) L.push(`<div class="tg">Cura: ${(v * 100).toFixed(1)}% della vita al secondo per ${sk.dur}s</div>`);
+      if (sk.type === 'heal_target' || (sk.type === 'heal_aoe' && !sk.healPct)) L.push(`<div class="tg">Cura: ${pct(v)} dell'attacco magico + 40</div>`);
+      else if (sk.type.startsWith('hot')) L.push(`<div class="tg">Cura: ${(v * 100).toFixed(1)}% della vita al secondo per ${sk.dur} s</div>`);
       else L.push(`<div class="tg">Cura: ${pct(v)} della vita massima</div>`);
     }
+    if (sk.shield) L.push(`<div class="tg">Scudo: ${pct(skillVal(sk.shield, show))} dell'attacco magico</div>`);
     if (sk.req) L.push(`<div class="tt">Richiede: ${sk.req === 'bow' ? 'arco' : 'pugnali'}</div>`);
     L.push(`<div class="td">${esc(sk.desc)}</div>`);
     if (lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX) L.push('<div class="tt">Oltre il livello 10 serve un Tomo della Tecnica (50%).</div>');
@@ -290,10 +308,9 @@ export class UI {
     const me = this.g.me;
     const c = CLASSES[this.g.cls], k = KINGDOMS[this.g.kd];
     $('pf-name').textContent = this.g.name;
-    $('pf-sub').textContent = `Liv. ${me.lvl} ${c.name} — ${k.short}`;
+    $('pf-sub').textContent = `Liv. ${me.lvl} ${c.name}${me.via ? ' · ' + VIE[me.via].name.replace(/^Via (della |delle |dello |degli |dei |del |dell')/, '') : ''} — ${k.short}`;
     const gl = $('pf-glyph'); gl.textContent = c.glyph; gl.style.borderColor = k.color; gl.style.color = k.color;
-    this.setBar('#player-frame .bar.hp', me.hp, me.mhp);
-    this.setBar('#player-frame .bar.mp', me.mp, me.mmp);
+    this.onRes();
     const e = $('exp-bar');
     e.querySelector('.fill').style.width = Math.min(100, me.exp / me.need * 100) + '%';
     e.querySelector('span').textContent = `Esperienza ${(me.exp / me.need * 100).toFixed(1)}%  (${me.exp} / ${me.need})`;
@@ -305,6 +322,34 @@ export class UI {
     if (this.isOpen('win-skills')) this.renderSkills();
     if (this.isOpen('win-smith')) this.renderSmith();
     if (me.dead) this.showDeath(); else $('death-overlay').classList.add('hidden');
+  }
+
+  // Aggiornamento rapido di vita, risorsa e punti.
+  onRes() {
+    const me = this.g.me;
+    const R = RESOURCES[me.rt];
+    this.setBar('#player-frame .bar.hp', me.hp, me.mhp);
+    const hpb = document.querySelector('#player-frame .bar.hp');
+    let sh = hpb.querySelector('.shield');
+    if (me.shield > 0) {
+      if (!sh) { sh = document.createElement('div'); sh.className = 'shield'; hpb.insertBefore(sh, hpb.querySelector('span')); }
+      const w = Math.min(100, me.shield / me.mhp * 100), left = Math.min(100, me.hp / me.mhp * 100);
+      sh.style.left = Math.max(0, Math.min(left, 100 - w)) + '%'; sh.style.width = w + '%';
+    } else if (sh) sh.remove();
+    const mb = document.querySelector('#player-frame .bar.mp');
+    mb.querySelector('.fill').style.background = `linear-gradient(${R.color}, #10101088)`;
+    mb.querySelector('.fill').style.width = (me.rmax > 0 ? Math.max(0, Math.min(100, me.res / me.rmax * 100)) : 0) + '%';
+    mb.querySelector('span').textContent = `${R.name} ${Math.floor(me.res)} / ${me.rmax}`;
+    const c = CLASSES[this.g.cls];
+    let html = '';
+    if (c.pts) {
+      html += `<span class="lbl">${c.pts.name}</span>`;
+      for (let i = 0; i < PTS_MAX; i++) html += `<div class="pip ${i < me.pts ? 'on' : ''}"></div>`;
+    }
+    const chain = this.g.chainList();
+    if (chain) html += `<div class="chain">${chain.map((s, i) => `<span class="${i < (me.chain || 0) ? 'on' : ''}" title="${SKILLS[s].name}">${SKILLS[s].glyph}</span>`).join('')}</div>`;
+    const row = $('pts-row');
+    if (row.dataset.h !== html) { row.innerHTML = html; row.dataset.h = html; }
   }
   onInv() {
     this.renderQuickbar();
@@ -323,10 +368,11 @@ export class UI {
     const me = this.g.me;
     const el = $('buff-row');
     const el2 = (performance.now() - this.buffT);
-    el.innerHTML = (me.buffs || []).filter(b => b.ms - el2 > 0).map(b => {
-      const sk = SKILLS[b.s];
+    el.innerHTML = (me.buffs || []).filter(b => b.ms - el2 > 0 && BUFFS[b.b]).map(b => {
+      const d = BUFFS[b.b];
       const sec = Math.ceil((b.ms - el2) / 1000);
-      return `<div class="buff" data-tip="<div class='tn'>${esc(sk.name)}</div><div class='tt'>${sec}s rimanenti</div>">${sk.glyph}<small>${sec}</small></div>`;
+      const tip = `<div class='tn'>${esc(d.name)}</div><div class='tt'>${sec > 90 ? Math.ceil(sec / 60) + ' min' : sec + ' s'} rimanenti</div><div class='td'>${esc(d.desc || '')}</div>`;
+      return `<div class="buff ${d.proc ? 'proc' : ''}" data-tip="${tip}">${d.glyph}<small>${sec > 90 ? Math.ceil(sec / 60) + 'm' : sec}</small></div>`;
     }).join('');
   }
 
@@ -345,7 +391,7 @@ export class UI {
       const q = me.qb[i];
       const qc = el.querySelector('.qc');
       let html = '';
-      if (q && q.k === 's' && SKILLS[q.id]) html = skillIconHtml(q.id, !(me.sk[q.id] > 0));
+      if (q && q.k === 's' && SKILLS[q.id]) html = skillIconHtml(q.id, !this.g.lvlOf(q.id));
       else if (q && q.k === 'i' && ITEMS[q.id]) {
         const n = (this.g.inv || []).reduce((s, x) => s + (x && x.id === q.id ? x.n : 0), 0);
         html = itemIconHtml({ id: q.id, n, up: 0 }, n);
@@ -358,20 +404,65 @@ export class UI {
   updateCooldowns(now) {
     const me = this.g.me;
     if (!me) return;
+    const g = this.g;
+    const gcdRem = Math.max(0, g.gcdUntil - now);
     document.querySelectorAll('#quickbar .slot').forEach((el, i) => {
       const q = me.qb[i];
       const cool = el.querySelector('.cool');
-      let html = '';
-      if (q && q.k === 's') {
-        const cd = this.g.cds[q.id];
-        if (cd && cd.until > now) {
-          const rem = cd.until - now, p = rem / cd.total;
-          html = `<div style="position:absolute;inset:2px;background:conic-gradient(#000000b0 ${p * 360}deg, transparent 0)"></div><span>${Math.ceil(rem / 1000)}</span>`;
+      let html = '', state = '';
+      if (q && q.k === 's' && SKILLS[q.id]) {
+        const sk = SKILLS[q.id];
+        const cd = g.cds[q.id];
+        const cdRem = cd && cd.until > now ? cd.until - now : 0;
+        if (cdRem > gcdRem || (sk.offgcd && cdRem > 0)) {
+          const p = cdRem / cd.total;
+          html = `<div style="position:absolute;inset:2px;background:conic-gradient(#000000b8 ${p * 360}deg, transparent 0)"></div><span>${cdRem > 1500 ? Math.ceil(cdRem / 1000) : (cdRem / 1000).toFixed(1)}</span>`;
+        } else if (!sk.offgcd && gcdRem > 0 && g.gcdTotal > 0) {
+          const p = Math.min(1, gcdRem / g.gcdTotal);
+          html = `<div style="position:absolute;inset:2px;background:conic-gradient(#00000090 ${p * 360}deg, transparent 0)"></div>`;
         }
+        state = g.skillState(q.id);
+        if (g.queued === q.id) state += ' queued';
       }
       if (cool.dataset.h !== html) { cool.innerHTML = html; cool.dataset.h = html; }
+      const cls = 'slot qb ' + state;
+      if (el.className !== cls) el.className = cls;
     });
-    if (now - (this.lastBuffRender || 0) > 500) { this.lastBuffRender = now; this.renderBuffs(); }
+    if (now - (this.lastBuffRender || 0) > 500) { this.lastBuffRender = now; this.renderBuffs(); this.renderTargetDots(now); }
+    if (this.isOpen('win-dps') && now - (this.lastDps || 0) > 500) { this.lastDps = now; this.renderDps(); }
+    const cb = $('cast-bar');
+    if (g.casting && g.casting.until > now) {
+      cb.classList.remove('hidden');
+      const p = 1 - (g.casting.until - now) / g.casting.total;
+      cb.querySelector('.fill').style.width = (p * 100).toFixed(1) + '%';
+      cb.querySelector('span').textContent = `${SKILLS[g.casting.sid].name}  ${((g.casting.until - now) / 1000).toFixed(1)} s`;
+    } else cb.classList.add('hidden');
+  }
+
+  renderTargetDots(now) {
+    const el = $('tf-dots');
+    const t = this.g.target;
+    const list = t ? Object.entries(this.g.dots[t.id] || {}).filter(([, u]) => u > now) : [];
+    const html = list.map(([s, u]) => {
+      const d = SKILLS[s] || BUFFS[s];
+      const sec = (u - now) / 1000;
+      return `<div class="dt ${sec < 3 ? 'low' : ''}" title="${esc(d.name)}">${d.glyph}<small>${Math.ceil(sec)}</small></div>`;
+    }).join('');
+    if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+  }
+
+  renderDps() {
+    const s = this.g.meter.seg;
+    const el = $('dps-body');
+    if (!s || !s.total) { el.innerHTML = '<div class="empty">Attacca un nemico o un fantoccio d\'addestramento:<br>qui vedrai i tuoi danni divisi per abilità.</div>'; return; }
+    const dur = Math.max(1, (s.last - s.start) / 1000);
+    const rows = Object.entries(s.by).sort((a, b) => b[1].v - a[1].v);
+    const max = rows.length ? rows[0][1].v : 1;
+    el.innerHTML = `<div class="head"><div>Durata<b>${dur.toFixed(0)} s</b></div><div>Danni<b>${s.total.toLocaleString('it-IT')}</b></div><div>DPS<b>${Math.round(s.total / dur).toLocaleString('it-IT')}</b></div></div>` +
+      rows.map(([k, a]) => {
+        const name = k === 'auto' ? 'Attacco base' : (SKILLS[k] ? SKILLS[k].name : k);
+        return `<div class="rowd"><div class="fill" style="width:${(a.v / max * 100).toFixed(1)}%"></div><div class="txt"><span>${esc(name)} <small style="color:#e0d0a8">${a.n}× · crit ${Math.round(a.c / a.n * 100)}%</small></span><span>${Math.round(a.v / dur)} · ${(a.v / s.total * 100).toFixed(1)}%</span></div></div>`;
+      }).join('');
   }
 
   renderCharacter() {
@@ -386,7 +477,9 @@ export class UI {
       ${stats}
       <div class="derived">
         <span>Vita</span><span>${me.hp} / ${me.mhp}</span>
-        <span>Chi</span><span>${me.mp} / ${me.mmp}</span>
+        <span>${RESOURCES[me.rt].name}</span><span>${Math.floor(me.res)} / ${me.rmax}</span>
+        <span>Rapidità</span><span>${me.haste}% (GCD ${(me.gcd / 1000).toFixed(2)} s)</span>
+        <span>Bonus ai danni</span><span>${me.dmgPct}%</span>
         <span>Attacco</span><span>${me.atk}</span>
         <span>Attacco magico</span><span>${me.matk}</span>
         <span>Difesa</span><span>${me.def}</span>
@@ -406,29 +499,30 @@ export class UI {
     const tomes = (this.g.inv || []).reduce((s, x) => s + (x && x.id === 'tomo_tecnica' ? x.n : 0), 0);
     const row = (sid) => {
       const sk = SKILLS[sid];
-      const lvl = me.sk[sid] || 0;
-      const canUp = (lvl < SKILL_MAX_POINTS && me.kp > 0) || (lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX && tomes > 0);
-      return `<div class="skill-row"><div class="slot" ${lvl > 0 ? `data-skill="${sid}"` : `data-skill-locked="${sid}"`}>${skillIconHtml(sid, lvl <= 0)}</div>
-        <div class="si" data-skill-info="${sid}"><div class="sn">${esc(sk.name)}</div><div class="sl">Livello ${lvl}/${SKILL_MAX}${lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX ? ' — serve un tomo' : ''}</div></div>
+      const lvl = this.g.lvlOf(sid);
+      const canUp = lvl > 0 && ((lvl < SKILL_MAX_POINTS && me.kp > 0) || (lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX && tomes > 0));
+      const meta = [sk.cost ? `${sk.cost}${c.res === 'mana' ? '% Mana' : ' ' + RESOURCES[c.res].name}` : '', sk.cast ? sk.cast + ' s' : '', sk.cd ? 'ric. ' + sk.cd + ' s' : '', sk.offgcd ? 'fuori GCD' : ''].filter(Boolean).join(' · ');
+      return `<div class="skill-row ${lvl ? '' : 'locked'}"><div class="slot" ${lvl > 0 ? `data-skill="${sid}"` : ''} data-skill-info="${sid}">${skillIconHtml(sid, lvl <= 0)}</div>
+        <div class="si" data-skill-info="${sid}"><div class="sn">${esc(sk.name)}</div><div class="sl">${lvl ? `Livello ${lvl}/${SKILL_MAX}${lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX ? ' — serve un tomo' : ''}` : `Si sblocca al livello ${sk.lvl}`}</div><div class="meta">${meta}</div></div>
         <button class="btn plus" data-up="${sid}" ${canUp ? '' : 'disabled'}>+</button></div>`;
     };
     let html = `<div class="pts">Punti abilità: ${me.kp}${tomes ? ` — Tomi della Tecnica: ${tomes}` : ''}</div>`;
-    html += `<div class="via-title">Abilità di base</div>` + row(c.baseSkill);
+    html += `<div class="via-title">Abilità di base</div>` + c.baseSkills.map(row).join('');
+    const viaSkills = (v) => Object.values(SKILLS).filter(s => s.via === v).sort((a, b) => a.lvl - b.lvl).map(s => s.id);
     if (me.via) {
-      html += `<div class="via-title">${VIE[me.via].name}</div>` + VIE[me.via].skills.map(row).join('');
+      html += `<div class="via-title">${VIE[me.via].name} — ${VIE[me.via].role}</div><div class="via-passive">${esc(VIE[me.via].desc)}</div>` + viaSkills(me.via).map(row).join('');
     } else if (me.lvl >= VIA_LEVEL) {
       html += `<div class="via-title">Scegli la tua Via (scelta definitiva)</div><div class="via-pick">` +
-        c.vie.map(v => `<div class="pick" data-via="${v}"><div class="pn">${VIE[v].name}</div><div class="pd">${VIE[v].desc}</div><div class="pd" style="margin-top:4px">${VIE[v].skills.map(s => SKILLS[s].name).join(' · ')}</div></div>`).join('') + '</div>';
+        c.vie.map(v => `<div class="pick" data-via="${v}"><div class="pn">${VIE[v].name}</div><div class="pd"><b>${VIE[v].role}</b> — ${VIE[v].desc}</div><div class="pd" style="margin-top:4px">${viaSkills(v).map(s => SKILLS[s].name).join(' · ')}</div></div>`).join('') + '</div>';
     } else {
       html += `<div class="via-title">Le Vie</div><div class="pd" style="margin:4px 0 8px">Al livello ${VIA_LEVEL} potrai scegliere una delle due Vie della tua classe:</div>` +
-        c.vie.map(v => `<div style="margin-bottom:6px"><b>${VIE[v].name}</b><div class="pd">${VIE[v].desc}</div></div>`).join('');
+        c.vie.map(v => `<div style="margin-bottom:6px"><b>${VIE[v].name}</b> <span class="meta">(${VIE[v].role})</span><div class="pd">${VIE[v].desc}</div></div>`).join('');
     }
     $('skills-body').innerHTML = html;
     $('skills-body').querySelectorAll('[data-up]').forEach(b => { b.onclick = () => this.g.net.send({ t: 'skup', s: b.dataset.up }); });
     $('skills-body').querySelectorAll('[data-via]').forEach(b => {
       b.onclick = () => this.confirm(`Intraprendere la <b>${VIE[b.dataset.via].name}</b>? La scelta è definitiva.`, () => this.g.net.send({ t: 'via', v: b.dataset.via }));
     });
-    $('skills-body').querySelectorAll('[data-skill-info],[data-skill-locked]').forEach(el => { el.dataset.skillTipOnly = '1'; });
   }
 
   // ------------------------------------------------------------ negozio e fabbro
@@ -575,6 +669,7 @@ export class UI {
     const bar = tf.querySelector('.bar');
     if (i.k === 'm' || i.k === 'p') { bar.style.display = ''; this.setBar('#target-frame .bar.hp', ent.hp, ent.mhp); }
     else bar.style.display = 'none';
+    if (tf.dataset.id !== String(ent.id)) { tf.dataset.id = ent.id; this.renderTargetDots(performance.now()); }
   }
 
   // ------------------------------------------------------------ minimappa

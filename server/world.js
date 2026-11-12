@@ -1,9 +1,10 @@
 // Logica di gioco lato server: entità, combattimento, IA dei mostri, oggetti, PNG.
 // Il server è autoritativo su danni, oggetti, esperienza e tael.
 import {
-  CLASSES, VIE, SKILLS, ITEMS, MOBS, UPGRADE, SHOPS, NPC_ROLES, WEAPON_TYPES, GUARD_LINES,
+  CLASSES, VIE, SKILLS, BUFFS, RESOURCES, ITEMS, MOBS, UPGRADE, SHOPS, NPC_ROLES, WEAPON_TYPES, GUARD_LINES,
   INV_SIZE, QB_SIZE, STACK_MAX, STAT_MAX, EQUIP_SLOTS, MAX_LEVEL, VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BOOK_CHANCE,
-  expToNext, skillVal, skillMp, upgradedStat, equipSlotOf,
+  PTS_MAX, GCD_MS, GCD_MIN_MS, DATA_VERSION,
+  expToNext, skillVal, upgradedStat, equipSlotOf,
 } from '../shared/data.js';
 import {
   KINGDOMS, KINGDOM_IDS, CENTER, heightAt, villageFrame, toWorld, VILLAGE_LAYOUT, safeZoneAt, villageSpawn,
@@ -32,7 +33,7 @@ export function newCharacter(name, cls, kingdom) {
   const inv = Array(INV_SIZE).fill(null);
   const ch = {
     name, cls, kingdom, lvl: 1, exp: 0, statPts: 0, skillPts: 0,
-    stats: { ...c.start }, via: null, skills: { [c.baseSkill]: 1 },
+    stats: { ...c.start }, via: null, skills: {}, v: DATA_VERSION,
     inv, equip: { weapon: { id: c.startWeapon, n: 1, up: 0 }, head: null, body: { id: 'tunica_canapa', n: 1, up: 0 }, feet: { id: 'sandali', n: 1, up: 0 } },
     tael: 300, x: sp.x, z: sp.z, hp: -1, mp: -1, qb: Array(QB_SIZE).fill(null), created: Date.now(),
   };
@@ -41,10 +42,26 @@ export function newCharacter(name, cls, kingdom) {
   inv[i++] = { id: 'ginseng_p', n: 10, up: 0 };
   inv[i++] = { id: 'loto_p', n: 6, up: 0 };
   inv[i++] = { id: 'pergamena_ritorno', n: 1, up: 0 };
-  ch.qb[0] = { k: 's', id: c.baseSkill };
-  ch.qb[6] = { k: 'i', id: 'ginseng_p' };
-  ch.qb[7] = { k: 'i', id: 'loto_p' };
+  defaultQuickbar(ch);
   return ch;
+}
+
+function defaultQuickbar(ch) {
+  const c = CLASSES[ch.cls];
+  ch.qb = Array(QB_SIZE).fill(null);
+  c.baseSkills.forEach((s, i) => { if (SKILLS[s].lvl <= ch.lvl) ch.qb[i] = { k: 's', id: s }; });
+  ch.qb[QB_SIZE - 2] = { k: 'i', id: 'ginseng_p' };
+  ch.qb[QB_SIZE - 1] = { k: 'i', id: c.res === 'mana' ? 'loto_p' : 'pergamena_ritorno' };
+}
+
+// Adegua i personaggi creati con versioni precedenti dei dati.
+function migrate(ch) {
+  if (ch.v === DATA_VERSION) return;
+  ch.skills = {};
+  ch.skillPts = Math.max(0, ch.lvl - 1);
+  if (ch.via && (!VIE[ch.via] || VIE[ch.via].cls !== ch.cls)) ch.via = null;
+  defaultQuickbar(ch);
+  ch.v = DATA_VERSION;
 }
 
 export class World {
@@ -87,6 +104,11 @@ export class World {
       for (const n of VILLAGE_LAYOUT.npcs) {
         const p = toWorld(f, n.x, n.z);
         this.add({ kind: 'npc', role: n.role, kingdom: kid, name: NPC_ROLES[n.role].name, x: p.x, z: p.z, r: f.a + (n.face || 0) });
+      }
+      for (const [lx, lz] of VILLAGE_LAYOUT.dummies) {
+        const p = toWorld(f, lx, lz);
+        const m = this.spawnMob('fantoccio', p.x, p.z, null, false);
+        m.r = f.a + Math.PI;
       }
     }
   }
@@ -159,7 +181,7 @@ export class World {
       kind: 'mob', type, d, name: d.name, lvl: d.lvl, x, z, r: Math.random() * Math.PI * 2,
       hp: d.hp, maxHp: d.hp, atk: d.atk, def: d.def, spawn: { x, z }, spawner, temp,
       state: 'idle', target: null, aggro: new Map(), nextAttack: 0, wanderAt: NOW() + rand(1000, 8000), dest: null,
-      stunUntil: 0, slowUntil: 0, dots: [], waveIdx: 0, removeAt: 0, lastActive: NOW(),
+      stunUntil: 0, slowUntil: 0, dots: [], debuffs: [], waveIdx: 0, removeAt: 0, lastActive: NOW(),
     });
   }
 
@@ -174,20 +196,24 @@ export class World {
 
   // ------------------------------------------------------------ giocatori
   addPlayer(sess, ch) {
+    migrate(ch);
     const p = {
       kind: 'player', sess, ch, name: ch.name, cls: ch.cls, kingdom: ch.kingdom, lvl: ch.lvl,
-      x: ch.x, z: ch.z, r: 0, hp: ch.hp, mp: ch.mp, buffs: [], hots: [], dots: [], cds: {},
+      x: ch.x, z: ch.z, r: 0, hp: ch.hp, buffs: [], hots: [], dots: [], debuffs: [], cds: {},
+      rtype: CLASSES[ch.cls].res, res: 0, rmax: 100, pts: 0, gcdUntil: 0, casting: null, chainIdx: 0, chainAt: 0,
+      shield: 0, shieldUntil: 0, dmgPct: 0, haste: 0,
       nextAttack: 0, dead: false, known: new Map(), knownVis: new Map(), stunUntil: 0, slowUntil: 0,
-      lastMoveAt: NOW(), lastCombat: 0, selfDirty: true, invDirty: true, gm: !!sess.gm, online: true,
+      lastMoveAt: NOW(), lastCombat: 0, selfDirty: true, invDirty: true, resDirty: false, gm: !!sess.gm, online: true,
     };
     this.add(p);
     this.players.add(p);
     this.recalc(p);
+    const R = RESOURCES[p.rtype];
+    p.res = p.rtype === 'mana' ? (ch.mp >= 0 ? Math.min(ch.mp, p.rmax) : p.rmax) : Math.round(R.start * p.rmax);
     if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || p.hp === 0) {
-      const sp = villageSpawn(p.kingdom); p.x = sp.x; p.z = sp.z; p.hp = p.maxHp; p.mp = p.maxMp;
+      const sp = villageSpawn(p.kingdom); p.x = sp.x; p.z = sp.z; p.hp = p.maxHp;
     }
     if (p.hp < 0 || p.hp > p.maxHp) p.hp = p.maxHp;
-    if (p.mp < 0 || p.mp > p.maxMp) p.mp = p.maxMp;
     this.send(p, {
       t: 'enter', id: p.id, name: p.name, cls: p.cls, kd: p.kingdom, gm: p.gm ? 1 : 0, x: r1(p.x), z: r1(p.z),
       pvp: this.cfg.pvp ? 1 : 0, pvpMin: this.cfg.pvpMinLevel,
@@ -207,7 +233,7 @@ export class World {
   saveChar(p) {
     const ch = p.ch;
     ch.lvl = p.lvl; ch.x = r1(p.x); ch.z = r1(p.z);
-    ch.hp = p.dead ? 0 : Math.round(p.hp); ch.mp = Math.round(p.mp);
+    ch.hp = p.dead ? 0 : Math.round(p.hp); ch.mp = p.rtype === 'mana' ? Math.round(p.res) : -1;
   }
   saveAll() { for (const p of this.players) this.saveChar(p); }
 
@@ -217,8 +243,19 @@ export class World {
     return out;
   }
 
+  // Livello effettivo di un'abilità per il giocatore (0 = non disponibile).
+  lvlOf(p, sid) {
+    const sk = SKILLS[sid];
+    if (!sk || sk.cls !== p.cls || p.lvl < sk.lvl) return 0;
+    if (sk.via && sk.via !== p.ch.via) return 0;
+    return Math.max(1, p.ch.skills[sid] || 0);
+  }
+
+  gcdMs(p) { return Math.max(GCD_MIN_MS, Math.round(GCD_MS / (1 + p.haste / 100))); }
+
   recalc(p) {
     const c = CLASSES[p.cls], s = p.ch.stats, L = p.lvl, eq = p.ch.equip;
+    const pas = (p.ch.via && VIE[p.ch.via].passive) || {};
     let watk = 0, wmatk = 0, def = 0, spdPct = 0, range = 2.2, aspd = 1000;
     if (eq.weapon) {
       const it = ITEMS[eq.weapon.id];
@@ -235,19 +272,25 @@ export class World {
     const b = this.buffTotals(p);
     const prim = c.primary === 'dex' ? s.dex : s.str;
     const sec = c.primary === 'dex' ? s.str : s.dex;
-    p.maxHp = Math.round(c.hp[0] + L * c.hp[1] + s.vit * c.hp[2]);
-    p.maxMp = Math.round(c.mp[0] + L * c.mp[1] + s.int * c.mp[2]);
+    p.maxHp = Math.round((c.hp[0] + L * c.hp[1] + s.vit * c.hp[2]) * (1 + (pas.hpPct || 0) / 100));
+    p.rmax = p.rtype === 'mana' ? Math.round(c.mp[0] + L * c.mp[1] + s.int * c.mp[2]) : RESOURCES[p.rtype].fixedMax;
     p.atk = Math.round((watk + prim * 2 + sec * 0.5 + L * 2) * (1 + (b.atkPct || 0) / 100));
     p.matk = Math.round((wmatk + s.int * 2.5 + L * 2) * (1 + (b.matkPct || 0) / 100));
     p.def = Math.round((def + s.vit * 1.2 + L) * (1 + (b.defPct || 0) / 100));
     p.crit = Math.min(50, 2 + s.dex * 0.4 + (b.critPct || 0));
     p.evade = Math.min(15, s.dex * 0.2);
-    p.aspd = Math.round(aspd / (1 + (b.aspdPct || 0) / 100 + s.dex * 0.004));
+    p.haste = b.hastePct || 0;
+    p.aspd = Math.round(aspd / (1 + p.haste / 100 + s.dex * 0.004));
     p.speed = 8 * (1 + spdPct / 100);
     p.range = range;
     p.hpRegen = b.hpRegen || 0;
+    p.dmgPct = b.dmgPct || 0;
+    p.dmgTaken = b.dmgTaken || 0;
+    p.resRegenPct = b.resRegenPct || 0;
+    p.threat = pas.threat || 1;
+    p.healPct = pas.healPct || 0;
     if (p.hp > p.maxHp) p.hp = p.maxHp;
-    if (p.mp > p.maxMp) p.mp = p.maxMp;
+    if (p.res > p.rmax) p.res = p.rmax;
     p.selfDirty = true;
   }
 
@@ -281,11 +324,14 @@ export class World {
 
   meMsg(p) {
     const ch = p.ch, t = NOW();
+    const chain = this.chainOf(p) && t - p.chainAt < 6000 ? p.chainIdx : 0;
     return {
-      t: 'me', lvl: p.lvl, exp: ch.exp, need: expToNext(p.lvl), hp: Math.round(p.hp), mhp: p.maxHp, mp: Math.round(p.mp), mmp: p.maxMp,
+      t: 'me', lvl: p.lvl, exp: ch.exp, need: expToNext(p.lvl), hp: Math.round(p.hp), mhp: p.maxHp,
+      res: Math.floor(p.res), rmax: p.rmax, rt: p.rtype, pts: p.pts, chain, shield: Math.round(p.shieldUntil > t ? p.shield : 0),
       atk: p.atk, matk: p.matk, def: p.def, crit: r1(p.crit), ev: r1(p.evade), aspd: p.aspd, spd: r2(p.speed), range: p.range,
+      haste: r1(p.haste), gcd: this.gcdMs(p), dmgPct: r1(p.dmgPct),
       sp: ch.statPts, kp: ch.skillPts, st: ch.stats, via: ch.via, sk: ch.skills, tael: ch.tael, qb: ch.qb,
-      buffs: p.buffs.map(b => ({ s: b.sid, ms: b.until - t })), dead: p.dead ? 1 : 0,
+      buffs: p.buffs.map(b => ({ b: b.id, ms: b.until - t })), dead: p.dead ? 1 : 0,
     };
   }
 
@@ -306,7 +352,8 @@ export class World {
       }
       for (const id of p.known.keys()) if (!seen.has(id)) { rms.push(id); p.known.delete(id); p.knownVis.delete(id); }
       if (adds.length || ups.length || rms.length) this.send(p, { t: 'v', a: adds, u: ups, r: rms });
-      if (p.selfDirty) { p.selfDirty = false; this.send(p, this.meMsg(p)); }
+      if (p.selfDirty) { p.selfDirty = false; p.resDirty = false; this.send(p, this.meMsg(p)); }
+      else if (p.resDirty) { p.resDirty = false; this.send(p, { t: 'r', hp: Math.round(p.hp), res: Math.floor(p.res), pts: p.pts }); }
       if (p.invDirty) { p.invDirty = false; this.send(p, { t: 'inv', inv: p.ch.inv, eq: p.ch.equip }); }
     }
   }
@@ -316,7 +363,7 @@ export class World {
     this.regenAcc += dt;
     const regen = this.regenAcc >= 1;
     if (regen) this.regenAcc -= 1;
-    for (const p of this.players) this.updatePlayer(p, t, regen);
+    for (const p of this.players) this.updatePlayer(p, t, regen, dt);
     for (const e of [...this.ents.values()]) {
       if (e.kind === 'mob') this.updateMob(e, dt, t);
       else if (e.kind === 'drop' && t > e.expire) this.remove(e);
@@ -328,22 +375,34 @@ export class World {
     }
   }
 
-  updatePlayer(p, t, regen) {
+  updatePlayer(p, t, regen, dt) {
     if (p.dead) return;
     const before = p.buffs.length;
     p.buffs = p.buffs.filter(b => b.until > t);
     if (p.buffs.length !== before) this.recalc(p);
+    if (p.debuffs.length) p.debuffs = p.debuffs.filter(d => d.until > t);
     this.tickDots(p, t);
     if (p.dead) return;
     for (const h of p.hots) {
       if (t >= h.next && h.next <= h.until) { h.next += 1000; this.heal(p, h.amt, true); }
     }
     p.hots = p.hots.filter(h => h.next <= h.until);
-    if (regen && (p.hp < p.maxHp || p.mp < p.maxMp)) {
-      const fight = t - p.lastCombat < 6000;
-      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * (fight ? 0.004 : 0.02) + p.maxHp * p.hpRegen / 100);
-      p.mp = Math.min(p.maxMp, p.mp + p.maxMp * (fight ? 0.01 : 0.03));
-      p.selfDirty = true; this.touch(p);
+    if (p.casting && t >= p.casting.until) {
+      const c = p.casting;
+      p.casting = null;
+      this.send(p, { t: 'castend', ok: 1 });
+      this.resolveSkill(p, c.sid, c.tid, 0);
+    }
+    // risorsa
+    const R = RESOURCES[p.rtype], ooc = t - p.lastCombat > 6000, old = p.res;
+    if (R.regen) p.res = Math.min(p.rmax, p.res + R.regen * dt * (1 + p.haste / 100) * (1 + p.resRegenPct / 100));
+    if (R.decay && ooc) p.res = Math.max(0, p.res - R.decay * dt);
+    if (R.regenPct) p.res = Math.min(p.rmax, p.res + p.rmax * (ooc ? R.regenPctOoc : R.regenPct) / 100 * dt);
+    if (Math.floor(old) !== Math.floor(p.res)) p.resDirty = true;
+    if (ooc && p.pts > 0 && t - p.lastCombat > 20000) { p.pts = 0; p.resDirty = true; }
+    if (regen && p.hp < p.maxHp) {
+      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * (ooc ? 0.02 : 0.004) + p.maxHp * p.hpRegen / 100);
+      p.resDirty = true; this.touch(p);
     }
   }
 
@@ -351,10 +410,18 @@ export class World {
     if (!e.dots.length) return;
     for (const d of e.dots) {
       if (t >= d.next && d.next <= d.until) {
-        d.next += 1000;
+        d.next += d.every || 1000;
         const src = this.ents.get(d.src) || { kind: 'env', id: 0, name: 'Veleno', x: e.x, z: e.z };
-        this.fx(e, { k: 'hit', s: src.id, d: e.id, v: d.dmg, dot: 1 });
-        this.applyDamage(e, d.dmg, src);
+        let v = d.dmg, crit = false;
+        if (src.kind === 'player' && Math.random() * 100 < src.crit) { v = Math.round(v * 1.6); crit = true; }
+        const m = this.mitigate(e, v);
+        const ev = { k: 'hit', s: src.id, d: e.id, v: m.dmg, dot: 1, sk: d.sid };
+        if (crit) ev.c = 1;
+        if (m.ab) ev.ab = m.ab;
+        this.fx(e, ev);
+        this.applyDamage(e, m.dmg, src);
+        const sk = SKILLS[d.sid];
+        if (src.kind === 'player' && sk && sk.tickProc && Math.random() < sk.tickProc.chance) this.addBuff(src, sk.tickProc.buff, 1, true);
         if ((e.kind === 'mob' && e.hp <= 0) || e.dead) break;
       }
     }
@@ -377,9 +444,14 @@ export class World {
 
   updateMob(m, dt, t) {
     if (m.hp <= 0) { if (t >= m.removeAt) this.remove(m); return; }
+    if (m.debuffs.length) m.debuffs = m.debuffs.filter(x => x.until > t);
     this.tickDots(m, t);
     if (m.hp <= 0) return;
     const d = m.d;
+    if (d.dummy) {
+      if (t - m.lastActive > 6000 && (m.hp < m.maxHp || m.dots.length)) { m.hp = m.maxHp; m.dots = []; m.debuffs = []; this.touch(m); }
+      return;
+    }
     if (d.stone) {
       if (m.aggro.size && t - m.lastActive > 30000) { m.aggro.clear(); m.hp = m.maxHp; m.waveIdx = 0; this.touch(m); }
       return;
@@ -426,7 +498,7 @@ export class World {
     if (m.state === 'return') {
       this.moveToward(m, m.spawn.x, m.spawn.z, spd * 1.7 * dt, 0.5);
       if (m.hp < m.maxHp) { m.hp = Math.min(m.maxHp, m.hp + m.maxHp * 0.25 * dt); this.touch(m); }
-      if (dist(m, m.spawn) < 1) { m.state = 'idle'; m.hp = m.maxHp; m.summoned = 0; this.touch(m); }
+      if (dist(m, m.spawn) < 1) { m.state = 'idle'; m.hp = m.maxHp; m.summoned = 0; m.dots = []; m.debuffs = []; this.touch(m); }
       return;
     }
     if (m.dest) {
@@ -501,28 +573,45 @@ export class World {
     let mult = 1, crit = false;
     if (src.kind === 'player' && Math.random() * 100 < src.crit) { crit = true; mult = 1.6; }
     if (src.kind === 'player' && tgt.kind === 'player') mult *= 0.6;
-    const ev = { k: 'hit', s: src.id, d: tgt.id };
+    const ev = { k: 'hit', s: src.id, d: tgt.id, sk: opts.sk || 'auto' };
     if (opts.auto) ev.a = opts.auto;
     if (opts.i) ev.i = opts.i;
     if (tgt.kind === 'player' && Math.random() * 100 < tgt.evade) {
       this.fx(tgt, { ...ev, v: 0, miss: 1 });
-      return;
+      return { miss: true };
     }
-    const dmg = this.calcDamage(base, tgt.def, mult);
-    ev.v = dmg;
+    const def = tgt.def * (1 - (opts.ignoreDef || 0) / 100);
+    const m = this.mitigate(tgt, this.calcDamage(base, def, mult));
+    ev.v = m.dmg;
     if (crit) ev.c = 1;
+    if (m.ab) ev.ab = m.ab;
     this.fx(tgt, ev);
-    this.applyDamage(tgt, dmg, src);
+    this.applyDamage(tgt, m.dmg, src, opts.threat || 1);
+    return { crit, dmg: m.dmg };
   }
 
-  applyDamage(tgt, dmg, src) {
+  // Riduzioni dei danni subiti (effetti difensivi e scudi).
+  mitigate(tgt, dmg) {
+    if (tgt.kind !== 'player') return { dmg };
+    if (tgt.dmgTaken) dmg = Math.max(1, Math.round(dmg * (1 + tgt.dmgTaken / 100)));
+    let ab = 0;
+    if (tgt.shield > 0 && tgt.shieldUntil > NOW()) {
+      ab = Math.min(tgt.shield, dmg);
+      tgt.shield -= ab; dmg -= ab;
+      tgt.selfDirty = true;
+    }
+    return { dmg, ab };
+  }
+
+  applyDamage(tgt, dmg, src, threat = 1) {
     if (tgt.kind === 'mob') {
       if (tgt.hp <= 0) return;
+      tgt.lastActive = NOW();
+      if (tgt.d.dummy) { tgt.hp = Math.max(1, tgt.hp - dmg); this.touch(tgt); if (src.kind === 'player') src.lastCombat = NOW(); return; }
       tgt.hp = Math.max(0, tgt.hp - dmg);
       this.touch(tgt);
-      tgt.lastActive = NOW();
       if (src.kind === 'player') {
-        tgt.aggro.set(src.id, (tgt.aggro.get(src.id) || 0) + dmg);
+        tgt.aggro.set(src.id, (tgt.aggro.get(src.id) || 0) + dmg * threat * (src.threat || 1));
         if (!tgt.target && tgt.state !== 'return') tgt.target = src.id;
         src.lastCombat = NOW();
       }
@@ -532,7 +621,8 @@ export class World {
       if (tgt.dead) return;
       tgt.hp = Math.max(0, tgt.hp - dmg);
       tgt.lastCombat = NOW();
-      tgt.selfDirty = true;
+      if (tgt.rtype === 'ira' && dmg > 0) tgt.res = Math.min(tgt.rmax, tgt.res + dmg / tgt.maxHp * 60);
+      tgt.resDirty = true;
       this.touch(tgt);
       if (src.kind === 'player') src.lastCombat = NOW();
       if (tgt.hp <= 0) this.playerDie(tgt, src);
@@ -551,9 +641,9 @@ export class World {
 
   stun(e, sec) {
     const until = NOW() + sec * 1000;
-    if (e.d && (e.d.boss || e.d.stone)) return;
+    if (e.d && (e.d.boss || e.d.stone || e.d.dummy)) return;
     e.stunUntil = Math.max(e.stunUntil || 0, until);
-    if (e.kind === 'player') this.send(e, { t: 'st', stun: Math.round(sec * 1000) });
+    if (e.kind === 'player') { this.send(e, { t: 'st', stun: Math.round(sec * 1000) }); if (e.casting) this.cancelCast(e); }
     this.fx(e, { k: 'stun', d: e.id, ms: Math.round(sec * 1000) });
   }
 
@@ -587,7 +677,7 @@ export class World {
     }
     if (m.spawner) m.spawner.pending.push(NOW() + d.respawn * 1000 * rand(0.9, 1.15));
     if (d.boss) this.broadcast({ t: 'notice', m: `${top ? top.name : 'Un eroe'} ha sconfitto ${d.name}!` });
-    m.aggro.clear(); m.target = null; m.dots = [];
+    m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = [];
   }
 
   gainExp(p, amt) {
@@ -603,18 +693,20 @@ export class World {
     }
     if (up) {
       this.recalc(p);
-      p.hp = p.maxHp; p.mp = p.maxMp;
+      p.hp = p.maxHp;
+      if (p.rtype === 'mana') p.res = p.rmax;
       this.touch(p);
       this.fx(p, { k: 'lvl', s: p.id });
       this.send(p, { t: 'notice', m: `Sei salito al livello ${p.lvl}!` });
       if (p.lvl >= VIA_LEVEL && !p.ch.via) this.sys(p, 'Hai raggiunto il livello 5: scegli la tua Via nella finestra Abilità (tasto K).');
+      this.autoQuickbar(p, true);
     }
     p.selfDirty = true;
   }
 
   playerDie(p, killer) {
     p.dead = true; p.hp = 0; p.deadAt = NOW();
-    p.buffs = []; p.hots = []; p.dots = [];
+    p.buffs = []; p.hots = []; p.dots = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0;
     this.recalc(p);
     this.touch(p); p.selfDirty = true;
     let lost = 0;
@@ -633,11 +725,13 @@ export class World {
     const el = NOW() - p.deadAt;
     if (mode === 'here') {
       if (el < 8000) return;
-      p.hp = Math.round(p.maxHp * 0.5); p.mp = Math.round(p.maxMp * 0.5);
+      p.hp = Math.round(p.maxHp * 0.5);
+      if (p.rtype === 'mana') p.res = Math.round(p.rmax * 0.5);
     } else {
       if (el < 3000) return;
       const sp = villageSpawn(p.kingdom);
-      p.x = sp.x; p.z = sp.z; p.hp = p.maxHp; p.mp = p.maxMp;
+      p.x = sp.x; p.z = sp.z; p.hp = p.maxHp;
+      if (p.rtype === 'mana') p.res = p.rmax;
     }
     p.dead = false; p.lastCombat = 0;
     this.touch(p); p.selfDirty = true;
@@ -670,6 +764,7 @@ export class World {
       case 'sell': return this.onSell(p, msg.npc, msg.i | 0);
       case 'up': return this.onUpgrade(p, msg.npc, msg.i | 0, !!msg.seal);
       case 'respawn': return this.respawn(p, msg.mode);
+      case 'cancel': if (p.casting) this.cancelCast(p); return;
     }
   }
 
@@ -685,6 +780,7 @@ export class World {
     if (Math.hypot(x - p.x, z - p.z) > maxD) { this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z) }); return; }
     p.x = clamp(x, -PLAY_LIMIT, PLAY_LIMIT); p.z = clamp(z, -PLAY_LIMIT, PLAY_LIMIT);
     if (Number.isFinite(+msg.r)) p.r = +msg.r;
+    if (p.casting && Math.hypot(p.x - p.casting.x, p.z - p.casting.z) > 0.35) this.cancelCast(p);
     this.touch(p);
   }
 
@@ -692,128 +788,318 @@ export class World {
     if (p.dead) return;
     const t = NOW();
     if (p.stunUntil > t) return;
+    if (p.casting && CLASSES[p.cls].autoMagic) return;
     const e = this.ents.get(id);
     if (!this.canAttack(p, e)) return;
     if (t < p.nextAttack - 150) return;
     if (dist(p, e) > p.range + 2 + this.radiusOf(e)) return;
     p.nextAttack = t + p.aspd;
     p.lastCombat = t;
-    const base = CLASSES[p.cls].autoMagic ? p.matk * 0.8 : p.atk;
+    const base = (CLASSES[p.cls].autoMagic ? p.matk * 0.8 : p.atk) * (1 + p.dmgPct / 100) * (1 + this.vulnFrom(e, p) / 100);
     const wt = p.ch.equip.weapon ? ITEMS[p.ch.equip.weapon.id].wt : 'fists';
-    this.hit(p, e, base, { auto: wt === 'bow' ? 2 : wt === 'staff' ? 3 : 1 });
+    const r = this.hit(p, e, base, { auto: wt === 'bow' ? 2 : wt === 'staff' ? 3 : 1, sk: 'auto' });
+    const ar = CLASSES[p.cls].autoRes;
+    if (ar && !r.miss) { p.res = Math.min(p.rmax, p.res + ar * p.aspd / 1000); p.resDirty = true; }
+  }
+
+  // ------------------------------------------------------------ motore delle abilità
+  skfail(p, sid, m) { if (m) this.err(p, m); this.send(p, { t: 'skfail', s: sid }); }
+
+  hasBuffWith(p, key, sid) { return p.buffs.some(b => { const d = BUFFS[b.id]; return d[key] && d[key].includes(sid); }); }
+
+  costOf(p, sk) {
+    if (!sk.cost) return 0;
+    if (this.hasBuffWith(p, 'free', sk.id)) return 0;
+    let c = sk.cost;
+    for (const b of p.buffs) { const cm = BUFFS[b.id].costMod; if (cm && cm[sk.id]) c += cm[sk.id]; }
+    c = Math.max(0, c);
+    return p.rtype === 'mana' ? Math.round(p.rmax * c / 100) : c;
+  }
+
+  vulnFrom(tgt, p) {
+    let v = 0;
+    const t = NOW();
+    for (const d of tgt.debuffs || []) if (d.src === p.id && d.until > t) v += d.vuln || 0;
+    return v;
+  }
+
+  isBehind(p, tgt) {
+    const fx = Math.sin(tgt.r || 0), fz = Math.cos(tgt.r || 0);
+    const dx = p.x - tgt.x, dz = p.z - tgt.z, l = Math.hypot(dx, dz) || 1;
+    return (fx * dx + fz * dz) / l < -0.25;
+  }
+
+  hostilesAround(p, cx, cz, rad) {
+    const out = [];
+    for (const e of this.ents.values()) {
+      if ((e.kind === 'mob' || e.kind === 'player') && this.canAttack(p, e) && Math.hypot(e.x - cx, e.z - cz) <= rad + this.radiusOf(e)) out.push(e);
+    }
+    return out;
+  }
+
+  friendly(p, target, range) {
+    return (target && target.kind === 'player' && target.kingdom === p.kingdom && !target.dead && dist(target, p) <= range + 2) ? target : p;
+  }
+
+  // Controlla se l'abilità può partire ora; restituisce { target } oppure { err }.
+  checkSkill(p, sk, lvl, tid) {
+    const t = NOW();
+    if (sk.req) {
+      const w = p.ch.equip.weapon;
+      if (!w || ITEMS[w.id].wt !== sk.req) return { err: sk.req === 'bow' ? 'Serve un arco equipaggiato' : 'Servono dei pugnali equipaggiati' };
+    }
+    if (this.costOf(p, sk) > p.res + 0.001) return { err: `${RESOURCES[p.rtype].name} insufficiente` };
+    if (sk.spend && sk.type !== 'heal_aoe' && p.pts < (sk.minPts || 1)) return { err: `Servono almeno ${sk.minPts || 1} ${(CLASSES[p.cls].pts || {}).name || 'punti'}` };
+    const range = sk.range === 'weapon' ? p.range : (sk.range || 0);
+    const target = tid ? this.ents.get(tid) : null;
+    switch (sk.type) {
+      case 'strike': case 'aoe_target': case 'debuff': case 'taunt': {
+        if (!this.canAttack(p, target)) return { err: 'Nessun bersaglio valido' };
+        if (dist(p, target) > range + 2 + this.radiusOf(target)) return { err: 'Bersaglio troppo lontano' };
+        if (sk.execute && target.hp / target.maxHp > sk.execute) return { err: `Il bersaglio deve essere sotto il ${Math.round(sk.execute * 100)}% di vita` };
+        if (sk.type === 'taunt' && target.kind !== 'mob') return { err: 'Puoi sfidare solo i mostri' };
+        return { target };
+      }
+      case 'heal_target': case 'hot_target': case 'shield': case 'heal_aoe':
+        return { target: this.friendly(p, target, range || 20) };
+      default:
+        return { target: null };
+    }
   }
 
   onSkill(p, sid, tid) {
-    if (p.dead) return;
-    const t = NOW();
-    if (p.stunUntil > t) return this.err(p, 'Sei stordito!');
     const sk = SKILLS[sid];
-    if (!sk || sk.cls !== p.cls) return;
-    const lvl = p.ch.skills[sid] || 0;
-    if (lvl <= 0) return this.err(p, 'Non conosci ancora questa abilità');
-    if (sk.via && sk.via !== p.ch.via) return;
-    if ((p.cds[sid] || 0) > t + 200) return this.err(p, 'Abilità in ricarica');
-    const cost = skillMp(sk, lvl);
-    if (p.mp < cost) return this.err(p, 'Chi insufficiente');
-    if (sk.req) {
-      const w = p.ch.equip.weapon;
-      if (!w || ITEMS[w.id].wt !== sk.req) return this.err(p, sk.req === 'bow' ? 'Serve un arco equipaggiato' : 'Servono dei pugnali equipaggiati');
+    if (!sk || p.dead) return;
+    const t = NOW();
+    const lvl = this.lvlOf(p, sid);
+    if (!lvl) return this.skfail(p, sid, 'Non conosci ancora questa abilità');
+    if (p.stunUntil > t) return this.skfail(p, sid, 'Sei stordito!');
+    if ((p.cds[sid] || 0) > t + 150) return this.skfail(p, sid, 'Abilità in ricarica');
+    if (!sk.offgcd && (p.gcdUntil > t + 150 || p.casting)) return this.skfail(p, sid);
+    const chk = this.checkSkill(p, sk, lvl, tid);
+    if (chk.err) return this.skfail(p, sid, chk.err);
+    const gcd = sk.offgcd ? 0 : this.gcdMs(p);
+    if (gcd) p.gcdUntil = t + gcd;
+    const castMs = sk.cast && !this.hasBuffWith(p, 'instant', sid) ? Math.round(sk.cast * 1000 / (1 + p.haste / 100)) : 0;
+    if (castMs > 0) {
+      p.casting = { sid, tid, until: t + castMs, x: p.x, z: p.z };
+      this.send(p, { t: 'cast', s: sid, ms: castMs, gcd });
+      this.fx(p, { k: 'cast', s: p.id, sk: sid, ms: castMs });
+      return;
     }
-    const range = sk.range === 'weapon' ? p.range : (sk.range || 0);
-    const target = tid ? this.ents.get(tid) : null;
+    this.resolveSkill(p, sid, tid, gcd);
+  }
+
+  cancelCast(p) {
+    p.casting = null;
+    p.gcdUntil = Math.min(p.gcdUntil, NOW());
+    this.send(p, { t: 'castend', ok: 0 });
+    this.fx(p, { k: 'castend', s: p.id });
+  }
+
+  applyDot(p, target, sk, lvl, n, base, pct) {
+    const t = NOW();
+    const dur = (sk.dot.durPerPt ? sk.dot.durPerPt * Math.max(1, n) : sk.dot.dur) * 1000;
+    const every = sk.dot.every * 1000;
+    const tick = Math.max(1, Math.round(base * skillVal(sk.dot.mult, lvl) * (1 + pct / 100) * 60 / (60 + target.def)));
+    const ex = target.dots.find(d => d.src === p.id && d.sid === sk.id);
+    if (ex) {
+      const carry = Math.min(Math.max(0, ex.until - t), dur * 0.3);
+      ex.dmg = tick; ex.until = t + dur + carry;
+      this.send(p, { t: 'dot', d: target.id, s: sk.id, ms: ex.until - t });
+    } else {
+      target.dots.push({ src: p.id, sid: sk.id, dmg: tick, every, next: t + every, until: t + dur });
+      this.send(p, { t: 'dot', d: target.id, s: sk.id, ms: dur });
+    }
+  }
+
+  resolveSkill(p, sid, tid, gcd) {
+    const sk = SKILLS[sid];
+    const lvl = this.lvlOf(p, sid);
+    if (!sk || !lvl || p.dead) return;
+    const t = NOW();
+    const chk = this.checkSkill(p, sk, lvl, tid);
+    if (chk.err) return this.skfail(p, sid, chk.err);
+    const target = chk.target;
+    // costo, punti e bonus dagli effetti attivi (calcolati prima di consumarli)
+    p.res = Math.max(0, p.res - this.costOf(p, sk));
+    let n = 0;
+    if (sk.spend && sk.type !== 'heal_aoe') { n = p.pts; p.pts = 0; }
+    let bonus = 0;
+    for (const b of p.buffs) {
+      const d = BUFFS[b.id];
+      if (d.skillDmg && d.skillDmg[sid]) bonus += d.skillDmg[sid];
+      if (sk.spend && d.spenderDmg) bonus += d.spenderDmg;
+    }
+    const behind = !!(sk.behind && target && (this.isBehind(p, target) || this.hasBuffWith(p, 'consume', sid) && p.buffs.some(b => BUFFS[b.id].behind)));
+    p.buffs = p.buffs.filter(b => { const d = BUFFS[b.id]; return !((d.consume && d.consume.includes(sid)) || (sk.spend && d.consumeSpender)); });
     const base = sk.dmg === 'magic' ? p.matk : sk.dmg === 'hybrid' ? (p.atk + p.matk) * 0.55 : p.atk;
-    const mult = sk.mult ? skillVal(sk.mult, lvl) : 0;
-    const hostilesAround = (cx, cz, rad) => {
-      const out = [];
-      for (const e of this.ents.values()) {
-        if ((e.kind === 'mob' || e.kind === 'player') && this.canAttack(p, e) && Math.hypot(e.x - cx, e.z - cz) <= rad + this.radiusOf(e)) out.push(e);
-      }
-      return out;
+    const pctFor = (tgt) => {
+      let pct = p.dmgPct + bonus + (behind ? sk.behind.dmg : 0) + this.vulnFrom(tgt, p);
+      if (sk.bonusVs && tgt.dots.some(d => d.src === p.id && d.sid === sk.bonusVs.dot)) pct += sk.bonusVs.dmg;
+      return pct;
     };
-    const friendlyTarget = () => (target && target.kind === 'player' && target.kingdom === p.kingdom && !target.dead && dist(target, p) <= range + 2) ? target : p;
+    const dmgFor = (tgt) => base * (sk.mult ? skillVal(sk.mult, lvl) : 0) * (sk.spend ? n : 1) * (1 + pctFor(tgt) / 100);
+    const opts = { sk: sid, ignoreDef: sk.ignoreDef, threat: sk.threat };
+    let crit = false, offensive = false;
+    const strikeOne = (tgt, i = 0) => {
+      if (!sk.mult || !this.canAttack(p, tgt)) return;
+      const r = this.hit(p, tgt, dmgFor(tgt), { ...opts, i });
+      if (r.crit) crit = true;
+    };
+    const control = (tgt) => {
+      if (!this.canAttack(p, tgt)) return;
+      if (sk.stun) this.stun(tgt, skillVal(sk.stun, lvl));
+      if (sk.slow) this.slow(tgt, sk.slow.dur);
+    };
     const fxd = { k: 'sk', s: p.id, sk: sid };
-    let offensive = false;
     switch (sk.type) {
       case 'strike': {
-        if (!this.canAttack(p, target)) return this.err(p, 'Nessun bersaglio valido');
-        if (dist(p, target) > range + 2 + this.radiusOf(target)) return this.err(p, 'Bersaglio troppo lontano');
         if (sk.dash) {
           const ang = Math.atan2(target.x - p.x, target.z - p.z);
-          const off = this.radiusOf(target) + 1.1;
-          const sgn = sk.behind ? 1 : -1;
+          const off = this.radiusOf(target) + 1.1, sgn = sk.behindDash ? 1 : -1;
+          const from = { x: r1(p.x), z: r1(p.z) };
           p.x = clamp(target.x + Math.sin(ang) * off * sgn, -PLAY_LIMIT, PLAY_LIMIT);
           p.z = clamp(target.z + Math.cos(ang) * off * sgn, -PLAY_LIMIT, PLAY_LIMIT);
           p.r = Math.atan2(target.x - p.x, target.z - p.z);
+          if (p.casting) p.casting = null;
           this.touch(p);
           this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z), r: r2(p.r) });
+          fxd.fx = from.x; fxd.fz = from.z;
         }
-        const hits = sk.hits || 1;
-        for (let i = 0; i < hits; i++) if (this.canAttack(p, target)) this.hit(p, target, base * mult, { i });
-        if (this.canAttack(p, target)) {
-          if (sk.stun) this.stun(target, skillVal(sk.stun, lvl));
-          if (sk.dot) target.dots.push({ src: p.id, dmg: Math.max(1, Math.round(base * skillVal(sk.dot.mult, lvl) * 60 / (60 + target.def))), until: t + sk.dot.dur * 1000, next: t + 1000 });
+        for (let i = 0; i < (sk.hits || 1); i++) strikeOne(target, i);
+        control(target);
+        if (sk.dot && this.canAttack(p, target)) this.applyDot(p, target, sk, lvl, n, base, pctFor(target));
+        fxd.d = target.id; offensive = true;
+        break;
+      }
+      case 'aoe_self':
+        for (const e of this.hostilesAround(p, p.x, p.z, sk.radius)) { strikeOne(e); control(e); }
+        fxd.x = r1(p.x); fxd.z = r1(p.z); offensive = true;
+        break;
+      case 'aoe_target': {
+        const cx = target.x, cz = target.z;
+        for (const e of this.hostilesAround(p, cx, cz, sk.radius)) { strikeOne(e); control(e); }
+        fxd.d = target.id; fxd.x = r1(cx); fxd.z = r1(cz); offensive = true;
+        break;
+      }
+      case 'debuff': {
+        const d = BUFFS[sk.debuff];
+        target.debuffs = (target.debuffs || []).filter(x => !(x.id === sk.debuff && x.src === p.id));
+        target.debuffs.push({ id: sk.debuff, src: p.id, until: t + d.dur * 1000, vuln: skillVal(d.vuln || 0, lvl) });
+        this.send(p, { t: 'dot', d: target.id, s: sk.debuff, ms: d.dur * 1000 });
+        fxd.d = target.id; offensive = true;
+        break;
+      }
+      case 'taunt': {
+        if (!target.d.dummy && !target.d.stone) {
+          let max = 0;
+          for (const v of target.aggro.values()) max = Math.max(max, v);
+          target.aggro.set(p.id, max * 1.1 + 100);
+          target.target = p.id;
+          if (target.state === 'return') target.state = 'idle';
         }
         fxd.d = target.id; offensive = true;
         break;
       }
-      case 'aoe_self': {
-        for (const e of hostilesAround(p.x, p.z, sk.radius)) {
-          this.hit(p, e, base * mult);
-          if (this.canAttack(p, e)) {
-            if (sk.stun) this.stun(e, skillVal(sk.stun, lvl));
-            if (sk.slow) this.slow(e, sk.slow.dur);
-          }
-        }
-        fxd.x = r1(p.x); fxd.z = r1(p.z); offensive = true;
-        break;
-      }
-      case 'aoe_target': {
-        if (!this.canAttack(p, target)) return this.err(p, 'Nessun bersaglio valido');
-        if (dist(p, target) > range + 2 + this.radiusOf(target)) return this.err(p, 'Bersaglio troppo lontano');
-        const cx = target.x, cz = target.z;
-        for (const e of hostilesAround(cx, cz, sk.radius)) this.hit(p, e, base * mult);
-        fxd.d = target.id; fxd.x = r1(cx); fxd.z = r1(cz); offensive = true;
-        break;
-      }
-      case 'buff_self': this.addBuff(p, sid, sk, lvl); break;
-      case 'buff_allies': {
+      case 'buff': this.addBuff(p, sk.buff, lvl); break;
+      case 'buff_allies':
         for (const q of this.players) {
           if (q.kingdom === p.kingdom && !q.dead && dist(q, p) <= sk.radius) {
-            this.addBuff(q, sid, sk, lvl);
+            this.addBuff(q, sk.buff, lvl);
             if (q !== p) this.fx(q, { k: 'sk', s: q.id, sk: sid, ally: 1 });
           }
         }
         break;
-      }
       case 'heal_self': this.heal(p, p.maxHp * skillVal(sk.heal, lvl)); break;
-      case 'heal_target': {
-        const q = friendlyTarget();
-        this.heal(q, p.matk * skillVal(sk.heal, lvl) + 40);
-        fxd.d = q.id;
+      case 'heal_target':
+        this.heal(target, (p.matk * skillVal(sk.heal, lvl) + 40) * (1 + p.healPct / 100));
+        fxd.d = target.id;
+        break;
+      case 'heal_aoe': {
+        let extra = 0;
+        if (sk.spendBonus && p.pts > 0) { extra = p.pts * sk.spendBonus; p.pts = 0; }
+        for (const q of this.players) {
+          if (q.kingdom !== p.kingdom || q.dead || dist(q, target) > sk.radius) continue;
+          const amt = sk.healPct ? q.maxHp * skillVal(sk.heal, lvl) : p.matk * skillVal(sk.heal, lvl) + 40;
+          this.heal(q, amt * (1 + (p.healPct + extra) / 100));
+        }
+        fxd.d = target.id;
         break;
       }
       case 'hot_self': p.hots.push({ amt: p.maxHp * skillVal(sk.heal, lvl), until: t + sk.dur * 1000, next: t + 1000 }); break;
-      case 'hot_target': {
-        const q = friendlyTarget();
-        q.hots.push({ amt: q.maxHp * skillVal(sk.heal, lvl), until: t + sk.dur * 1000, next: t + 1000 });
-        fxd.d = q.id;
+      case 'hot_target':
+        target.hots.push({ amt: target.maxHp * skillVal(sk.heal, lvl) * (1 + p.healPct / 100), until: t + sk.dur * 1000, next: t + 1000 });
+        fxd.d = target.id;
         break;
-      }
+      case 'shield':
+        target.shield = Math.round(p.matk * skillVal(sk.shield, lvl) * (1 + p.healPct / 100));
+        target.shieldUntil = t + 15000;
+        target.selfDirty = true;
+        fxd.d = target.id;
+        break;
     }
-    p.mp -= cost;
-    p.cds[sid] = t + sk.cd * 1000;
+    // generazione di risorsa e punti, effetti su di sé
+    if (sk.gen) p.res = Math.min(p.rmax, p.res + sk.gen);
+    if (sk.pts) p.pts = Math.min(PTS_MAX, p.pts + sk.pts + (behind ? sk.behind.pts : 0));
+    if (sk.buff && sk.type === 'strike') this.addBuff(p, sk.buff, lvl);
+    const viaOk = (o) => !o.via || o.via === p.ch.via;
+    if (crit && sk.onCrit && viaOk(sk.onCrit)) this.addBuff(p, sk.onCrit.buff, 1);
+    if (sk.proc && viaOk(sk.proc) && Math.random() < sk.proc.chance) this.addBuff(p, sk.proc.buff, 1);
+    this.advanceChain(p, sid, t);
+    if (sk.cd) { p.cds[sid] = t + sk.cd * 1000; }
     if (offensive) p.lastCombat = t;
     p.selfDirty = true; this.touch(p);
-    this.send(p, { t: 'cd', s: sid, ms: sk.cd * 1000 });
+    this.send(p, { t: 'cd', s: sid, ms: (sk.cd || 0) * 1000, gcd: gcd ?? (sk.offgcd ? 0 : this.gcdMs(p)) });
     this.fx(p, fxd);
   }
 
-  addBuff(p, sid, sk, lvl) {
+  // Monaco: Pugno → Calcio → Palmo in ordine attiva la Forma Perfetta.
+  advanceChain(p, sid, t) {
+    const c = CLASSES[p.cls];
+    const chain = this.chainOf(p);
+    if (!chain || !chain.includes(sid)) return;
+    if (t - p.chainAt > 6000) p.chainIdx = 0;
+    if (sid === chain[p.chainIdx]) { p.chainIdx++; p.chainAt = t; }
+    else if (sid === chain[0]) { p.chainIdx = 1; p.chainAt = t; }
+    else p.chainIdx = 0;
+    if (p.chainIdx >= chain.length) {
+      p.chainIdx = 0;
+      p.pts = Math.min(PTS_MAX, p.pts + 2);
+      const pr = p.ch.via && VIE[p.ch.via].passive.chainRes;
+      if (pr) p.res = Math.min(p.rmax, p.res + pr);
+      this.addBuff(p, c.chainBuff, 1, true);
+    }
+  }
+
+  chainOf(p) {
+    const v = p.ch.via && VIE[p.ch.via].passive.chain;
+    return v || CLASSES[p.cls].chain || null;
+  }
+
+  // Mette nella barra rapida le abilità appena sbloccate.
+  autoQuickbar(p, announce) {
+    const c = CLASSES[p.cls];
+    const known = new Set(p.ch.qb.filter(Boolean).filter(q => q.k === 's').map(q => q.id));
+    const list = [...c.baseSkills, ...(p.ch.via ? Object.values(SKILLS).filter(s => s.via === p.ch.via).map(s => s.id) : [])];
+    for (const sid of list) {
+      if (!this.lvlOf(p, sid) || known.has(sid)) continue;
+      const slot = p.ch.qb.findIndex((q, i) => !q && i < QB_SIZE - 2);
+      if (slot >= 0) p.ch.qb[slot] = { k: 's', id: sid };
+      if (announce) this.sys(p, `Nuova abilità: ${SKILLS[sid].name}`);
+    }
+    p.selfDirty = true;
+  }
+
+  addBuff(p, id, lvl = 1, notify = false) {
+    const def = BUFFS[id];
+    if (!def) return;
     const stats = {};
-    for (const k in sk.buff) stats[k] = Math.round(skillVal(sk.buff[k], lvl) * 10) / 10;
-    p.buffs = p.buffs.filter(b => b.sid !== sid);
-    p.buffs.push({ sid, stats, until: NOW() + sk.dur * 1000 });
+    if (def.stats) for (const k in def.stats) stats[k] = Math.round(skillVal(def.stats[k], lvl) * 10) / 10;
+    p.buffs = p.buffs.filter(b => b.id !== id);
+    p.buffs.push({ id, stats, until: NOW() + def.dur * 1000 });
     this.recalc(p);
+    if (notify || def.proc) this.send(p, { t: 'fx', k: 'proc', s: p.id, b: id });
   }
 
   // ------------------------------------------------------------ chat e comandi
@@ -847,7 +1133,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /aiuto. Chat: !testo = grido al regno, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        if (p.gm) sys('GM: /item id [n] [+liv], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /via nome, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'online': return sys(`In linea (${this.players.size}): ${[...this.players].map(q => `${q.name} [${q.lvl}]`).join(', ')}`);
       case 'pos': return sys(`Posizione: ${Math.round(p.x)}, ${Math.round(p.z)}`);
@@ -865,7 +1151,8 @@ export class World {
         const L = clamp(parseInt(a[0], 10) || 1, 1, MAX_LEVEL), diff = L - p.lvl;
         p.lvl = L; p.ch.lvl = L; p.ch.exp = 0;
         if (diff > 0) { p.ch.statPts += diff * 3; p.ch.skillPts += diff; }
-        this.recalc(p); p.hp = p.maxHp; p.mp = p.maxMp; this.touch(p);
+        this.recalc(p); p.hp = p.maxHp; if (p.rtype === 'mana') p.res = p.rmax; this.touch(p);
+        this.autoQuickbar(p, false);
         return sys(`Livello impostato a ${L}.`);
       }
       case 'exp': return this.gainExp(p, Math.max(0, parseInt(a[0], 10) || 0));
@@ -884,7 +1171,15 @@ export class World {
         for (let i = 0; i < n; i++) this.spawnMob(ty, p.x + rand(-5, 5), p.z + rand(-5, 5), null, true);
         return;
       }
-      case 'heal': p.hp = p.maxHp; p.mp = p.maxMp; p.selfDirty = true; this.touch(p); return;
+      case 'heal': p.hp = p.maxHp; if (p.rtype !== 'ira') p.res = p.rmax; p.selfDirty = true; this.touch(p); return;
+      case 'risorsa': p.res = p.rmax; p.selfDirty = true; return;
+      case 'via': {
+        if (!CLASSES[p.cls].vie.includes(a[0])) return sys(`Vie disponibili: ${CLASSES[p.cls].vie.join(', ')}`);
+        p.ch.via = a[0]; p.buffs = [];
+        p.ch.qb = p.ch.qb.map(q => (q && q.k === 's' && SKILLS[q.id] && SKILLS[q.id].via && SKILLS[q.id].via !== a[0]) ? null : q);
+        this.recalc(p); this.autoQuickbar(p, false);
+        return sys(`Via impostata: ${VIE[a[0]].name}`);
+      }
       case 'rate': {
         const k = a[0], v = parseFloat(a[1]);
         if (!['exp', 'drop', 'tael'].includes(k) || !(v > 0)) return sys('Uso: /rate exp|drop|tael valore (es. /rate exp 2)');
@@ -1020,10 +1315,11 @@ export class World {
     const it = ITEMS[s.id];
     if (equipSlotOf(it)) return this.equip(p, i);
     if (it.type === 'potion') {
-      if (it.hp && !it.mp && p.hp >= p.maxHp) return this.err(p, 'La vita è già al massimo');
-      if (it.mp && !it.hp && p.mp >= p.maxMp) return this.err(p, 'Il chi è già al massimo');
+      if (it.hp && p.hp >= p.maxHp) return this.err(p, 'La vita è già al massimo');
+      if (it.mpPct && p.rtype !== 'mana') return this.err(p, 'Non usi il Mana');
+      if (it.mpPct && p.res >= p.rmax) return this.err(p, 'Il Mana è già al massimo');
       if (it.hp) this.heal(p, it.hp);
-      if (it.mp) { p.mp = Math.min(p.maxMp, p.mp + it.mp); p.selfDirty = true; }
+      if (it.mpPct) { p.res = Math.min(p.rmax, p.res + p.rmax * it.mpPct / 100); p.resDirty = true; }
       s.n--; if (s.n <= 0) p.ch.inv[i] = null;
       p.invDirty = true;
       return;
@@ -1052,8 +1348,9 @@ export class World {
   onSkillUp(p, sid) {
     const sk = SKILLS[sid];
     if (!sk || sk.cls !== p.cls) return;
-    if (sk.via && p.ch.via !== sk.via) return this.err(p, 'Questa abilità appartiene a un\'altra Via');
-    const cur = p.ch.skills[sid] || 0;
+    if (sk.via && p.ch.via !== sk.via) return this.err(p, "Questa abilità appartiene a un'altra Via");
+    const cur = this.lvlOf(p, sid);
+    if (!cur) return this.err(p, `Si sblocca al livello ${sk.lvl}`);
     if (cur >= SKILL_MAX) return this.err(p, 'Abilità già al livello massimo');
     if (cur < SKILL_MAX_POINTS) {
       if (p.ch.skillPts <= 0) return this.err(p, 'Nessun punto abilità disponibile');
@@ -1070,7 +1367,9 @@ export class World {
     if (p.ch.via) return this.err(p, 'Hai già scelto la tua Via');
     if (p.lvl < VIA_LEVEL) return this.err(p, `Potrai scegliere una Via al livello ${VIA_LEVEL}`);
     if (!VIE[via] || !CLASSES[p.cls].vie.includes(via)) return;
-    p.ch.via = via; p.selfDirty = true;
+    p.ch.via = via;
+    this.recalc(p);
+    this.autoQuickbar(p, false);
     this.send(p, { t: 'notice', m: `Hai intrapreso la ${VIE[via].name}` });
   }
 

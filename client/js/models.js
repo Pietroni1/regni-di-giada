@@ -18,6 +18,7 @@ function mesh(geo, mat, x = 0, y = 0, z = 0) {
   m.castShadow = true;
   return m;
 }
+const withRot = (m, axis, v) => { m.rotation[axis] = v; return m; };
 const glow = (c, i = 1) => new THREE.MeshLambertMaterial({ color: c, emissive: c, emissiveIntensity: i, flatShading: true });
 
 // ------------------------------------------------------------------ armi
@@ -54,7 +55,7 @@ function weaponMesh(id, up) {
     }
     case 'fists': {
       g.add(mesh(sph(0.13, 6, 5), up >= 7 ? metal : lam(tier >= 2 ? metalC : 0xe8e0c8), 0, -0.02, 0));
-      if (tier >= 2) for (let i = 0; i < 3; i++) g.add(mesh(cone(0.025, 0.2, 4), metal, -0.06 + i * 0.06, -0.1, 0.1)).rotation.x = 1.2;
+      if (tier >= 2) for (let i = 0; i < 3; i++) g.add(withRot(mesh(cone(0.025, 0.2, 4), metal, -0.06 + i * 0.06, -0.1, 0.1), 'x', 1.2));
       break;
     }
     case 'staff': {
@@ -122,7 +123,7 @@ function humanoid(o) {
     case 'hood': head.add(mesh(cap(0.25), lam(o.robe), 0, 0.18, -0.03)); head.add(mesh(box(0.36, 0.1, 0.06), lam(o.trim ?? 0x6b1e1e), 0, 0.12, 0.19)); break;
     case 'bald': break;
   }
-  if (o.beard) head.add(mesh(cone(0.12, 0.45, 6), lam(0xe8e8e8), 0, -0.05, 0.12)).rotation.x = Math.PI;
+  if (o.beard) head.add(withRot(mesh(cone(0.12, 0.45, 6), lam(0xe8e8e8), 0, -0.05, 0.12), 'x', Math.PI));
   const hatGroup = new THREE.Group(); head.add(hatGroup);
   return { root, body, torso, head, hatGroup, legL, legR, armL, armR, height: 2.3 };
 }
@@ -176,7 +177,7 @@ function lanternSpirit(color) {
   const root = new THREE.Group(); const body = new THREE.Group(); root.add(body);
   const shell = mesh(cyl(0.55, 0.55, 1.0, 10), new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.6, transparent: true, opacity: 0.92 }), 0, 1.8, 0);
   body.add(shell);
-  for (let i = 0; i < 4; i++) body.add(mesh(G('lr', () => new THREE.TorusGeometry(0.56, 0.02, 4, 12)), lam(0x2a1a10), 0, 1.4 + i * 0.27, 0)).rotation.x = Math.PI / 2;
+  for (let i = 0; i < 4; i++) body.add(withRot(mesh(G('lr', () => new THREE.TorusGeometry(0.56, 0.02, 4, 12)), lam(0x2a1a10), 0, 1.4 + i * 0.27, 0), 'x', Math.PI / 2));
   body.add(mesh(cyl(0.3, 0.45, 0.15, 10), lam(0x1a1a1a), 0, 2.37, 0));
   body.add(mesh(cyl(0.45, 0.3, 0.15, 10), lam(0x1a1a1a), 0, 1.23, 0));
   for (const s of [-1, 1]) body.add(mesh(box(0.12, 0.16, 0.05), lam(0x1a0a05), s * 0.18, 1.95, 0.53));
@@ -186,11 +187,28 @@ function lanternSpirit(color) {
   return { root, body, float: true, height: 2.8 };
 }
 
+// Fantoccio d'addestramento: palo di legno, corpo di paglia, testa di tela con bersaglio dipinto.
+function trainingDummy() {
+  const root = new THREE.Group(); const body = new THREE.Group(); root.add(body);
+  const wood = lam(0x6a4a2a), straw = lam(0xc8a860), rope = lam(0x8a6a3a), cloth = lam(0xd8c8a0);
+  root.add(mesh(cyl(0.6, 0.7, 0.25, 8), lam(0x5a4a3a), 0, 0.12, 0));
+  body.add(mesh(cyl(0.09, 0.11, 2.0, 6), wood, 0, 1.0, 0));
+  body.add(mesh(cyl(0.34, 0.3, 0.95, 8), straw, 0, 1.45, 0));
+  for (const y of [1.12, 1.45, 1.78]) body.add(mesh(cyl(0.35, 0.35, 0.06, 8), rope, 0, y, 0));
+  const arms = mesh(cyl(0.06, 0.06, 1.6, 6), wood, 0, 1.68, 0); arms.rotation.z = Math.PI / 2; body.add(arms);
+  for (const s of [-1, 1]) body.add(withRot(mesh(cyl(0.12, 0.1, 0.35, 6), straw, s * 0.72, 1.68, 0), 'z', Math.PI / 2));
+  body.add(mesh(sph(0.24, 8, 6), cloth, 0, 2.15, 0));
+  body.add(withRot(mesh(cyl(0.12, 0.12, 0.02, 12), lam(0xa82a1a), 0, 2.16, 0.235), 'x', Math.PI / 2));
+  body.add(withRot(mesh(cyl(0.05, 0.05, 0.025, 10), cloth, 0, 2.16, 0.245), 'x', Math.PI / 2));
+  body.add(mesh(cone(0.08, 0.2, 5), straw, 0, 2.42, 0));
+  return { root, body, dummy: true, height: 2.5 };
+}
+
 function obelisk(color, scale) {
   const root = new THREE.Group(); const body = new THREE.Group(); root.add(body);
   const stone = lam(0x2a2630);
-  body.add(mesh(cyl(0.9, 1.5, 6.5, 4), stone, 0, 3.25, 0)).rotation.y = Math.PI / 4;
-  body.add(mesh(cone(0.95, 1.2, 4), stone, 0, 7.1, 0)).rotation.y = Math.PI / 4;
+  body.add(withRot(mesh(cyl(0.9, 1.5, 6.5, 4), stone, 0, 3.25, 0), 'y', Math.PI / 4));
+  body.add(withRot(mesh(cone(0.95, 1.2, 4), stone, 0, 7.1, 0), 'y', Math.PI / 4));
   const rune = glow(color, 1.2);
   for (let i = 0; i < 4; i++) {
     const a = i * Math.PI / 2;
@@ -328,6 +346,7 @@ export function buildMobModel(info) {
     }
     case 'lantern': rig = lanternSpirit(d.color); break;
     case 'obelisk': rig = obelisk(d.color, d.scale || 1); break;
+    case 'dummy': rig = trainingDummy(); break;
     default: rig = quadruped({ color: 0x888888, w: 0.6, h: 0.6, len: 1.2, legH: 0.5, legW: 0.15, hw: 0.4, hh: 0.4, hl: 0.4, snout: 0.2 });
   }
   if (d.scale && d.model !== 'obelisk') { rig.root.scale.multiplyScalar(d.scale); rig.height *= d.scale; }
@@ -374,6 +393,13 @@ export class Anim {
       return;
     }
     if (r.drop) { r.body.rotation.y += dt * 1.6; r.body.position.y = Math.sin(this.t * 2.5) * 0.08; return; }
+    if (r.dummy) {
+      if (this.hurt > 0) this.wob = 0.22;
+      this.hurt = Math.max(0, this.hurt - dt);
+      this.wob = (this.wob || 0) * Math.max(0, 1 - dt * 4);
+      r.body.rotation.x = Math.sin(this.t * 18) * this.wob;
+      return;
+    }
     if (r.stone) {
       r.shards.rotation.y += dt * 0.6;
       r.shards.children.forEach((s, i) => { s.position.y = 4 + Math.sin(this.t * 1.5 + i) * 0.6; s.rotation.y += dt * 2; });
@@ -422,6 +448,10 @@ export class Anim {
       this.cast -= dt;
       const p = Math.sin((1 - this.cast / 0.55) * Math.PI);
       aR = -2.4 * p; aL = -2.4 * p;
+    }
+    if (this.channel > 0) {
+      this.channel -= dt;
+      aR = -1.75 + Math.sin(this.t * 7) * 0.12; aL = -1.75 - Math.sin(this.t * 7) * 0.12;
     }
     if (this.stun > 0) { this.stun -= dt; r.head.rotation.z = Math.sin(this.t * 8) * 0.2; } else r.head.rotation.z = 0;
     r.armR.pv.rotation.x = aR;

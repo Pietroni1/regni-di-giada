@@ -54,6 +54,7 @@ function M(geo, mat, x = 0, y = 0, z = 0, shadow = true) {
   return m;
 }
 
+const withRot = (m, axis, v) => { m.rotation[axis] = v; return m; };
 // Unisce più geometrie in una sola con colori per vertice (per instancing di alberi ecc.)
 function mergeParts(parts) {
   const geos = parts.map(p => {
@@ -357,7 +358,7 @@ function pagodaModel(size, roofColor, accent) {
   }
   const gold = lam(0xd8b048, { emissive: 0x3a2a00 });
   g.add(M(new THREE.CylinderGeometry(0.12, 0.2, 2.6, 6), gold, 0, y + 1.0, 0));
-  for (let i = 0; i < 4; i++) g.add(M(new THREE.TorusGeometry(0.35 - i * 0.06, 0.06, 4, 10), gold, 0, y + 0.5 + i * 0.45, 0)).rotation.x = Math.PI / 2;
+  for (let i = 0; i < 4; i++) g.add(withRot(M(new THREE.TorusGeometry(0.35 - i * 0.06, 0.06, 4, 10), gold, 0, y + 0.5 + i * 0.45, 0), 'x', Math.PI / 2));
   g.add(M(new THREE.SphereGeometry(0.28, 8, 6), gold, 0, y + 2.5, 0));
   // targa del regno sopra l'ingresso
   g.add(M(new THREE.BoxGeometry(2.2, 0.8, 0.12), lam(accent), 0, 3.3, size / 2 + 0.08, false));
@@ -553,7 +554,7 @@ function buildShrines(scene) {
     g.add(M(new THREE.CylinderGeometry(0.18, 0.22, 1.0, 6), st, 0, 0.8, 0));
     g.add(M(new THREE.BoxGeometry(0.8, 0.55, 0.8), st, 0, 1.55, 0));
     g.add(M(new THREE.BoxGeometry(0.3, 0.3, 0.82), new THREE.MeshBasicMaterial({ color: 0xffb060 }), 0, 1.55, 0, false));
-    g.add(M(new THREE.ConeGeometry(0.75, 0.55, 4), st, 0, 2.1, 0)).rotation.y = Math.PI / 4;
+    g.add(withRot(M(new THREE.ConeGeometry(0.75, 0.55, 4), st, 0, 2.1, 0), 'y', Math.PI / 4));
     g.position.set(x, h - 0.05, z);
     g.rotation.y = rnd() * 6;
     all.add(g);

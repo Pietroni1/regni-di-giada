@@ -67,12 +67,14 @@
     <div class="pf-top"><span id="pf-glyph" class="pf-glyph"></span><div><div id="pf-name"></div><div id="pf-sub"></div></div></div>
     <div class="bar hp"><div class="fill"></div><span></span></div>
     <div class="bar mp"><div class="fill"></div><span></span></div>
+    <div id="pts-row"></div>
     <div id="buff-row"></div>
   </div>
 
   <div id="target-frame" class="hud-panel hidden">
     <div id="tf-name"></div>
     <div class="bar hp"><div class="fill"></div><span></span></div>
+    <div id="tf-dots"></div>
   </div>
 
   <div id="minimap-wrap" class="hud-panel">
@@ -89,6 +91,7 @@
   </div>
 
   <div id="hud-bottom">
+    <div id="cast-bar" class="hidden"><div class="fill"></div><span></span></div>
     <div id="quickbar"></div>
     <div id="exp-bar"><div class="fill"></div><span></span></div>
   </div>
@@ -97,6 +100,7 @@
     <button data-win="win-character" title="Personaggio (C)">人<small>C</small></button>
     <button data-win="win-inventory" title="Inventario (I)">囊<small>I</small></button>
     <button data-win="win-skills" title="Abilità (K)">技<small>K</small></button>
+    <button data-win="win-dps" title="Misuratore dei danni (P)">計<small>P</small></button>
     <button data-win="win-help" title="Aiuto (H)">?<small>H</small></button>
   </div>
 
@@ -115,6 +119,12 @@
   <div id="win-skills" class="window hidden" style="left:340px;top:120px">
     <div class="title">Abilità<button class="close">×</button></div>
     <div id="skills-body"></div>
+  </div>
+
+  <div id="win-dps" class="window hidden" style="right:220px;top:12px">
+    <div class="title">Misuratore dei danni<button class="close">×</button></div>
+    <div id="dps-body"></div>
+    <div class="row"><button id="dps-reset" class="btn">Azzera</button></div>
   </div>
 
   <div id="win-shop" class="window hidden" style="left:340px;top:140px">
@@ -143,12 +153,16 @@
         <tr><td>Rotella</td><td>Zoom</td></tr>
         <tr><td>Spazio</td><td>Attacca il bersaglio o il nemico più vicino</td></tr>
         <tr><td>Tab</td><td>Seleziona il prossimo nemico</td></tr>
-        <tr><td>1 – 8</td><td>Barra rapida (abilità e oggetti)</td></tr>
+        <tr><td>1 – 9, 0</td><td>Barra rapida (abilità e oggetti)</td></tr>
         <tr><td>Z</td><td>Raccogli gli oggetti vicini</td></tr>
-        <tr><td>I / C / K</td><td>Inventario / Personaggio / Abilità</td></tr>
+        <tr><td>I / C / K / P</td><td>Inventario / Personaggio / Abilità / Misuratore dei danni</td></tr>
         <tr><td>Invio</td><td>Chat (!testo grida al regno, @nome sussurra)</td></tr>
         <tr><td>Esc</td><td>Chiudi finestre / deseleziona</td></tr>
       </table>
+      <p><b>Combattimento:</b> le abilità condividono un tempo di ricarica globale di 1 secondo (quelle segnate come "fuori dal GCD" no).
+      Ogni classe ha una risorsa: Ira (Lama), Energia + Punti combo (Ombra), Chi + Sfere (Monaco), Mana + Cariche celesti (Mistico).
+      Gli incantesimi con tempo di lancio si interrompono se ti muovi. Un bordo dorato sulla barra rapida indica un effetto attivo che potenzia quell'abilità.
+      Nei villaggi ci sono i fantocci d'addestramento: provali con il misuratore dei danni (P).</p>
       <p>Trascina abilità e consumabili nella barra rapida. Trascina gli oggetti fuori dalle finestre per gettarli a terra.
       Clic destro su un oggetto dell'inventario per usarlo o equipaggiarlo. Al livello 5 scegli la tua Via nella finestra Abilità.</p>
       <p>Fuori dalle mura dei villaggi, dal livello 10, i guerrieri degli altri regni possono attaccarti.</p>
