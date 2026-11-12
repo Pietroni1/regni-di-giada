@@ -1,0 +1,17 @@
+{
+  "name": "regni-di-giada",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MMORPG privato in stile orientale classico, giocabile dal browser",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "three": "0.170.0",
+    "ws": "8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

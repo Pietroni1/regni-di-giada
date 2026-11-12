@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regni di Giada</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Noto+Serif+SC:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+<script type="importmap">{ "imports": { "three": "/lib/three/three.module.js" } }</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="loading" class="screen">
+  <div class="logo"><span class="glyph">玉</span>Regni di Giada</div>
+  <div class="loading-text">Il mondo prende forma...</div>
+</div>
+
+<!-- Accesso -->
+<div id="login-screen" class="screen hidden">
+  <div class="logo"><span class="glyph">玉</span>Regni di Giada</div>
+  <div class="panel login-panel">
+    <label>Account<input id="login-user" autocomplete="username" maxlength="20"></label>
+    <label>Password<input id="login-pass" type="password" autocomplete="current-password" maxlength="64"></label>
+    <div class="row">
+      <button id="btn-login" class="btn primary">Accedi</button>
+      <button id="btn-register" class="btn">Crea account</button>
+    </div>
+    <div id="login-msg" class="msg"></div>
+  </div>
+</div>
+
+<!-- Selezione personaggio -->
+<div id="select-screen" class="screen hidden">
+  <div class="logo small"><span class="glyph">玉</span>Regni di Giada</div>
+  <div class="select-wrap">
+    <div class="panel char-list-panel">
+      <h2>I tuoi personaggi</h2>
+      <div id="char-list"></div>
+      <button id="btn-new-char" class="btn">Nuovo personaggio</button>
+      <button id="btn-logout" class="btn ghost">Esci</button>
+    </div>
+    <div class="panel create-panel hidden" id="create-panel">
+      <h2>Nuovo personaggio</h2>
+      <h3>Regno</h3>
+      <div id="kingdom-pick" class="pick-row"></div>
+      <h3>Classe</h3>
+      <div id="class-pick" class="pick-row"></div>
+      <label>Nome<input id="new-name" maxlength="16"></label>
+      <div class="row">
+        <button id="btn-create" class="btn primary">Crea</button>
+        <button id="btn-cancel-create" class="btn ghost">Annulla</button>
+      </div>
+    </div>
+  </div>
+  <div id="select-msg" class="msg"></div>
+</div>
+
+<!-- Interfaccia di gioco -->
+<div id="game-ui" class="hidden">
+  <div id="labels"></div>
+  <div id="floaters"></div>
+
+  <div id="player-frame" class="hud-panel">
+    <div class="pf-top"><span id="pf-glyph" class="pf-glyph"></span><div><div id="pf-name"></div><div id="pf-sub"></div></div></div>
+    <div class="bar hp"><div class="fill"></div><span></span></div>
+    <div class="bar mp"><div class="fill"></div><span></span></div>
+    <div id="buff-row"></div>
+  </div>
+
+  <div id="target-frame" class="hud-panel hidden">
+    <div id="tf-name"></div>
+    <div class="bar hp"><div class="fill"></div><span></span></div>
+  </div>
+
+  <div id="minimap-wrap" class="hud-panel">
+    <canvas id="minimap" width="180" height="180"></canvas>
+    <div id="zone-name"></div>
+    <div id="coords"></div>
+  </div>
+
+  <div id="notice"></div>
+
+  <div id="chat">
+    <div id="chat-log"></div>
+    <input id="chat-input" maxlength="200" placeholder="Invio per scrivere — !grido  @nome sussurro  /aiuto">
+  </div>
+
+  <div id="hud-bottom">
+    <div id="quickbar"></div>
+    <div id="exp-bar"><div class="fill"></div><span></span></div>
+  </div>
+
+  <div id="menu-buttons">
+    <button data-win="win-character" title="Personaggio (C)">人<small>C</small></button>
+    <button data-win="win-inventory" title="Inventario (I)">囊<small>I</small></button>
+    <button data-win="win-skills" title="Abilità (K)">技<small>K</small></button>
+    <button data-win="win-help" title="Aiuto (H)">?<small>H</small></button>
+  </div>
+
+  <div id="win-inventory" class="window hidden" style="right:20px;top:230px">
+    <div class="title">Inventario<button class="close">×</button></div>
+    <div class="equip-grid" id="equip-slots"></div>
+    <div class="inv-grid" id="inv-slots"></div>
+    <div class="tael-row"><span class="coin">両</span><span id="tael">0</span> tael</div>
+  </div>
+
+  <div id="win-character" class="window hidden" style="left:20px;top:150px">
+    <div class="title">Personaggio<button class="close">×</button></div>
+    <div id="char-body"></div>
+  </div>
+
+  <div id="win-skills" class="window hidden" style="left:340px;top:120px">
+    <div class="title">Abilità<button class="close">×</button></div>
+    <div id="skills-body"></div>
+  </div>
+
+  <div id="win-shop" class="window hidden" style="left:340px;top:140px">
+    <div class="title"><span id="shop-title">Negozio</span><button class="close">×</button></div>
+    <div class="shop-hint">Clic sinistro: compra (Maiusc + clic: 10 pezzi). Clic destro su un oggetto dell'inventario: vendi.</div>
+    <div id="shop-items"></div>
+  </div>
+
+  <div id="win-smith" class="window hidden" style="left:340px;top:140px">
+    <div class="title">Fabbro Gao<button class="close">×</button></div>
+    <div id="smith-body"></div>
+  </div>
+
+  <div id="win-dialog" class="window hidden" style="left:50%;top:22%;transform:translateX(-50%)">
+    <div class="title"><span id="dialog-title"></span><button class="close">×</button></div>
+    <div id="dialog-text"></div>
+  </div>
+
+  <div id="win-help" class="window hidden" style="left:50%;top:12%;transform:translateX(-50%)">
+    <div class="title">Guida rapida<button class="close">×</button></div>
+    <div class="help-body">
+      <table>
+        <tr><td>W A S D / frecce</td><td>Muoviti</td></tr>
+        <tr><td>Clic sinistro</td><td>Muoviti, seleziona, attacca, parla, raccogli</td></tr>
+        <tr><td>Tasto destro + trascina</td><td>Ruota la visuale (anche Q / E)</td></tr>
+        <tr><td>Rotella</td><td>Zoom</td></tr>
+        <tr><td>Spazio</td><td>Attacca il bersaglio o il nemico più vicino</td></tr>
+        <tr><td>Tab</td><td>Seleziona il prossimo nemico</td></tr>
+        <tr><td>1 – 8</td><td>Barra rapida (abilità e oggetti)</td></tr>
+        <tr><td>Z</td><td>Raccogli gli oggetti vicini</td></tr>
+        <tr><td>I / C / K</td><td>Inventario / Personaggio / Abilità</td></tr>
+        <tr><td>Invio</td><td>Chat (!testo grida al regno, @nome sussurra)</td></tr>
+        <tr><td>Esc</td><td>Chiudi finestre / deseleziona</td></tr>
+      </table>
+      <p>Trascina abilità e consumabili nella barra rapida. Trascina gli oggetti fuori dalle finestre per gettarli a terra.
+      Clic destro su un oggetto dell'inventario per usarlo o equipaggiarlo. Al livello 5 scegli la tua Via nella finestra Abilità.</p>
+      <p>Fuori dalle mura dei villaggi, dal livello 10, i guerrieri degli altri regni possono attaccarti.</p>
+    </div>
+  </div>
+
+  <div id="death-overlay" class="hidden">
+    <div class="death-box">
+      <div class="death-title">Sei caduto</div>
+      <div id="death-text"></div>
+      <div class="row">
+        <button id="btn-respawn-here" class="btn">Rialzati qui</button>
+        <button id="btn-respawn-town" class="btn primary">Torna al villaggio</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tooltip" class="hidden"></div>
+  <div id="drag-ghost" class="hidden"></div>
+  <div id="confirm" class="window hidden" style="left:50%;top:35%;transform:translateX(-50%)">
+    <div class="title">Conferma</div>
+    <div id="confirm-text"></div>
+    <div class="row"><button id="confirm-yes" class="btn primary">Sì</button><button id="confirm-no" class="btn">No</button></div>
+  </div>
+</div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
