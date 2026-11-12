@@ -4,6 +4,7 @@ import { buildWorld } from './world3d.js';
 import { Post, QUALITIES } from './post.js';
 import { Net } from './net.js';
 import { Game } from './game.js';
+import { loadCharacterAssets } from './skinned.js';
 import { CLASSES } from '/shared/data.js';
 import { KINGDOMS, KINGDOM_IDS, heightAt } from '/shared/world.js';
 
@@ -37,6 +38,7 @@ async function boot() {
   show('loading');
   await new Promise(r => setTimeout(r, 30));
   world = buildWorld(scene, post);
+  try { await loadCharacterAssets(); } catch (e) { console.warn('Modello del personaggio non caricato, uso quello procedurale:', e); }
   net = new Net();
   try { await net.connect(); }
   catch { $('loading').querySelector('.loading-text').textContent = 'Impossibile collegarsi al server. Controlla che sia avviato e ricarica la pagina.'; return; }

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { ITEMS, CLASSES, MOBS, RARITIES } from '/shared/data.js';
 import { KINGDOMS } from '/shared/world.js';
 import { lam, toon, outlineMaterial, mergeParts } from './world3d.js';
+import { buildSkinnedHumanoid, hasSkinned, SkinAnim } from './skinned.js';
 
 const geoCache = new Map();
 function G(key, make) { let g = geoCache.get(key); if (!g) { g = make(); geoCache.set(key, g); } return g; }
@@ -70,12 +71,16 @@ function weaponMesh(id, up) {
       break;
     }
     case 'bow': {
-      const arc = new THREE.Mesh(G('bow', () => new THREE.TorusGeometry(0.8, 0.035, 4, 14, Math.PI * 0.85)), up >= 7 ? metal : lam(tier >= 3 ? 0x5a3a6a : 0x6a4a28));
-      arc.rotation.set(0, Math.PI / 2, Math.PI / 2 + Math.PI * 0.075);
-      arc.position.z = -0.25;
-      g.add(arc);
-      const str = mesh(box(0.01, 1.5, 0.01), lam(0xe0e0d0), 0, 0, 0.3);
-      g.add(str);
+      // arco lungo asimmetrico: la mano tiene il centro, i flettenti tornano verso l'arciere, corda dietro
+      const geo = G('bow2', () => {
+        const pts = [];
+        for (let i = 0; i <= 12; i++) { const a = (i / 12 - 0.5) * (Math.PI / 3); pts.push(new THREE.Vector3(0, 1.7 * Math.sin(a) + 0.12, 1.7 * Math.cos(a) - 1.7)); }
+        return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, 0.035, 5);
+      });
+      g.add(new THREE.Mesh(geo, up >= 7 ? metal : lam(tier >= 3 ? 0x5a3a6a : 0x6a4a28)));
+      g.add(mesh(box(0.05, 0.2, 0.06), wrap, 0, 0, 0));
+      const tipZ = 1.7 * Math.cos(Math.PI / 6) - 1.7;
+      g.add(mesh(box(0.01, 1.7, 0.01), lam(0xe0e0d0), 0, 0.12, tipZ));
       break;
     }
     case 'fists': {
@@ -96,7 +101,10 @@ function weaponMesh(id, up) {
 }
 
 // ------------------------------------------------------------------ umanoide
-function humanoid(o) {
+// Umanoide: modello con scheletro da Blender se disponibile, altrimenti quello procedurale.
+function humanoid(o) { return hasSkinned() ? buildSkinnedHumanoid(o) : humanoidLegacy(o); }
+
+function humanoidLegacy(o) {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
@@ -305,7 +313,7 @@ function obelisk(color, scale) {
 function addOutlines(rig) {
   const list = [];
   rig.root.traverse(m => {
-    if (!m.isMesh || m.userData.outline || m === rig.pick) return;
+    if (!m.isMesh || m.isSkinnedMesh || m.userData.outline || m === rig.pick) return;
     const mat = m.material;
     if (mat.transparent || (mat.emissive && mat.emissive.getHex() !== 0) || mat.isMeshBasicMaterial) return;
     const o = new THREE.Mesh(m.geometry, outlineMaterial(0.028));
@@ -315,6 +323,7 @@ function addOutlines(rig) {
   });
   for (const [m, o] of list) m.add(o);
   rig.outlines = list.map(x => x[1]);
+  if (rig.outlineMesh) rig.outlines.push(rig.outlineMesh);
 }
 
 // Fonde le mesh opache di ogni gruppo animato in un'unica mesh a colori per vertice: molte meno draw call.
@@ -462,7 +471,7 @@ export function buildNpcModel(info) {
     hammer.add(mesh(box(0.25, 0.14, 0.14), lam(0x3a3a3a), 0, -0.5, 0));
     rig.armR.grip.add(hammer);
   }
-  if (info.role === 'erbe') rig.torso.rotation.x = 0.18;
+  if (info.role === 'erbe') { rig.torso.rotation.x = 0.18; if (rig.skinned) rig.extraPose.spine = [0.3, 0, 0]; }
   if (info.role === 'custode') {
     const l = new THREE.Group();
     l.add(mesh(cyl(0.02, 0.02, 0.4, 4), lam(0x2a1a10), 0, -0.2, 0));
@@ -503,9 +512,10 @@ export function buildMobModel(info) {
     case 'bandit': rig = humanoid({ robe: 0x3b2f2f, trim: 0x6a1e1e, pants: 0x2a2424, hair: 0x101010, hairStyle: 'hood', sash: 0x6a1e1e }); applyWeapon(rig, 'sciabola_bronzo', 0); break;
     case 'bandit_archer': rig = humanoid({ robe: 0x3b3a2f, trim: 0x6a5a2a, pants: 0x2a2a24, hair: 0x101010, hairStyle: 'topknot', sash: 0x6a5a2a }); applyWeapon(rig, 'arco_corno', 0); setHat(rig, 'cappello_paglia'); break;
     case 'terracotta': {
-      rig = humanoid({ robe: d.color, sleeve: d.color, pants: 0x8a5a3a, skin: 0xb07a52, hair: 0x7a4a2a, hairStyle: 'topknot', armor: 0x8a5a38, sash: 0x6a3a22 });
+      const clay = (c) => new THREE.Color(c).lerp(new THREE.Color(0xb07a52), 0.6).getHex();
+      rig = humanoid({ robe: clay(d.color), sleeve: clay(d.color), pants: clay(0x8a5a3a), skin: 0xb07a52, hair: clay(0x7a4a2a), hairStyle: 'topknot', armor: clay(0x8a5a38), sash: clay(0x6a3a22), trim: clay(0x8a6a3a), shoes: clay(0x2a1f18), eye: 0x5a3a22 });
       applyWeapon(rig, 'spada_ferro', 0);
-      rig.root.traverse(m => { if (m.isMesh && m.material.color) { m.material = lam(new THREE.Color(m.material.color).lerp(new THREE.Color(0xb07a52), 0.6).getHex()); } });
+      if (!rig.skinned) rig.root.traverse(m => { if (m.isMesh && m.material.color) { m.material = lam(new THREE.Color(m.material.color).lerp(new THREE.Color(0xb07a52), 0.6).getHex()); } });
       break;
     }
     case 'general': {
@@ -524,9 +534,9 @@ export function buildMobModel(info) {
     case 'obelisk': rig = obelisk(d.color, d.scale || 1); break;
     case 'dummy': rig = trainingDummy(); break;
     case 'shade': {
-      rig = humanoid({ robe: 0x2a1a3a, trim: 0x5a3a8a, pants: 0x1a1024, hair: 0x0a0a0a, hairStyle: 'hood', sash: 0x5a3a8a, skirt: true });
+      rig = humanoid({ robe: 0x2a1a3a, trim: 0x5a3a8a, pants: 0x1a1024, hair: 0x0a0a0a, hairStyle: 'hood', sash: 0x5a3a8a, skirt: true, faceless: true, ghost: { opacity: 0.8, emissive: 0x2a1048, intensity: 0.6 } });
       applyWeapon(rig, 'pugnali_serpe', 0);
-      rig.root.traverse(m => { if (m.isMesh) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.78; m.material.emissive = new THREE.Color(0x2a1048); m.material.emissiveIntensity = 0.6; } });
+      if (!rig.skinned) rig.root.traverse(m => { if (m.isMesh) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.78; m.material.emissive = new THREE.Color(0x2a1048); m.material.emissiveIntensity = 0.6; } });
       for (const sx of [-1, 1]) rig.head.add(mesh(box(0.07, 0.03, 0.02), glow(0xc080ff, 1.6), sx * 0.08, 0.25, 0.25));
       break;
     }
@@ -572,16 +582,23 @@ export class Anim {
   constructor(rig) {
     this.rig = rig; this.phase = Math.random() * 6; this.t = Math.random() * 10;
     this.atk = 0; this.atkDur = 0.32; this.cast = 0; this.dead = false; this.deadT = 0; this.hurt = 0; this.stun = 0;
+    if (rig.skinned) this.sk = new SkinAnim(rig);
   }
-  attack(style) { this.atk = this.atkDur; this.style = style; this.side = !this.side; }
-  castSpell() { this.cast = 0.55; }
-  hit() { this.hurt = 0.18; }
-  die() { this.dead = true; this.deadT = 0; }
-  revive() { this.dead = false; this.deadT = 0; const r = this.rig; r.body.rotation.set(0, 0, 0); r.body.position.set(0, 0, 0); r.root.visible = true; if (r.stone) r.body.scale.set(1, 1, 1); }
+  attack(style) { if (this.sk) return this.sk.attack(); this.atk = this.atkDur; this.style = style; this.side = !this.side; }
+  castSpell() { if (this.sk) return this.sk.castSpell(); this.cast = 0.55; }
+  hit() { if (this.sk) return this.sk.hit(); this.hurt = 0.18; }
+  die() { this.dead = true; this.deadT = 0; this.justDied = true; if (this.sk) this.sk.die(false); }
+  revive() {
+    this.dead = false; this.deadT = 0;
+    const r = this.rig;
+    if (this.sk) { this.sk.revive(); r.root.visible = true; return; }
+    r.body.rotation.set(0, 0, 0); r.body.position.set(0, 0, 0); r.root.visible = true; if (r.stone) r.body.scale.set(1, 1, 1);
+  }
 
   update(dt, speed) {
     const r = this.rig;
     this.t += dt;
+    if (this.sk) return this.updateSkinned(dt, speed);
     if (this.dead) {
       this.deadT = Math.min(1, this.deadT + dt * 2.2);
       const e = this.deadT;
@@ -668,6 +685,26 @@ export class Anim {
     r.torso.rotation.y = twist;
   }
 }
+
+Anim.prototype.updateSkinned = function (dt, speed) {
+  const r = this.rig, sk = this.sk;
+  // nato già morto (entità che appare a terra): salta subito alla fine dell'animazione
+  if (this.justDied && this.deadT >= 1) sk.die(true);
+  this.justDied = false;
+  if (this.dead) this.deadT = Math.min(1, this.deadT + dt * 2.2);
+  if (this.stun > 0) this.stun -= dt;
+  if (this.channel > 0) this.channel -= dt;
+  const moving = speed > 0.3;
+  if (r.mounted) {
+    this.phase += dt * (moving ? Math.min(speed, 12) * 1.5 : 0);
+    const gal = moving ? Math.sin(this.phase * 0.8) : 0;
+    r.horse.legs.forEach((l, i) => { l.rotation.x = (i < 2 ? gal : -gal) * 0.75 * (i % 2 ? 0.85 : 1); });
+    r.horse.neck.rotation.x = moving ? Math.sin(this.phase * 0.8 + 1) * 0.12 : Math.sin(this.t * 1.2) * 0.04;
+    r.horse.group.position.y = moving ? Math.abs(gal) * 0.08 : 0;
+    r.body.position.y = 1.05 + (moving ? Math.abs(gal) * 0.1 : 0);
+  }
+  sk.update(dt, speed, !!r.mounted, this.stun, this.dead ? 0 : this.channel);
+};
 
 export function buildModel(info) {
   switch (info.k) {

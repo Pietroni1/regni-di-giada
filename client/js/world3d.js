@@ -80,7 +80,7 @@ function cutaway(mat, key) {
       if (vCutDepth < uCutNear) {
         vec2 nd = vCutClip.xy / vCutClip.w - uCutCenter; nd.x *= uCutAspect;
         float hole = 1.0 - smoothstep(uCutR * 0.55, uCutR, length(nd));
-        float fade = max(hole * (1.0 - smoothstep(uCutNear - 4.0, uCutNear + 0.5, vCutDepth)), 1.0 - smoothstep(2.5, 6.5, vCutDepth)) * 0.92;
+        float fade = max(hole * (1.0 - smoothstep(uCutNear - 4.0, uCutNear + 0.5, vCutDepth)) * 0.92, 1.0 - smoothstep(3.0, 7.0, vCutDepth));
         const float BAYER[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
         ivec2 q = ivec2(mod(floor(gl_FragCoord.xy), 4.0));
         if (fade > (BAYER[q.x + q.y * 4] + 0.5) / 16.0) discard;
