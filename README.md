@@ -63,6 +63,8 @@ I dati (account e personaggi) stanno in `data/db.json`. Le password sono salvate
 | `/heal` · `/risorsa` | Cura completa · risorsa al massimo |
 | `/via nome` | Cambia la Via del personaggio (per provare le specializzazioni) |
 | `/destriero livello` | Dà un destriero del livello indicato |
+| `/sigillo livello` | Imposta il livello del proprio Sigillo della Prova |
+| `/uccidi` | Abbatte il nemico più vicino (entro 20 metri) |
 | `/rate exp\|drop\|tael valore` | Cambia i moltiplicatori al volo (vengono salvati) |
 | `/annuncio testo` | Messaggio a tutto il server |
 | `/save` | Salvataggio immediato |
@@ -120,6 +122,20 @@ Dal livello 10 lo **Stalliere** (Mastro Bo, vicino alla porta laterale di ogni v
   - Lupi del Branco vicino ai villaggi;
   - Predoni delle Colline nelle terre di confine;
   - Soldati di Terracotta intorno all'altopiano.
+
+## Prove del Sigillo (dungeon a tempo)
+
+Dal livello 20 il **Custode Yun** (accanto alla pagoda di ogni villaggio) affida un **Sigillo della Prova +2**. Il capogruppo, o chi gioca da solo, apre la prova: i compagni entro 40 metri entrano con lui nella **Cripta delle Mille Lanterne**, un'istanza riservata al gruppo.
+
+- **Obiettivo:** in 15 minuti sconfiggere almeno il 100% delle forze nemiche e il boss, **Shen, il Custode Insonne**. Ogni morte costa 5 secondi.
+- **Shen:**
+  - lancia un anello di fiamme segnalato a terra in rosso: allontanati prima che si riempia;
+  - evoca Lanterne Instabili che esplodono dopo 10 secondi se non le distruggi;
+  - sotto il 30% di vita entra in furia.
+- **Livelli:** ogni livello del sigillo aumenta vita e danni dei nemici; la vita si adatta anche al numero di giocatori, da 1 a 5.
+- **Modificatori settimanali:** dal +3 è attivo il primo, dal +6 anche il secondo. Ruotano tra Pelle di Pietra, Re Tiranno, Furia Ancestrale, Sangue di Brace ed Eco degli Spiriti.
+- **Esito:** completata in tempo, il sigillo sale di **+3** se impieghi al massimo il 60% del tempo, di **+2** entro l'80% e di **+1** altrimenti. Fuori tempo o abbandonando, scende di 1.
+- **Premi:** equipaggiamento di grado 4, più numeroso e più raro ai livelli alti (almeno Raro dal +6, Epico dal +10), Essenza Celeste, gemme, Pietre dell'Affinamento, tael ed esperienza.
 
 ## Sistemi presenti
 

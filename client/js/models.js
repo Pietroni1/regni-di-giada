@@ -324,6 +324,7 @@ const NPC_LOOKS = {
   fabbro: { robe: 0x3a3430, trim: 0x8a5a2a, pants: 0x2a2420, hair: null, hairStyle: 'bald', armor: 0x4a3a2a, skin: 0xc89870 },
   maestro: { robe: 0xe8e4d8, trim: 0x8a2a2a, pants: 0xc8c4b8, hair: 0xe8e8e8, hairStyle: 'topknot', beard: true, weapon: 'bastone_cielo' },
   guardia: { robe: 0x3a3a40, trim: 0x8a8a8a, pants: 0x2a2a2e, hair: 0x1a1210, hairStyle: 'topknot', helm: 'elmo_bronzo' },
+  custode: { robe: 0x1e2a44, trim: 0xc0982a, pants: 0x141c30, hair: 0xd8d8d8, hairStyle: 'bun', beard: true },
   stalliere: { robe: 0x6a5232, trim: 0x3a2a18, pants: 0x4a3a28, hair: 0x2a1a10, hairStyle: 'topknot', hat: 'cappello_paglia' },
 };
 
@@ -348,6 +349,13 @@ export function buildNpcModel(info) {
     rig.armR.grip.add(hammer);
   }
   if (info.role === 'erbe') rig.torso.rotation.x = 0.18;
+  if (info.role === 'custode') {
+    const l = new THREE.Group();
+    l.add(mesh(cyl(0.02, 0.02, 0.4, 4), lam(0x2a1a10), 0, -0.2, 0));
+    l.add(mesh(cyl(0.16, 0.16, 0.3, 8), new THREE.MeshLambertMaterial({ color: 0xd8401c, emissive: 0xff4a10, emissiveIntensity: 0.9 }), 0, -0.5, 0));
+    rig.armL.grip.add(l);
+    rig.armL.pv.rotation.x = -0.5;
+  }
   if (info.role === 'stalliere') {
     setHat(rig, 'cappello_paglia');
     const h = horseRig(2);
@@ -401,6 +409,28 @@ export function buildMobModel(info) {
     case 'lantern': rig = lanternSpirit(d.color); break;
     case 'obelisk': rig = obelisk(d.color, d.scale || 1); break;
     case 'dummy': rig = trainingDummy(); break;
+    case 'shade': {
+      rig = humanoid({ robe: 0x2a1a3a, trim: 0x5a3a8a, pants: 0x1a1024, hair: 0x0a0a0a, hairStyle: 'hood', sash: 0x5a3a8a, skirt: true });
+      applyWeapon(rig, 'pugnali_serpe', 0);
+      rig.root.traverse(m => { if (m.isMesh) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.78; m.material.emissive = new THREE.Color(0x2a1048); m.material.emissiveIntensity = 0.6; } });
+      for (const sx of [-1, 1]) rig.head.add(mesh(box(0.06, 0.03, 0.02), glow(0xc080ff, 1.6), sx * 0.07, 0.22, 0.2));
+      break;
+    }
+    case 'custode': {
+      // Shen, il Custode Insonne: vesti blu notte, maschera bianca, bastone con una grande lanterna azzurra.
+      rig = humanoid({ robe: 0x1a2a4a, sleeve: 0x1a2a4a, trim: 0xc0982a, pants: 0x101a30, faceless: true, hairStyle: 'bald', sash: 0xc0982a, cape: 0x0e1628 });
+      rig.hatGroup.add(mesh(cone(0.32, 0.5, 6), lam(0x101a30), 0, 0.55, -0.02));
+      rig.hatGroup.add(withRot(mesh(G('crown', () => new THREE.TorusGeometry(0.22, 0.03, 4, 12)), lam(0xc0982a), 0, 0.36, 0), 'x', Math.PI / 2));
+      const staff = new THREE.Group();
+      staff.add(mesh(cyl(0.05, 0.06, 3.4, 6), lam(0x2a1a10), 0, 0.6, 0));
+      staff.add(mesh(box(0.7, 0.06, 0.06), lam(0xc0982a), 0, 2.25, 0));
+      const lantern = mesh(cyl(0.26, 0.26, 0.5, 8), new THREE.MeshLambertMaterial({ color: 0x9ad8ff, emissive: 0x6ab8ff, emissiveIntensity: 1.4, transparent: true, opacity: 0.9 }), 0.32, 1.95, 0);
+      staff.add(lantern);
+      staff.add(mesh(cone(0.08, 0.25, 6), glow(0xd8f0ff, 1.6), 0.32, 2.3, 0));
+      rig.armR.grip.add(staff);
+      rig.weaponType = 'staff';
+      break;
+    }
     default: rig = quadruped({ color: 0x888888, w: 0.6, h: 0.6, len: 1.2, legH: 0.5, legW: 0.15, hw: 0.4, hh: 0.4, hl: 0.4, snout: 0.2 });
   }
   if (d.scale && d.model !== 'obelisk') { rig.root.scale.multiplyScalar(d.scale); rig.height *= d.scale; }

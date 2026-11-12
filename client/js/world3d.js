@@ -1,6 +1,7 @@
 // Costruzione del mondo 3D statico: cielo, terreno, acqua, vegetazione, villaggi, altopiano.
 // Tutta la grafica è procedurale (nessun file esterno), stile low-poly anni 2000.
 import * as THREE from 'three';
+import { DUNGEON, dungeonWalkable } from '/shared/data.js';
 import {
   heightAt, roadDistance, fbm, smoothstep, mulberry32, KINGDOMS, KINGDOM_IDS, CENTER, WALL_RADIUS,
   VILLAGE_LAYOUT, VILLAGE_HEIGHT, villageFrame, wallAngles,
@@ -565,6 +566,97 @@ function buildShrines(scene) {
 }
 
 // ------------------------------------------------------------------ assemblaggio
+// ------------------------------------------------------------------ Cripta delle Mille Lanterne
+function stoneTileTexture(repX, repZ) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const ctx = cv.getContext('2d');
+  const rnd = mulberry32(17);
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+    const v = 105 + rnd() * 30;
+    ctx.fillStyle = `rgb(${v + 8},${v},${v - 6})`;
+    ctx.fillRect(x * 32 + 1, y * 32 + 1, 30, 30);
+  }
+  ctx.strokeStyle = '#1a1410'; ctx.lineWidth = 2;
+  for (let i = 0; i <= 4; i++) { ctx.beginPath(); ctx.moveTo(i * 32, 0); ctx.lineTo(i * 32, 128); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i * 32); ctx.lineTo(128, i * 32); ctx.stroke(); }
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repX, repZ);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+const builtDungeons = new Map();
+export function buildDungeon(scene, ox, oz) {
+  const key = ox + ',' + oz;
+  if (builtDungeons.has(key)) return builtDungeons.get(key);
+  const g = new THREE.Group();
+  g.position.set(ox, 0, oz);
+  for (const [x1, z1, x2, z2] of DUNGEON.rooms) {
+    const w = x2 - x1, d = z2 - z1;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ map: stoneTileTexture(w / 4, d / 4) }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set((x1 + x2) / 2, 0.02, (z1 + z2) / 2);
+    floor.receiveShadow = true;
+    g.add(floor);
+  }
+  const wallM = lam(0x5e5248), capM = lam(0x2e2620), baseM = lam(0x6a5e52), red = lam(0x8a2a1a);
+  const lanternMat = new THREE.MeshLambertMaterial({ color: 0xd8401c, emissive: 0xff4a10, emissiveIntensity: 0.9 });
+  for (const [x1, z1, x2, z2] of DUNGEON.walls) {
+    const horiz = z1 === z2, len = Math.hypot(x2 - x1, z2 - z1);
+    const cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
+    const sx = horiz ? len + 1.2 : 1.2, sz = horiz ? 1.2 : len + 1.2;
+    g.add(M(new THREE.BoxGeometry(sx, 6, sz), wallM, cx, 3, cz));
+    g.add(M(new THREE.BoxGeometry(sx + 0.3, 0.5, sz + 0.3), capM, cx, 6.2, cz));
+    g.add(M(new THREE.BoxGeometry(sx + 0.2, 0.6, sz + 0.2), baseM, cx, 0.3, cz));
+    g.add(M(new THREE.BoxGeometry(horiz ? len : 1.25, 0.25, horiz ? 1.25 : len), red, cx, 4.6, cz, false));
+    // lanterne di carta sul lato interno del muro
+    const n = Math.floor(len / 8);
+    for (let i = 0; i < n; i++) {
+      const tpos = (i + 0.5) / n;
+      const px = x1 + (x2 - x1) * tpos, pz = z1 + (z2 - z1) * tpos;
+      for (const sgn of [-1, 1]) {
+        const lx = px + (horiz ? 0 : sgn * 1.1), lz = pz + (horiz ? sgn * 1.1 : 0);
+        if (!dungeonWalkable(lx, lz, 0)) continue;
+        const l = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 6), lanternMat);
+        l.scale.y = 1.3; l.position.set(lx, 3.6, lz);
+        g.add(l);
+        g.add(M(new THREE.CylinderGeometry(0.14, 0.14, 0.1, 8), capM, lx, 4.05, lz, false));
+      }
+    }
+  }
+  // bracieri con luce calda
+  const brazier = (x, z) => {
+    g.add(M(new THREE.CylinderGeometry(0.7, 0.5, 1.0, 8), lam(0x3a2a1a), x, 0.5, z));
+    g.add(M(new THREE.ConeGeometry(0.5, 0.9, 6), new THREE.MeshBasicMaterial({ color: 0xffa040 }), x, 1.4, z, false));
+    const pl = new THREE.PointLight(0xffa850, 32, 36, 1.4);
+    pl.position.set(x, 2.5, z);
+    g.add(pl);
+  };
+  brazier(0, 2); brazier(0, 21); brazier(-8, 38); brazier(8, 38); brazier(27, 45); brazier(55, 45); brazier(55, 70); brazier(42, 100); brazier(68, 100);
+  // arena di Shen: lanterne di pietra a fuoco azzurro e altare
+  const ghost = new THREE.MeshLambertMaterial({ color: 0x9ad8ff, emissive: 0x6ab8ff, emissiveIntensity: 1.2 });
+  for (let i = 0; i < 10; i++) {
+    const a = i / 10 * Math.PI * 2, x = 55 + Math.cos(a) * 17, z = 100 + Math.sin(a) * 15;
+    if (!dungeonWalkable(x, z, 1)) continue;
+    g.add(M(new THREE.BoxGeometry(0.9, 0.3, 0.9), baseM, x, 0.15, z));
+    g.add(M(new THREE.CylinderGeometry(0.18, 0.24, 1.3, 6), baseM, x, 0.95, z));
+    g.add(M(new THREE.BoxGeometry(0.8, 0.6, 0.8), baseM, x, 1.9, z));
+    g.add(M(new THREE.BoxGeometry(0.35, 0.35, 0.82), ghost, x, 1.9, z, false));
+    g.add(withRot(M(new THREE.ConeGeometry(0.7, 0.5, 4), baseM, x, 2.45, z), 'y', Math.PI / 4));
+  }
+  g.add(M(new THREE.CylinderGeometry(7, 7.6, 0.4, 24), lam(0x2e2824), 55, 0.2, 106));
+  g.add(M(new THREE.CylinderGeometry(5, 5, 0.06, 24), lam(0x4a2a5a), 55, 0.42, 106, false));
+  const blue = new THREE.PointLight(0x7ab8ff, 22, 34, 1.5);
+  blue.position.set(55, 4, 106);
+  g.add(blue);
+  // portale d'ingresso
+  for (const sx of [-1, 1]) g.add(M(new THREE.CylinderGeometry(0.4, 0.45, 6, 10), lam(0xa22a1a), sx * 4, 3, -9));
+  g.add(M(new THREE.BoxGeometry(10, 0.5, 0.6), lam(0xa22a1a), 0, 5.6, -9));
+  mergeStatic(g);
+  scene.add(g);
+  builtDungeons.set(key, g);
+  return g;
+}
+
 export function buildWorld(scene) {
   scene.background = new THREE.Color(0x9cc0e0);
   scene.fog = new THREE.Fog(0xd9d2b8, 90, 330);
@@ -599,9 +691,23 @@ export function buildWorld(scene) {
   buildArena(scene);
   buildShrines(scene);
 
-  let t = 0;
+  let t = 0, indoor = false;
+  const outdoorFog = scene.fog, indoorFog = new THREE.Fog(0x161010, 28, 120);
+  const outdoorBg = scene.background, indoorBg = new THREE.Color(0x161010);
   return {
     terrain, sun, sky,
+    // Atmosfera della cripta: buio, nebbia scura, luci calde.
+    setIndoor(on) {
+      if (on === indoor) return;
+      indoor = on;
+      scene.fog = on ? indoorFog : outdoorFog;
+      scene.background = on ? indoorBg : outdoorBg;
+      sky.visible = !on; cloudGroup.visible = !on;
+      hemi.intensity = on ? 1.15 : 1.35;
+      hemi.color.set(on ? 0xffd8b8 : 0xfff2dc);
+      sun.intensity = on ? 0.5 : 2.4;
+    },
+    buildDungeon: (ox, oz) => buildDungeon(scene, ox, oz),
     update(dt, focus) {
       t += dt;
       sky.position.copy(focus);

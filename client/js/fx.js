@@ -192,6 +192,29 @@ export class Fx {
     this.disc(pos, color, radius, 0.5);
   }
 
+  // Avviso a terra: un'area rossa che si riempie fino al momento dell'impatto.
+  warn(pos, radius, ms) {
+    const y = heightAt(pos.x, pos.z) + 0.08;
+    const g = new THREE.Group();
+    const edge = new THREE.Mesh(new THREE.RingGeometry(radius - 0.25, radius, 48), add(0xff3a1a, 0.9));
+    const fill = new THREE.Mesh(new THREE.CircleGeometry(radius, 48), add(0xff2a10, 0.25));
+    edge.rotation.x = fill.rotation.x = -Math.PI / 2;
+    g.add(edge); g.add(fill);
+    g.position.set(pos.x, y, pos.z);
+    this.spawn(g, ms / 1000, (p) => {
+      fill.scale.setScalar(Math.max(0.05, p));
+      edge.material.opacity = 0.5 + Math.sin(p * 30) * 0.3;
+    });
+  }
+
+  hazard(pos, radius, ms) {
+    const y = heightAt(pos.x, pos.z) + 0.06;
+    const m = new THREE.Mesh(new THREE.CircleGeometry(radius, 24), add(0xff6a1a, 0.55));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(pos.x, y, pos.z);
+    this.spawn(m, ms / 1000, (p, dt, e) => { m.material.opacity = (0.4 + Math.sin(e.t * 8) * 0.15) * (p > 0.85 ? (1 - p) / 0.15 : 1); });
+  }
+
   dash(from, to, color) {
     const a = new THREE.Vector3(from.x, from.y + 1.1, from.z), b = new THREE.Vector3(to.x, to.y + 1.1, to.z);
     const len = a.distanceTo(b);

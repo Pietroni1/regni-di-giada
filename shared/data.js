@@ -503,3 +503,11 @@ export function keyChange(elapsed, limit) {
   if (elapsed <= limit * 0.8) return 2;
   return 1;
 }
+
+// Il punto (coordinate locali della cripta) è calpestabile? margin = raggio del personaggio.
+export function dungeonWalkable(lx, lz, margin = 0.5) {
+  for (const [x1, z1, x2, z2] of DUNGEON.rooms) {
+    if (lx >= x1 + margin && lx <= x2 - margin && lz >= z1 + margin && lz <= z2 - margin) return true;
+  }
+  return false;
+}

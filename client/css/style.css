@@ -292,3 +292,23 @@ label input { margin-top: 4px; }
 #stable-body .ms { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
 #stable-body .ms .slot { width: 36px; height: 36px; }
 #stable-body .ms.lock { opacity: 0.45; }
+
+/* ---------- Prove del Sigillo ---------- */
+#dg-hud { right: 12px; top: 250px; width: 230px; padding: 8px 10px; }
+#dg-hud .dgt { font-weight: 700; font-size: 16px; color: #f6e2a8; }
+#dg-hud .dgs { font-size: 13px; color: var(--paper2); }
+#dg-hud .timer { font-size: 26px; font-weight: 700; text-align: center; margin: 2px 0; font-variant-numeric: tabular-nums; }
+#dg-hud .timer.over { color: #ff6a4a; }
+#dg-hud .bar { height: 14px; margin: 4px 0; }
+#dg-hud .bar.forces .fill { background: linear-gradient(#c070ff, #5a2a8a); }
+#dg-hud .bar.boss .fill { background: linear-gradient(#e85a44, #8a1c12); }
+#dg-hud .aff { display: flex; gap: 4px; margin: 4px 0; }
+#dg-hud .aff span { font-family: var(--glyph); width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border: 1px solid #8a3a2a; background: #3a1410; font-size: 15px; }
+#dg-hud .res { margin-top: 6px; padding: 6px; border: 1px solid var(--gold2); background: #00000050; text-align: center; }
+#dg-hud .res b { color: #ffe08a; }
+#dg-hud button { width: 100%; margin-top: 6px; font-size: 14px; padding: 4px; }
+#trial-body { width: 380px; line-height: 1.4; }
+#trial-body .key { text-align: center; font-size: 22px; font-weight: 700; color: #ffb060; margin: 6px 0; }
+#trial-body .affrow { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; }
+#trial-body .affrow .g { font-family: var(--glyph); width: 30px; height: 30px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid #8a3a2a; background: #3a1410; }
+#trial-body .affrow.off { opacity: 0.45; }

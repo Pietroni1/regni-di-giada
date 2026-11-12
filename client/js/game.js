@@ -1,7 +1,7 @@
 // Logica di gioco lato client: entità, input, visuale, movimento, combattimento, messaggi dal server.
 import * as THREE from 'three';
-import { heightAt, buildColliders, resolveCollisions, KINGDOMS, PLAY_LIMIT, safeZoneAt } from '/shared/world.js';
-import { SKILLS, ITEMS, MOBS, CLASSES, NPC_ROLES, VIE, BUFFS, RESOURCES, QB_SIZE, RARITIES, MOUNT_SKILLS, HORSE } from '/shared/data.js';
+import { heightAt, buildColliders, resolveCollisions, KINGDOMS, PLAY_LIMIT, safeZoneAt, DUNGEON_X } from '/shared/world.js';
+import { SKILLS, ITEMS, MOBS, CLASSES, NPC_ROLES, VIE, BUFFS, RESOURCES, QB_SIZE, RARITIES, MOUNT_SKILLS, HORSE, DUNGEON, dungeonWalkable } from '/shared/data.js';
 import { buildModel } from './models.js';
 import { Fx } from './fx.js';
 import { UI } from './ui.js';
@@ -255,6 +255,21 @@ export class Game {
     });
     n.on('applied', (m) => { ui.chat('sys', esc(m.m)); ui.notice(m.m); this.sound(m.m.includes('non') ? 'die' : 'ok'); });
     n.on('stable', (m) => ui.openStable(m));
+    n.on('trial', (m) => ui.openTrial(m));
+    n.on('dg_start', (m) => {
+      this.dg = { ox: m.ox, oz: m.oz, kl: m.kl, affixes: m.affixes };
+      this.dgState = null;
+      this.world.buildDungeon(m.ox, m.oz);
+      this.dots = {};
+      ui.closeAll();
+      ui.renderDungeonHud();
+    });
+    n.on('dg', (m) => { this.dgState = m; this.dgStateAt = performance.now(); ui.renderDungeonHud(); });
+    n.on('dg_end', () => { this.dg = null; this.dgState = null; ui.renderDungeonHud(); });
+    n.on('dg_reward', (m) => {
+      ui.chat('gain', `<b>Ricompense della Prova:</b> ${m.got.map(esc).join(' · ')}`);
+      this.sound('lvl');
+    });
     n.on('shop', (m) => ui.openShop(m));
     n.on('smith', (m) => ui.openSmith(m));
     n.on('smith_res', (m) => ui.onSmithResult(m));
@@ -324,6 +339,8 @@ export class Game {
       case 'tp': if (s) this.fx.column(s, 0x8ad0ff); return;
       case 'cast': if (s && !s.self) s.rig.anim.channel = m.ms / 1000; return;
       case 'castend': if (s && !s.self) s.rig.anim.channel = 0; return;
+      case 'warn': this.fx.warn({ x: m.x, z: m.z }, m.r, m.ms); this.sound('proc'); return;
+      case 'hazard': this.fx.hazard({ x: m.x, z: m.z }, m.r, m.ms); return;
       case 'proc': {
         const b = BUFFS[m.b];
         if (s && s.self && b) { this.sound('proc'); this.fx.ring(s, 0xffd060, 1.8, 0.4, 1.2); this.ui.chat('gain', `Effetto attivo: <b>${esc(b.name)}</b>`); }
@@ -631,6 +648,7 @@ export class Game {
     this.updateSelf(dt, now);
     for (const e of this.ents.values()) e.update(dt);
     this.updateCamera(dt);
+    this.world.setIndoor(this.self.x > DUNGEON_X);
     this.updateLabels(now);
     if (this.target) {
       if (!this.ents.has(this.target.id)) this.setTarget(null);
@@ -667,9 +685,15 @@ export class Game {
     if ((mx || mz) && this.casting) { this.net.send({ t: 'cancel' }); this.casting = null; s.rig.anim.channel = 0; }
     if (mx || mz) {
       let nx = s.x + mx * spd * dt, nz = s.z + mz * spd * dt;
-      [nx, nz] = resolveCollisions(nx, nz, 0.5, this.colliders);
-      nx = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, nx));
-      nz = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, nz));
+      if (this.dg && s.x > DUNGEON_X) {
+        // dentro la cripta: si cammina solo nelle stanze e nei corridoi (scivolando lungo i muri)
+        const ok = (x, z) => dungeonWalkable(x - this.dg.ox, z - this.dg.oz, 0.5);
+        if (!ok(nx, nz)) { if (ok(nx, s.z)) nz = s.z; else if (ok(s.x, nz)) nx = s.x; else { nx = s.x; nz = s.z; } }
+      } else {
+        [nx, nz] = resolveCollisions(nx, nz, 0.5, this.colliders);
+        nx = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, nx));
+        nz = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, nz));
+      }
       const moved = Math.hypot(nx - s.x, nz - s.z);
       s.x = nx; s.z = nz;
       s.r = angLerp(s.r, Math.atan2(mx, mz), Math.min(1, dt * 14));

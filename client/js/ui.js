@@ -2,7 +2,7 @@
 import {
   ITEMS, SKILLS, CLASSES, VIE, STAT_NAMES, STAT_DESC, EQUIP_SLOTS, EQUIP_NAMES, INV_SIZE, QB_SIZE, WEAPON_TYPES, UPGRADE,
   VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BUFFS, RESOURCES, PTS_MAX, STATS_NAMES, skillVal, upgradedStat, equipSlotOf,
-  RARITIES, BONUS_STATS, GEM_TYPES, bonusText, bonusStars, MOUNT_SKILLS, HORSE,
+  RARITIES, BONUS_STATS, GEM_TYPES, bonusText, bonusStars, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, trialScale,
 } from '/shared/data.js';
 import { KINGDOMS, KINGDOM_IDS, WALL_RADIUS, CENTER, zoneAt } from '/shared/world.js';
 
@@ -20,7 +20,8 @@ export function itemIconHtml(s, count) {
   const st = styles.length ? ` style="${styles.join(';')}"` : '';
   const n = count ?? s.n;
   const sockets = (s.s && s.s.length) ? `<span class="sock">${s.s.map(g => `<i style="background:${g ? GEM_TYPES[ITEMS[g].gem].color : '#0008'}"></i>`).join('')}</span>` : '';
-  return `<div class="icon t${it.tier || 1}"${st}>${it.glyph}${n > 1 ? `<span class="cnt">${n}</span>` : ''}${s.up ? `<span class="upl">+${s.up}</span>` : ''}${sockets}</div>`;
+  const upv = s.up || s.kl;
+  return `<div class="icon t${it.tier || 1}"${st}>${it.glyph}${n > 1 ? `<span class="cnt">${n}</span>` : ''}${upv ? `<span class="upl">+${upv}</span>` : ''}${sockets}</div>`;
 }
 function skillIconHtml(sid, disabled) {
   const sk = SKILLS[sid];
@@ -302,6 +303,13 @@ export class UI {
       }
     }
     if (isEq && s.fs) L.push(`<div style="color:#9ad8ff">Perseveranza del fabbro: +${Math.min(UPGRADE.failBonusMax, s.fs * UPGRADE.failBonus)}%</div>`);
+    if (it.type === 'key') {
+      const kl = s.kl || DUNGEON.startKey, sc = trialScale(kl, 5);
+      L[0] = `<div class="tn" style="color:#ffb060">${esc(it.name)} +${kl}</div>`;
+      L.push(`<div>Nemici: vita ×${sc.hp.toFixed(2)} (gruppo di 5), danni ×${sc.dmg.toFixed(2)}</div>`);
+      const af = activeAffixes(kl);
+      L.push(`<div class="tt">Modificatori: ${af.length ? af.map(a => AFFIXES[a].name).join(', ') : 'nessuno (dal +3)'}</div>`);
+    }
     if (it.desc) L.push(`<div class="td">${esc(it.desc)}</div>`);
     if (isEq && !buying) L.push('<div class="tt">Trascina qui una gemma o un modificatore per applicarlo.</div>');
     if (buying) L.push(`<div style="color:#ffe08a">Prezzo: ${it.price.toLocaleString('it-IT')} tael</div>`);
@@ -482,7 +490,7 @@ export class UI {
       const cls = 'slot qb ' + state;
       if (el.className !== cls) el.className = cls;
     });
-    if (now - (this.lastBuffRender || 0) > 500) { this.lastBuffRender = now; this.renderBuffs(); this.renderTargetDots(now); }
+    if (now - (this.lastBuffRender || 0) > 500) { this.lastBuffRender = now; this.renderBuffs(); this.renderTargetDots(now); this.updateDungeonTimer(); }
     if (this.isOpen('win-dps') && now - (this.lastDps || 0) > 500) { this.lastDps = now; this.renderDps(); }
     const cb = $('cast-bar');
     if (g.casting && g.casting.until > now) {
@@ -607,6 +615,72 @@ export class UI {
     });
     this.open('win-shop');
     if (!this.isOpen('win-inventory')) this.open('win-inventory');
+  }
+
+  // ------------------------------------------------------------ Prove del Sigillo
+  openTrial(m) {
+    this.trial = m;
+    this.open('win-trial');
+    const me = this.g.me;
+    const L = [];
+    L.push(`<p>"La Cripta delle Mille Lanterne custodisce i sigilli degli antichi. Ripulitela dalle forze nemiche e sconfiggete <b>Shen, il Custode Insonne</b>, prima che scada il tempo: ${Math.round(DUNGEON.timeLimit / 60)} minuti."</p>`);
+    if (m.key) {
+      L.push(`<div class="key">Sigillo della Prova +${m.key}</div>`);
+      L.push(`<div class="tt" style="text-align:center">In tempo: il sigillo sale di 1-3 livelli secondo la velocità. Fuori tempo o abbandonando: scende di 1. Ogni morte costa ${DUNGEON.deathPenalty} secondi.</div>`);
+    } else {
+      L.push(`<p class="tt">Non hai ancora un sigillo. Dal livello ${m.minLevel} posso affidartene uno di livello +${DUNGEON.startKey}.</p>`);
+    }
+    L.push('<div class="via-title">Modificatori di questa settimana</div>');
+    m.week.forEach((a, i) => {
+      const on = m.key && (i === 0 ? m.key >= 3 : m.key >= 6);
+      L.push(`<div class="affrow ${on ? '' : 'off'}"><div class="g">${AFFIXES[a].glyph}</div><div><b>${AFFIXES[a].name}</b> <small class="tt">(dal +${i === 0 ? 3 : 6})</small><br><small>${esc(AFFIXES[a].desc)}</small></div></div>`);
+    });
+    if (m.best) L.push(`<div class="tt" style="margin-top:6px">Miglior prova completata in tempo: +${m.best}</div>`);
+    L.push(`<div class="tt" style="margin-top:6px">${m.party > 1 ? `Gruppo di ${m.party}: entrano i compagni entro 40 metri da me.` : 'Puoi entrare da solo o con un gruppo (fino a 5): la vita dei nemici si adatta al numero di partecipanti.'}</div>`);
+    L.push('<div class="row" style="justify-content:center">');
+    if (!m.key) L.push(`<button class="btn primary" id="tr-key" ${me.lvl >= m.minLevel ? '' : 'disabled'}>Ricevi il sigillo</button>`);
+    else L.push(`<button class="btn primary" id="tr-open" ${m.leader ? '' : 'disabled'} title="${m.leader ? '' : 'Solo il capogruppo può aprire la prova'}">Apri la Prova +${m.key}</button>`);
+    L.push('</div>');
+    $('trial-body').innerHTML = L.join('');
+    const k = $('tr-key'); if (k) k.onclick = () => this.g.net.send({ t: 'trial', npc: m.npc, a: 'key' });
+    const o = $('tr-open'); if (o) o.onclick = () => { this.g.net.send({ t: 'trial', npc: m.npc, a: 'open' }); this.close('win-trial'); };
+  }
+
+  renderDungeonHud() {
+    const el = $('dg-hud');
+    const g = this.g, st = g.dgState;
+    if (!g.dg) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    el.classList.remove('hidden');
+    const kl = st ? st.kl : g.dg.kl, aff = st ? st.affixes : g.dg.affixes;
+    let html = `<div class="dgt">${DUNGEON.trial} +${kl}</div><div class="dgs">${DUNGEON.name}</div>`;
+    html += `<div class="timer" id="dg-timer">--:--</div>`;
+    if (st) {
+      html += `<div class="dgs">Forze nemiche</div><div class="bar forces"><div class="fill" style="width:${Math.min(100, st.forces / st.need * 100)}%"></div><span>${Math.min(st.forces, 999)}% / ${st.need}%</span></div>`;
+      html += `<div class="dgs">Shen, il Custode Insonne</div><div class="bar boss"><div class="fill" style="width:${st.bossDead ? 0 : st.boss}%"></div><span>${st.bossDead ? 'Sconfitto' : st.boss + '%'}</span></div>`;
+      html += `<div class="dgs">Morti: ${st.deaths} (−${st.deaths * DUNGEON.deathPenalty} s)</div>`;
+    }
+    if (aff && aff.length) html += `<div class="aff">${aff.map(a => `<span title="${esc(AFFIXES[a].name + ': ' + AFFIXES[a].desc)}">${AFFIXES[a].glyph}</span>`).join('')}</div>`;
+    if (st && st.result) {
+      const r = st.result, mm = Math.floor(r.elapsed / 60), ss = String(r.elapsed % 60).padStart(2, '0');
+      html += `<div class="res">${r.inTime ? 'Completata in tempo!' : 'Completata fuori tempo'}<br>${mm}:${ss} — Sigillo <b>+${r.oldKl} → +${r.newKl}</b><br><small class="tt">Uscita automatica tra ${Math.ceil(st.closeIn / 1000)} s</small></div>`;
+    }
+    html += `<button class="btn" id="dg-leave">${st && st.done ? 'Esci dalla cripta' : 'Abbandona la prova'}</button>`;
+    el.innerHTML = html;
+    $('dg-leave').onclick = () => {
+      if (st && st.done) this.g.net.send({ t: 'tleave' });
+      else this.confirm('Abbandonare la prova? Se hai aperto tu il sigillo, scenderà di un livello.', () => this.g.net.send({ t: 'tleave' }));
+    };
+    this.updateDungeonTimer();
+  }
+
+  updateDungeonTimer() {
+    const g = this.g, st = g.dgState, el = $('dg-timer');
+    if (!el || !st) return;
+    const used = (st.done && st.result ? st.result.elapsed * 1000 : st.elapsed + (performance.now() - g.dgStateAt)) + (st.done ? 0 : st.penalty);
+    const left = st.limit - used;
+    const t = Math.abs(left) / 1000, mm = Math.floor(t / 60), ss = String(Math.floor(t % 60)).padStart(2, '0');
+    el.textContent = `${left < 0 ? '+' : ''}${mm}:${ss}`;
+    el.className = 'timer' + (left < 0 ? ' over' : '');
   }
 
   openStable(m) {
@@ -852,10 +926,18 @@ export class UI {
     ctx.save();
     ctx.clearRect(0, 0, S, S);
     ctx.beginPath(); ctx.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2); ctx.clip();
-    ctx.fillStyle = '#2c6280'; ctx.fillRect(0, 0, S, S);
-    const sc = this.mapScale;
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.mapImg, (self.x - R + 300) * sc, (self.z - R + 300) * sc, R * 2 * sc, R * 2 * sc, 0, 0, S, S);
+    if (this.g.dg && self.x > 800) {
+      ctx.fillStyle = '#0c0807'; ctx.fillRect(0, 0, S, S);
+      ctx.fillStyle = '#4a3e36';
+      for (const [x1, z1, x2, z2] of DUNGEON.rooms) {
+        ctx.fillRect(S / 2 + (this.g.dg.ox + x1 - self.x) * k, S / 2 + (this.g.dg.oz + z1 - self.z) * k, (x2 - x1) * k, (z2 - z1) * k);
+      }
+    } else {
+      ctx.fillStyle = '#2c6280'; ctx.fillRect(0, 0, S, S);
+      const sc = this.mapScale;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(this.mapImg, (self.x - R + 300) * sc, (self.z - R + 300) * sc, R * 2 * sc, R * 2 * sc, 0, 0, S, S);
+    }
     for (const e of ents.values()) {
       if (e === self) continue;
       const dx = e.x - self.x, dz = e.z - self.z;

@@ -1524,7 +1524,8 @@ export class World {
     }
     const mm = Math.floor(elapsed / 60), ss = String(Math.round(elapsed % 60)).padStart(2, '0');
     this.instBroadcast(inst, { t: 'notice', m: change > 0 ? `Prova completata in ${mm}:${ss}! Sigillo +${oldKl} → +${newKl}` : `Prova completata fuori tempo (${mm}:${ss}). Sigillo +${oldKl} → +${newKl}` });
-    if (change >= 2) this.broadcast({ t: 'sys', m: `${this.instMembers(inst).map(q => q.name).join(', ')} hanno completato la ${DUNGEON.trial} +${oldKl} in ${mm}:${ss}!` });
+    const names = this.instMembers(inst).map(q => q.name);
+    if (change >= 2) this.broadcast({ t: 'sys', m: `${names.join(', ')} ${names.length > 1 ? 'hanno' : 'ha'} completato la ${DUNGEON.trial} +${oldKl} in ${mm}:${ss}!` });
     this.sendTrialState(inst);
   }
 
@@ -1729,7 +1730,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -1775,6 +1776,18 @@ export class World {
       }
       case 'heal': p.hp = p.maxHp; if (p.rtype !== 'ira') p.res = p.rmax; p.selfDirty = true; this.touch(p); return;
       case 'risorsa': p.res = p.rmax; p.selfDirty = true; return;
+      case 'uccidi': {
+        let best = null, bd = 20;
+        for (const e of this.ents.values()) {
+          if (e.kind !== 'mob' || e.hp <= 0 || e.d.dummy) continue;
+          const dd = dist(e, p);
+          if (dd < bd) { bd = dd; best = e; }
+        }
+        if (!best) return sys('Nessun nemico entro 20 metri.');
+        best.aggro.set(p.id, (best.aggro.get(p.id) || 0) + best.hp);
+        this.applyDamage(best, best.hp, p);
+        return;
+      }
       case 'sigillo': {
         const L = clamp(parseInt(a[0], 10) || DUNGEON.startKey, DUNGEON.startKey, DUNGEON.maxKey);
         const key = p.ch.inv.find(x => x && x.id === 'sigillo_prova');
