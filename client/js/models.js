@@ -5,6 +5,7 @@ import { KINGDOMS } from '/shared/world.js';
 import { lam, outlineMaterial, mergeParts, SOFT_GRADIENT } from './world3d.js';
 import { buildSkinnedHumanoid, hasSkinned, SkinAnim } from './skinned.js';
 import { GearFx } from './gear-fx.js';
+import { hasAnimals, buildSkinnedAnimal, AnimalAnim } from './animals.js';
 
 const geoCache = new Map();
 function G(key, make) { let g = geoCache.get(key); if (!g) { g = make(); geoCache.set(key, g); } return g; }
@@ -376,6 +377,17 @@ function finish(rig, radius) {
 }
 
 // Destriero procedurale su tre gradi: Puledro, Destriero, Destriero da Guerra.
+function lighten(c, k) { const col = new THREE.Color(c); return (k >= 0 ? col.lerp(new THREE.Color(0xf0e8dc), k) : col.multiplyScalar(1 + k)).getHex(); }
+// Cavallo: modello con scheletro (se caricato) o quello procedurale.
+const HORSE_LOOK = [null, { color: 0x8a5e38, mane: 0x2a1a10, cloth: 0x6a5a3a }, { color: 0x4a2e1c, mane: 0x140c08, cloth: 0x8a2020 }, { color: 0x1e1a1c, mane: 0x0a0a0a, cloth: 0x5a1010 }];
+function makeHorse(tier) {
+  if (!hasAnimals()) return horseRig(tier);
+  const L = HORSE_LOOK[tier] || HORSE_LOOK[1];
+  const h = buildSkinnedAnimal('cavallo', { ...L, color2: lighten(L.color, 0.15), dark: 0x14100c, saddle: true, armor: tier >= 3 });
+  h.runAt = 7;
+  return { group: h.root, legs: [], neck: new THREE.Object3D(), anim: new AnimalAnim(h), skinnedHorse: h };
+}
+
 function horseRig(tier) {
   const g = new THREE.Group();
   const coat = lam([0, 0x8a5e38, 0x4a2e1c, 0x1e1a1c][tier]), mane = lam([0, 0x2a1a10, 0x140c08, 0x0a0a0a][tier]);
@@ -427,7 +439,7 @@ export function buildPlayerModel(info) {
   if (rig.skinned) rig.gear = new GearFx(rig, { wu: info.wu, wr: info.wr, bu: info.bu, br: info.br });
   rig.weaponType = info.w ? ITEMS[info.w]?.wt : 'fists';
   if (info.mt) {
-    rig.horse = horseRig(info.mt);
+    rig.horse = makeHorse(info.mt);
     rig.root.add(rig.horse.group);
     rig.mounted = true;
     rig.height += 1.1;
@@ -491,7 +503,7 @@ export function buildNpcModel(info) {
   }
   if (info.role === 'stalliere') {
     setHat(rig, 'cappello_paglia');
-    const h = horseRig(2);
+    const h = makeHorse(2);
     h.group.position.set(-2.2, 0, 0.4); h.group.rotation.y = 0.3;
     rig.root.add(h.group);
     rig.decorHorse = h;
@@ -504,10 +516,11 @@ export function buildMobModel(info) {
   const d = MOBS[info.ty];
   let rig;
   switch (d.model) {
-    case 'wolf': rig = quadruped({ color: d.color, color2: 0x5a5652, w: 0.55, h: 0.55, len: 1.45, legH: 0.6, legW: 0.15, hw: 0.42, hh: 0.4, hl: 0.4, snout: 0.32, ears: 'point', tail: 0.6, eyes: info.ty === 'lupo_alfa' ? 0xffc030 : null }); break;
-    case 'boar': rig = quadruped({ color: d.color, color2: 0x3a2a1c, w: 0.8, h: 0.75, len: 1.5, legH: 0.42, legW: 0.18, hw: 0.55, hh: 0.5, hl: 0.4, snout: 0.25, ears: 'point', tusks: true, hump: true, tail: 0.2 }); break;
-    case 'bear': rig = quadruped({ color: d.color, color2: 0x1a1612, w: 1.15, h: 1.05, len: 1.9, legH: 0.7, legW: 0.32, hw: 0.7, hh: 0.6, hl: 0.5, snout: 0.3, ears: 'round', hump: true }); break;
+    case 'wolf': rig = hasAnimals() ? buildSkinnedAnimal('lupo', { color: d.color, color2: lighten(d.color, 0.45), eyes: info.ty === 'lupo_alfa' ? 0xffc030 : null, glowEyes: info.ty === 'lupo_alfa' }) : quadruped({ color: d.color, color2: 0x5a5652, w: 0.55, h: 0.55, len: 1.45, legH: 0.6, legW: 0.15, hw: 0.42, hh: 0.4, hl: 0.4, snout: 0.32, ears: 'point', tail: 0.6, eyes: info.ty === 'lupo_alfa' ? 0xffc030 : null }); break;
+    case 'boar': rig = hasAnimals() ? buildSkinnedAnimal('cinghiale', { color: d.color, color2: lighten(d.color, -0.3), dark: 0x1a120c }) : quadruped({ color: d.color, color2: 0x3a2a1c, w: 0.8, h: 0.75, len: 1.5, legH: 0.42, legW: 0.18, hw: 0.55, hh: 0.5, hl: 0.4, snout: 0.25, ears: 'point', tusks: true, hump: true, tail: 0.2 }); break;
+    case 'bear': rig = hasAnimals() ? buildSkinnedAnimal('orso', { color: d.color, color2: lighten(d.color, 0.25), dark: 0x120e0a }) : quadruped({ color: d.color, color2: 0x1a1612, w: 1.15, h: 1.05, len: 1.9, legH: 0.7, legW: 0.32, hw: 0.7, hh: 0.6, hl: 0.5, snout: 0.3, ears: 'round', hump: true }); break;
     case 'tiger': {
+      if (hasAnimals()) { rig = buildSkinnedAnimal('tigre', { color: d.color, color2: 0xa0a8d0, stripes: 0x2a2a5a, eyes: 0x8ad0ff, glowEyes: true, ghost: 0x3a4a8a }); break; }
       rig = quadruped({ color: d.color, color2: 0xa0a8d0, w: 0.65, h: 0.62, len: 1.9, legH: 0.65, legW: 0.18, hw: 0.55, hh: 0.45, hl: 0.42, snout: 0.25, ears: 'round', tail: 0.9, stripes: 0x4a4a7a, eyes: 0x8ad0ff });
       rig.root.traverse(m => { if (m.isMesh) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.82; m.material.emissive = new THREE.Color(0x3a4a8a); m.material.emissiveIntensity = 0.5; } });
       break;
@@ -592,7 +605,7 @@ export class Anim {
   constructor(rig) {
     this.rig = rig; this.phase = Math.random() * 6; this.t = Math.random() * 10;
     this.atk = 0; this.atkDur = 0.32; this.cast = 0; this.dead = false; this.deadT = 0; this.hurt = 0; this.stun = 0;
-    if (rig.skinned) this.sk = new SkinAnim(rig);
+    if (rig.skinned) this.sk = rig.animal ? new AnimalAnim(rig) : new SkinAnim(rig);
   }
   attack(style) { if (this.sk) return this.sk.attack(); this.atk = this.atkDur; this.style = style; this.side = !this.side; }
   castSpell() { if (this.sk) return this.sk.castSpell(); this.cast = 0.55; }
@@ -705,7 +718,10 @@ Anim.prototype.updateSkinned = function (dt, speed) {
   if (this.stun > 0) this.stun -= dt;
   if (this.channel > 0) this.channel -= dt;
   const moving = speed > 0.3;
-  if (r.mounted) {
+  if (r.mounted && r.horse.anim) {
+    r.horse.anim.update(dt, speed);
+    r.body.position.y = 0.8;
+  } else if (r.mounted) {
     this.phase += dt * (moving ? Math.min(speed, 12) * 1.5 : 0);
     const gal = moving ? Math.sin(this.phase * 0.8) : 0;
     r.horse.legs.forEach((l, i) => { l.rotation.x = (i < 2 ? gal : -gal) * 0.75 * (i % 2 ? 0.85 : 1); });
@@ -713,6 +729,7 @@ Anim.prototype.updateSkinned = function (dt, speed) {
     r.horse.group.position.y = moving ? Math.abs(gal) * 0.08 : 0;
     r.body.position.y = 1.05 + (moving ? Math.abs(gal) * 0.1 : 0);
   }
+  if (r.decorHorse && r.decorHorse.anim) r.decorHorse.anim.update(dt, 0);
   sk.update(dt, speed, !!r.mounted, this.stun, this.dead ? 0 : this.channel);
   if (r.gear) r.gear.update(dt, !!(sk.os && !sk.os.hold && sk.os.left > 0.05 && !this.dead));
 };
