@@ -48,7 +48,7 @@ I dati (account e personaggi) stanno in `data/db.json`. Le password sono salvate
 
 ## Comandi
 
-**Controlli:** WASD per muoversi, clic sinistro per muoversi, attaccare, parlare o raccogliere. Tasto destro trascinato o Q/E per ruotare la visuale, rotella per lo zoom. Spazio attacca, Tab cambia bersaglio, 1-9 e 0 usano la barra rapida, Z raccoglie, I/C/K/P/H aprono inventario, personaggio, abilità, misuratore dei danni e guida, Invio apre la chat.
+**Controlli:** WASD per muoversi, clic sinistro per muoversi, attaccare, parlare o raccogliere. Tasto destro trascinato o Q/E per ruotare la visuale, rotella per lo zoom. Spazio attacca, Tab cambia bersaglio, 1-9 e 0 usano la barra rapida, R sale o scende da cavallo, Z raccoglie, I/C/K/P/H aprono inventario, personaggio, abilità, misuratore dei danni e guida, Invio apre la chat.
 
 **Chat:** `!testo` grida a tutto il regno, `#testo` scrive al gruppo, `@nome testo` sussurra, `/online` mostra chi è in linea, `/pos` mostra la posizione.
 
@@ -62,6 +62,7 @@ I dati (account e personaggi) stanno in `data/db.json`. Le password sono salvate
 | `/spawn mostro [n]` | Evoca mostri (`/mobs` per la lista) |
 | `/heal` · `/risorsa` | Cura completa · risorsa al massimo |
 | `/via nome` | Cambia la Via del personaggio (per provare le specializzazioni) |
+| `/destriero livello` | Dà un destriero del livello indicato |
 | `/rate exp\|drop\|tael valore` | Cambia i moltiplicatori al volo (vengono salvati) |
 | `/annuncio testo` | Messaggio a tutto il server |
 | `/save` | Salvataggio immediato |
@@ -99,6 +100,26 @@ Fino a 5 giocatori dello stesso regno. Seleziona un alleato e premi **Invita nel
 - **Tael e bottino:** i tael vengono divisi tra i membri vicini. Il bottino appartiene a tutto il gruppo per i primi 20 secondi.
 - **Riquadri dei compagni:** vita e risorsa sono sempre visibili, anche da lontano; un clic seleziona il compagno, per esempio per curarlo.
 - **Chat e mappa:** `#testo` scrive al gruppo. I compagni appaiono in verde sulla minimappa e sopra la testa.
+
+## Cavalcature
+
+Dal livello 10 lo **Stalliere** (Mastro Bo, vicino alla porta laterale di ogni villaggio) vende un Puledro per 5.000 tael. Premi **R** per salire in sella: servono 1,5 secondi da fermo, e muoversi annulla il richiamo. Premi di nuovo **R** per scendere.
+
+- **In sella** corri più veloce: da +50% a +97,5% a seconda del livello del destriero. Le prime quattro caselle della barra rapida diventano le **tecniche a cavallo**, ad area e senza costo di risorsa:
+
+  | Tecnica | Livello del destriero |
+  |---|---|
+  | Carica del Destriero | 1 |
+  | Fendente in Corsa | 1 |
+  | Zoccoli di Tuono | 8 |
+  | Turbine al Galoppo | 15 |
+
+  Le tecniche della classe si usano solo a piedi.
+- **Il destriero cresce combattendo in sella**: riceve il 30% dell'esperienza base dei mostri. Puoi anche addestrarlo a pagamento dallo Stalliere (+25% del livello per volta). Al livello 10 diventa Destriero, al 20 Destriero da Guerra, e ogni grado ha un aspetto diverso.
+- **Accampamenti**: raduni fitti di mostri deboli che ricompaiono in fretta, ideali per il grind ad area:
+  - Lupi del Branco vicino ai villaggi;
+  - Predoni delle Colline nelle terre di confine;
+  - Soldati di Terracotta intorno all'altopiano.
 
 ## Sistemi presenti
 

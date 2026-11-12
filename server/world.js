@@ -3,7 +3,7 @@
 import {
   CLASSES, VIE, SKILLS, BUFFS, RESOURCES, ITEMS, MOBS, UPGRADE, SHOPS, NPC_ROLES, WEAPON_TYPES, GUARD_LINES,
   INV_SIZE, QB_SIZE, STACK_MAX, STAT_MAX, EQUIP_SLOTS, MAX_LEVEL, VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BOOK_CHANCE,
-  PTS_MAX, GCD_MS, GCD_MIN_MS, DATA_VERSION, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
+  PTS_MAX, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
   expToNext, skillVal, upgradedStat, equipSlotOf,
 } from '../shared/data.js';
 import {
@@ -99,6 +99,7 @@ function defaultQuickbar(ch) {
 
 // Adegua i personaggi creati con versioni precedenti dei dati.
 function migrate(ch) {
+  if (ch.horse === undefined) ch.horse = null;
   if (ch.v === DATA_VERSION) return;
   ch.skills = {};
   ch.skillPts = Math.max(0, ch.lvl - 1);
@@ -199,10 +200,27 @@ export class World {
     place(CENTER.x, CENTER.z, 38, 92, 16, [['terracotta', 3], ['spirito_lanterna', 3], ['tigre_spettrale', 1]], [2, 3]);
     place(CENTER.x, CENTER.z, 45, 88, 3, [['obelisco_abisso', 1]], [1, 1]);
     this.addSpawner('generale', CENTER.x, CENTER.z, 1);
+    // accampamenti: molti mostri deboli e vicini, ricomparsa rapida (grind ad area, ideale a cavallo)
+    const camp = (cx, cz, rmin, rmax, n, type, count, filter) => {
+      let made = 0, tries = 0;
+      while (made < n && tries++ < 400) {
+        const a = rng() * Math.PI * 2, r = rmin + rng() * (rmax - rmin);
+        const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+        if (!validPos(x, z) || (filter && !filter(x, z))) continue;
+        this.addSpawner(type, x, z, count, 10);
+        made++;
+      }
+    };
+    for (const kid of KINGDOM_IDS) {
+      const v = KINGDOMS[kid].village;
+      camp(v.x, v.z, 82, 118, 2, 'lupo_branco', 12);
+      camp(v.x, v.z, 132, 172, 2, 'predone', 12, farFromCenter);
+    }
+    camp(CENTER.x, CENTER.z, 55, 90, 3, 'soldato_terracotta', 12);
   }
 
-  addSpawner(type, x, z, count) {
-    const sp = { type, x, z, count, pending: [] };
+  addSpawner(type, x, z, count, radius = 6) {
+    const sp = { type, x, z, count, radius, pending: [] };
     this.spawners.push(sp);
     for (let i = 0; i < count; i++) this.spawnFromSpawner(sp);
   }
@@ -211,7 +229,7 @@ export class World {
     let x = sp.x, z = sp.z;
     if (!MOBS[sp.type].stone && !MOBS[sp.type].boss) {
       for (let i = 0; i < 6; i++) {
-        const nx = sp.x + rand(-6, 6), nz = sp.z + rand(-6, 6);
+        const nx = sp.x + rand(-sp.radius, sp.radius), nz = sp.z + rand(-sp.radius, sp.radius);
         if (heightAt(nx, nz) > 0.3) { x = nx; z = nz; break; }
       }
     }
@@ -277,7 +295,7 @@ export class World {
       kind: 'player', sess, ch, name: ch.name, cls: ch.cls, kingdom: ch.kingdom, lvl: ch.lvl,
       x: ch.x, z: ch.z, r: 0, hp: ch.hp, buffs: [], hots: [], dots: [], debuffs: [], cds: {},
       rtype: CLASSES[ch.cls].res, res: 0, rmax: 100, pts: 0, gcdUntil: 0, casting: null, chainIdx: 0, chainAt: 0,
-      shield: 0, shieldUntil: 0, dmgPct: 0, haste: 0,
+      shield: 0, shieldUntil: 0, dmgPct: 0, haste: 0, mounted: false, mountUntil: 0,
       nextAttack: 0, dead: false, known: new Map(), knownVis: new Map(), stunUntil: 0, slowUntil: 0,
       lastMoveAt: NOW(), lastCombat: 0, selfDirty: true, invDirty: true, resDirty: false, gm: !!sess.gm, online: true,
     };
@@ -323,6 +341,7 @@ export class World {
   // Livello effettivo di un'abilità per il giocatore (0 = non disponibile).
   lvlOf(p, sid) {
     const sk = SKILLS[sid];
+    if (sk && sk.mount) return p.mounted && p.ch.horse && p.ch.horse.lvl >= sk.hlvl ? Math.min(SKILL_MAX, p.ch.horse.lvl) : 0;
     if (!sk || sk.cls !== p.cls || p.lvl < sk.lvl) return 0;
     if (sk.via && sk.via !== p.ch.via) return 0;
     return Math.max(1, p.ch.skills[sid] || 0);
@@ -370,7 +389,7 @@ export class World {
     p.evade = Math.min(25, s.dex * 0.2 + (g.evade || 0));
     p.haste = (b.hastePct || 0) + (g.haste || 0);
     p.aspd = Math.round(aspd / (1 + p.haste / 100 + s.dex * 0.004));
-    p.speed = 8 * (1 + (spdPct + (g.moveSpd || 0)) / 100);
+    p.speed = 8 * (1 + (spdPct + (g.moveSpd || 0)) / 100) * (p.mounted && p.ch.horse ? HORSE.speed(p.ch.horse.lvl) : 1);
     p.monDmg = g.monDmg || 0; p.bossDmg = g.bossDmg || 0; p.aoeDmg = g.aoeDmg || 0;
     p.lifesteal = g.lifesteal || 0; p.dmgRed = Math.min(50, g.dmgRed || 0);
     p.expPct = g.expPct || 0; p.taelPct = g.taelPct || 0; p.dropPct = g.dropPct || 0;
@@ -404,7 +423,7 @@ export class World {
         const eq = e.ch.equip;
         return { ...base, k: 'p', n: e.name, cls: e.cls, kd: e.kingdom, lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp,
           w: eq.weapon ? eq.weapon.id : null, wu: eq.weapon ? eq.weapon.up : 0, b: eq.body ? eq.body.id : null, h: eq.head ? eq.head.id : null,
-          gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0 };
+          gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0, mt: e.mounted && e.ch.horse ? HORSE.tierOf(e.ch.horse.lvl) : 0 };
       }
       case 'mob': return { ...base, k: 'm', ty: e.type, n: e.name, lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp };
       case 'npc': return { ...base, k: 'n', role: e.role, kd: e.kingdom, n: e.name };
@@ -425,6 +444,7 @@ export class World {
       sp: ch.statPts, kp: ch.skillPts, st: ch.stats, via: ch.via, sk: ch.skills, tael: ch.tael, qb: ch.qb,
       buffs: p.buffs.map(b => ({ b: b.id, ms: b.until - t })), dead: p.dead ? 1 : 0,
       g: p.gear, cm: r2(p.critMult),
+      mounted: p.mounted ? 1 : 0, horse: p.ch.horse ? { lvl: p.ch.horse.lvl, exp: Math.floor(p.ch.horse.exp), need: HORSE.need(p.ch.horse.lvl) } : null,
     };
   }
 
@@ -497,6 +517,12 @@ export class World {
       if (t >= h.next && h.next <= h.until) { h.next += 1000; this.heal(p, h.amt, true); }
     }
     p.hots = p.hots.filter(h => h.next <= h.until);
+    if (p.mountUntil && t >= p.mountUntil) {
+      p.mountUntil = 0;
+      p.mounted = true;
+      this.send(p, { t: 'castend', ok: 1 });
+      this.recalc(p); p.vis++; this.touch(p);
+    }
     if (p.casting && t >= p.casting.until) {
       const c = p.casting;
       p.casting = null;
@@ -807,7 +833,9 @@ export class World {
       const maxL = Math.max(...members.map(q => q.lvl));
       for (const q of members) {
         const gap = maxL - q.lvl > 15 ? 0.2 : 1; // niente "trasporto" di personaggi molto più bassi
-        this.gainExp(q, Math.max(1, Math.round(pool / members.length * expMod(q.lvl, d.lvl) * gap * (1 + (q.expPct || 0) / 100))));
+        const got = Math.max(1, Math.round(pool / members.length * expMod(q.lvl, d.lvl) * gap * (1 + (q.expPct || 0) / 100)));
+        this.gainExp(q, got);
+        if (q.mounted) this.gainHorseExp(q, pool / members.length * HORSE.expShare);
       }
     }
     if (top && d.tael) {
@@ -825,6 +853,34 @@ export class World {
     if (m.spawner) m.spawner.pending.push(NOW() + d.respawn * 1000 * rand(0.9, 1.15));
     if (d.boss) this.broadcast({ t: 'notice', m: `${top ? top.name : 'Un eroe'} ha sconfitto ${d.name}!` });
     m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = [];
+  }
+
+  gainHorseExp(p, amt) {
+    const h = p.ch.horse;
+    if (!h || h.lvl >= HORSE.maxLevel) return;
+    h.exp += amt;
+    let up = false;
+    while (h.lvl < HORSE.maxLevel && h.exp >= HORSE.need(h.lvl)) { h.exp -= HORSE.need(h.lvl); h.lvl++; up = true; }
+    if (up) {
+      const name = HORSE.names[HORSE.tierOf(h.lvl)];
+      this.send(p, { t: 'notice', m: `Il tuo destriero è salito al livello ${h.lvl}!` });
+      const unlocked = MOUNT_SKILLS.filter(s => SKILLS[s].hlvl === h.lvl).map(s => SKILLS[s].name);
+      if (unlocked.length) this.sys(p, `Nuova tecnica a cavallo: ${unlocked.join(', ')}`);
+      if (h.lvl === 10 || h.lvl === 20) this.sys(p, `Il tuo cavallo è diventato un ${name}!`);
+      this.recalc(p); p.vis++; this.touch(p);
+    }
+    p.selfDirty = true;
+  }
+
+  // Sale o scende dal destriero (salire richiede 1,5 s fermi).
+  onMount(p) {
+    if (p.dead) return;
+    if (p.mounted) { p.mounted = false; this.recalc(p); p.vis++; this.touch(p); return; }
+    if (!p.ch.horse) return this.err(p, `Non hai un destriero: parla con lo Stalliere del villaggio (dal livello ${HORSE.minLevel})`);
+    if (p.casting) this.cancelCast(p);
+    p.mountUntil = NOW() + HORSE.mountMs;
+    p.mountX = p.x; p.mountZ = p.z;
+    this.send(p, { t: 'cast', s: '__mount', ms: HORSE.mountMs, gcd: 0 });
   }
 
   gainExp(p, amt) {
@@ -854,6 +910,7 @@ export class World {
   playerDie(p, killer) {
     p.dead = true; p.hp = 0; p.deadAt = NOW();
     p.buffs = []; p.hots = []; p.dots = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0;
+    p.mounted = false; p.mountUntil = 0; p.vis++;
     this.recalc(p);
     this.touch(p); p.selfDirty = true;
     let lost = 0;
@@ -914,7 +971,9 @@ export class World {
       case 'apply': return this.onApply(p, msg.i | 0, msg.tgt);
       case 'combine': return this.onCombine(p, msg.i | 0);
       case 'respawn': return this.respawn(p, msg.mode);
-      case 'cancel': if (p.casting) this.cancelCast(p); return;
+      case 'cancel': if (p.casting) this.cancelCast(p); if (p.mountUntil) { p.mountUntil = 0; this.send(p, { t: 'castend', ok: 0 }); } return;
+      case 'mount': return this.onMount(p);
+      case 'stable': return this.onStable(p, msg.npc, msg.a);
       case 'pinv': return this.onPartyInvite(p, msg.id ? this.ents.get(msg.id) : this.playerByName(msg.n));
       case 'preply': return this.onPartyReply(p, !!msg.ok);
       case 'pleave': return this.leaveParty(p);
@@ -935,6 +994,7 @@ export class World {
     p.x = clamp(x, -PLAY_LIMIT, PLAY_LIMIT); p.z = clamp(z, -PLAY_LIMIT, PLAY_LIMIT);
     if (Number.isFinite(+msg.r)) p.r = +msg.r;
     if (p.casting && Math.hypot(p.x - p.casting.x, p.z - p.casting.z) > 0.35) this.cancelCast(p);
+    if (p.mountUntil && Math.hypot(p.x - p.mountX, p.z - p.mountZ) > 0.35) { p.mountUntil = 0; this.send(p, { t: 'castend', ok: 0 }); }
     this.touch(p);
   }
 
@@ -1026,7 +1086,8 @@ export class World {
     if (!sk || p.dead) return;
     const t = NOW();
     const lvl = this.lvlOf(p, sid);
-    if (!lvl) return this.skfail(p, sid, 'Non conosci ancora questa abilità');
+    if (p.mounted && !sk.mount) return this.skfail(p, sid, 'Scendi da cavallo per usare le tecniche della tua classe (R)');
+    if (!lvl) return this.skfail(p, sid, sk.mount ? (p.mounted ? `Il destriero deve essere di livello ${sk.hlvl}` : 'Le tecniche a cavallo si usano in sella (R)') : 'Non conosci ancora questa abilità');
     if (p.stunUntil > t) return this.skfail(p, sid, 'Sei stordito!');
     if ((p.cds[sid] || 0) > t + 150) return this.skfail(p, sid, 'Abilità in ricarica');
     if (!sk.offgcd && (p.gcdUntil > t + 150 || p.casting)) return this.skfail(p, sid);
@@ -1087,7 +1148,7 @@ export class World {
     }
     const behind = !!(sk.behind && target && (this.isBehind(p, target) || this.hasBuffWith(p, 'consume', sid) && p.buffs.some(b => BUFFS[b.id].behind)));
     p.buffs = p.buffs.filter(b => { const d = BUFFS[b.id]; return !((d.consume && d.consume.includes(sid)) || (sk.spend && d.consumeSpender)); });
-    const base = sk.dmg === 'magic' ? p.matk : sk.dmg === 'hybrid' ? (p.atk + p.matk) * 0.55 : p.atk;
+    const base = sk.dmg === 'magic' ? p.matk : sk.dmg === 'hybrid' ? (p.atk + p.matk) * 0.55 : sk.dmg === 'best' ? Math.max(p.atk, p.matk) : p.atk;
     const pctFor = (tgt) => {
       let pct = p.dmgPct + bonus + (behind ? sk.behind.dmg : 0) + this.vulnFrom(tgt, p);
       if (sk.bonusVs && tgt.dots.some(d => d.src === p.id && d.sid === sk.bonusVs.dot)) pct += sk.bonusVs.dmg;
@@ -1122,6 +1183,7 @@ export class World {
           fxd.fx = from.x; fxd.fz = from.z;
         }
         for (let i = 0; i < (sk.hits || 1); i++) strikeOne(target, i);
+        if (sk.splash) for (const e of this.hostilesAround(p, target.x, target.z, sk.splash)) if (e !== target) { strikeOne(e); control(e); }
         control(target);
         if (sk.dot && this.canAttack(p, target)) this.applyDot(p, target, sk, lvl, n, base, pctFor(target));
         fxd.d = target.id; offensive = true;
@@ -1256,6 +1318,28 @@ export class World {
     if (notify || def.proc) this.send(p, { t: 'fx', k: 'proc', s: p.id, b: id });
   }
 
+  onStable(p, npcId, action) {
+    if (!this.nearNpc(p, npcId, ['stalliere'])) return;
+    const h = p.ch.horse;
+    if (action === 'buy') {
+      if (h) return this.err(p, 'Hai già un destriero');
+      if (p.lvl < HORSE.minLevel) return this.err(p, `Serve il livello ${HORSE.minLevel}`);
+      if (p.ch.tael < HORSE.price) return this.err(p, 'Tael insufficienti');
+      p.ch.tael -= HORSE.price;
+      p.ch.horse = { lvl: 1, exp: 0 };
+      p.selfDirty = true;
+      this.send(p, { t: 'notice', m: 'Hai un nuovo Puledro! Premi R per salire in sella.' });
+    } else if (action === 'train') {
+      if (!h) return;
+      if (h.lvl >= HORSE.maxLevel) return this.err(p, 'Il destriero ha raggiunto il massimo');
+      const cost = HORSE.trainCost(h.lvl);
+      if (p.ch.tael < cost) return this.err(p, 'Tael insufficienti');
+      p.ch.tael -= cost;
+      this.gainHorseExp(p, HORSE.need(h.lvl) * HORSE.trainPct / 100);
+      this.sys(p, `Addestramento completato (-${cost} tael).`);
+    }
+  }
+
   // ------------------------------------------------------------ gruppi
   playerByName(n) {
     const name = String(n || '').toLowerCase();
@@ -1363,7 +1447,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /via nome, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /via nome, /destriero livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -1409,6 +1493,11 @@ export class World {
       }
       case 'heal': p.hp = p.maxHp; if (p.rtype !== 'ira') p.res = p.rmax; p.selfDirty = true; this.touch(p); return;
       case 'risorsa': p.res = p.rmax; p.selfDirty = true; return;
+      case 'destriero': {
+        const L = clamp(parseInt(a[0], 10) || 1, 1, HORSE.maxLevel);
+        p.ch.horse = { lvl: L, exp: 0 }; this.recalc(p); p.vis++; this.touch(p); p.selfDirty = true;
+        return sys(`Destriero impostato al livello ${L}.`);
+      }
       case 'via': {
         if (!CLASSES[p.cls].vie.includes(a[0])) return sys(`Vie disponibili: ${CLASSES[p.cls].vie.join(', ')}`);
         p.ch.via = a[0]; p.buffs = [];
@@ -1637,6 +1726,7 @@ export class World {
     if (!n) return;
     if (n.role === 'armi' || n.role === 'erbe') return this.send(p, { t: 'shop', npc: n.id, role: n.role, items: SHOPS[n.role] });
     if (n.role === 'fabbro') return this.send(p, { t: 'smith', npc: n.id });
+    if (n.role === 'stalliere') return this.send(p, { t: 'stable', npc: n.id });
     let m;
     if (n.role === 'maestro') {
       const c = CLASSES[p.cls];

@@ -243,6 +243,46 @@ function finish(rig, radius) {
   return rig;
 }
 
+// Destriero procedurale su tre gradi: Puledro, Destriero, Destriero da Guerra.
+function horseRig(tier) {
+  const g = new THREE.Group();
+  const coat = lam([0, 0x8a5e38, 0x4a2e1c, 0x1e1a1c][tier]), mane = lam([0, 0x2a1a10, 0x140c08, 0x0a0a0a][tier]);
+  const hoof = lam(0x1a1410), leather = lam(0x5a3a20);
+  g.add(mesh(box(0.72, 0.78, 1.9), coat, 0, 1.55, 0));
+  g.add(mesh(sph(0.44, 8, 6), coat, 0, 1.56, 0.85));
+  g.add(mesh(sph(0.43, 8, 6), coat, 0, 1.6, -0.82));
+  const neck = new THREE.Group(); neck.position.set(0, 1.75, 1.0); g.add(neck);
+  neck.add(withRot(mesh(box(0.32, 1.0, 0.42), coat, 0, 0.38, 0.22), 'x', 0.55));
+  neck.add(withRot(mesh(box(0.1, 0.95, 0.12), mane, 0, 0.45, 0.02), 'x', 0.55));
+  const head = new THREE.Group(); head.position.set(0, 0.86, 0.5); neck.add(head);
+  head.add(withRot(mesh(box(0.3, 0.34, 0.72), coat, 0, 0, 0.22), 'x', 0.35));
+  head.add(withRot(mesh(box(0.24, 0.24, 0.2), lam(0x2a1a14), 0, -0.18, 0.55), 'x', 0.35));
+  for (const sx of [-1, 1]) {
+    head.add(mesh(cone(0.06, 0.18, 4), coat, sx * 0.1, 0.24, -0.08));
+    head.add(mesh(box(0.04, 0.05, 0.04), lam(0x0a0a0a), sx * 0.155, 0.06, 0.18));
+  }
+  const legs = [];
+  for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    const pv = new THREE.Group(); pv.position.set(sx * 0.24, 1.2, sz * 0.72); g.add(pv);
+    pv.add(mesh(box(0.17, 1.08, 0.2), coat, 0, -0.54, 0));
+    pv.add(mesh(box(0.2, 0.12, 0.24), hoof, 0, -1.12, 0.02));
+    legs.push(pv);
+  }
+  g.add(withRot(mesh(box(0.12, 0.85, 0.16), mane, 0, 1.45, -1.12), 'x', 0.45));
+  g.add(mesh(box(0.78, 0.12, 0.72), leather, 0, 1.98, -0.05));
+  g.add(mesh(box(0.5, 0.18, 0.1), leather, 0, 2.08, -0.38));
+  const cloth = [0, 0x6a5a3a, 0x8a2020, 0x5a1010][tier];
+  for (const sx of [-1, 1]) g.add(mesh(box(0.04, 0.55, 0.8), lam(cloth), sx * 0.39, 1.7, -0.05));
+  if (tier >= 3) {
+    const gold = lam(0xc0982a, { emissive: 0x2a1a00 });
+    g.add(mesh(box(0.78, 0.55, 0.12), gold, 0, 1.45, 1.22));
+    head.add(withRot(mesh(box(0.32, 0.12, 0.5), gold, 0, 0.17, 0.2), 'x', 0.35));
+    head.add(mesh(cone(0.07, 0.4, 5), lam(0xb02a1a), 0, 0.42, -0.02));
+    for (const sx of [-1, 1]) g.add(mesh(box(0.05, 0.3, 1.2), gold, sx * 0.4, 1.95, 0));
+  }
+  return { group: g, legs, neck };
+}
+
 export function buildPlayerModel(info) {
   const c = CLASSES[info.cls];
   const k = KINGDOMS[info.kd];
@@ -253,7 +293,13 @@ export function buildPlayerModel(info) {
   applyWeapon(rig, info.w, info.wu);
   setHat(rig, info.h, k.hex);
   rig.weaponType = info.w ? ITEMS[info.w]?.wt : 'fists';
-  return finish(rig, 0.6);
+  if (info.mt) {
+    rig.horse = horseRig(info.mt);
+    rig.root.add(rig.horse.group);
+    rig.mounted = true;
+    rig.height += 1.1;
+  }
+  return finish(rig, info.mt ? 1.1 : 0.6);
 }
 
 export function applyWeapon(rig, wid, up) {
@@ -278,6 +324,7 @@ const NPC_LOOKS = {
   fabbro: { robe: 0x3a3430, trim: 0x8a5a2a, pants: 0x2a2420, hair: null, hairStyle: 'bald', armor: 0x4a3a2a, skin: 0xc89870 },
   maestro: { robe: 0xe8e4d8, trim: 0x8a2a2a, pants: 0xc8c4b8, hair: 0xe8e8e8, hairStyle: 'topknot', beard: true, weapon: 'bastone_cielo' },
   guardia: { robe: 0x3a3a40, trim: 0x8a8a8a, pants: 0x2a2a2e, hair: 0x1a1210, hairStyle: 'topknot', helm: 'elmo_bronzo' },
+  stalliere: { robe: 0x6a5232, trim: 0x3a2a18, pants: 0x4a3a28, hair: 0x2a1a10, hairStyle: 'topknot', hat: 'cappello_paglia' },
 };
 
 export function buildNpcModel(info) {
@@ -301,6 +348,13 @@ export function buildNpcModel(info) {
     rig.armR.grip.add(hammer);
   }
   if (info.role === 'erbe') rig.torso.rotation.x = 0.18;
+  if (info.role === 'stalliere') {
+    setHat(rig, 'cappello_paglia');
+    const h = horseRig(2);
+    h.group.position.set(-2.2, 0, 0.4); h.group.rotation.y = 0.3;
+    rig.root.add(h.group);
+    rig.decorHorse = h;
+  }
   rig.npc = true;
   return finish(rig, 0.7);
 }
@@ -428,10 +482,20 @@ export class Anim {
       r.body.position.y = moving ? Math.abs(Math.sin(this.phase)) * 0.05 : 0;
       return;
     }
-    // umanoide
-    r.legL.rotation.x = sw * 0.65;
-    r.legR.rotation.x = -sw * 0.65;
-    r.body.position.y = moving ? Math.abs(Math.sin(this.phase)) * 0.06 : Math.sin(this.t * 2) * 0.01;
+    // umanoide (a piedi o in sella)
+    if (r.mounted) {
+      const gal = moving ? Math.sin(this.phase * 0.8) : 0;
+      r.horse.legs.forEach((l, i) => { l.rotation.x = (i < 2 ? gal : -gal) * 0.75 * (i % 2 ? 0.85 : 1); });
+      r.horse.neck.rotation.x = moving ? Math.sin(this.phase * 0.8 + 1) * 0.12 : Math.sin(this.t * 1.2) * 0.04;
+      r.horse.group.position.y = moving ? Math.abs(gal) * 0.08 : 0;
+      r.legL.rotation.set(-1.25, 0, 0.42);
+      r.legR.rotation.set(-1.25, 0, -0.42);
+      r.body.position.y = 1.08 + (moving ? Math.abs(gal) * 0.1 : Math.sin(this.t * 2) * 0.01);
+    } else {
+      r.legL.rotation.x = sw * 0.65;
+      r.legR.rotation.x = -sw * 0.65;
+      r.body.position.y = moving ? Math.abs(Math.sin(this.phase)) * 0.06 : Math.sin(this.t * 2) * 0.01;
+    }
     let aR = -sw * 0.5, aL = sw * 0.5;
     if (r.weaponType === 'staff' && !moving) aR = -0.3;
     if (r.npc && r.armR.pv.rotation.x !== 0 && !moving && this.atk <= 0) aR = r.armR.pv.rotation.x;

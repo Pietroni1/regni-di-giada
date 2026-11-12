@@ -194,7 +194,28 @@ export const SKILLS = {
   pioggia_petali: { name: 'Pioggia di Petali', cls: 'mistico', via: 'benedizione', lvl: 12, type: 'heal_aoe', range: 20, radius: 10, heal: [1.2, 0.06], cost: 12, cast: 2.0, spendBonus: 20, glyph: '花', color: 0xf0a0d0, fx: 'heal', desc: 'Cura tutti gli alleati vicini al bersaglio (2 s). Consuma le Cariche: +20% cura per carica.' },
   preghiera_antenati: { name: 'Preghiera degli Antenati', cls: 'mistico', via: 'benedizione', lvl: 15, type: 'heal_aoe', healPct: true, radius: 20, heal: [0.35, 0.01], offgcd: true, cd: 120, glyph: '祖', color: 0xfff0a0, fx: 'heal', desc: 'Cura tutti gli alleati vicini di una grande parte della loro vita massima.' },
 };
+// ======================= TECNICHE A CAVALLO (tutte le classi, solo in sella)
+// hlvl: livello del destriero richiesto. dmg 'best': il maggiore tra attacco fisico e magico.
+Object.assign(SKILLS, {
+  carica_destriero: { name: 'Carica del Destriero', cls: '*', mount: true, hlvl: 1, type: 'strike', dash: true, range: 15, dmg: 'best', mult: [1.4, 0.07], splash: 3.5, stun: [0.8, 0.02], cd: 8, glyph: '駆', color: 0xffd27a, fx: 'dash', desc: 'Il destriero carica il bersaglio travolgendo chi gli sta intorno.' },
+  fendente_corsa: { name: 'Fendente in Corsa', cls: '*', mount: true, hlvl: 1, type: 'aoe_self', dmg: 'best', mult: [1.1, 0.06], radius: 5.5, cd: 2, glyph: '疾', color: 0xffe0a0, fx: 'spin', desc: 'Un ampio fendente dalla sella su tutti i nemici intorno. Il colpo base del grind a cavallo.' },
+  zoccoli_tuono: { name: 'Zoccoli di Tuono', cls: '*', mount: true, hlvl: 8, type: 'aoe_self', dmg: 'best', mult: [1.6, 0.08], radius: 7, stun: [1.2, 0.02], cd: 10, glyph: '蹄', color: 0xc9a66b, fx: 'quake', desc: 'Il destriero si impenna e pesta il suolo: danni ad area e stordimento.' },
+  turbine_galoppo: { name: 'Turbine al Galoppo', cls: '*', mount: true, hlvl: 15, type: 'aoe_self', dmg: 'best', mult: [2.4, 0.1], radius: 8, cd: 18, glyph: '旋', color: 0x9fd4ff, fx: 'wind', desc: 'Un turbine di colpi in pieno galoppo su un\'area molto ampia.' },
+});
+export const MOUNT_SKILLS = ['carica_destriero', 'fendente_corsa', 'zoccoli_tuono', 'turbine_galoppo'];
+
 for (const [id, sk] of Object.entries(SKILLS)) sk.id = id;
+
+// ------------------------------------------------------------------ destriero
+export const HORSE = {
+  minLevel: 10, price: 5000, maxLevel: 20, mountMs: 1500,
+  speed: (l) => 1.5 + 0.025 * (l - 1),
+  need: (l) => Math.floor(300 * Math.pow(l, 1.5)),
+  expShare: 0.3, // parte dell'esperienza base dei mostri che va al destriero quando sei in sella
+  trainCost: (l) => 1500 * l, trainPct: 25,
+  tierOf: (l) => (l >= 20 ? 3 : l >= 10 ? 2 : 1),
+  names: ['', 'Puledro', 'Destriero', 'Destriero da Guerra'],
+};
 
 export function skillCost(sk, lvl) { return sk.cost ? sk.cost : 0; }
 export const STATS_NAMES = {
@@ -365,6 +386,12 @@ export const MOBS = {
   generale: { name: 'Generale Senza Volto', lvl: 25, hp: 18000, atk: 120, def: 45, exp: 9000, speed: 4.5, aggro: 14, range: 3.4, aspd: 2200, model: 'general', color: 0x2a1a1a, scale: 1.9, respawn: 900, boss: true, tael: [3000, 6000],
     drops: [['frammento_obelisco', 0.9, 2, 4], ['tomo_tecnica', 0.7, 1, 2], ['sigillo_fabbro', 0.35], ['spada_gru', 0.12], ['pugnali_eclissi', 0.12], ['arco_autunno', 0.12], ['guanti_sole', 0.12], ['bastone_nubi', 0.12], ['armatura_nubi', 0.1], ['elmo_drago', 0.1], ['stivali_nube', 0.1]] },
   fantoccio: { name: "Fantoccio d'Addestramento", lvl: 30, hp: 9999999, atk: 0, def: 25, exp: 0, dummy: true, model: 'dummy', color: 0xc8a860, scale: 1, respawn: 0, speed: 0, aggro: 0, drops: [] },
+  lupo_branco: { name: 'Lupo del Branco', lvl: 6, hp: 150, atk: 14, def: 4, exp: 40, speed: 5.5, aggro: 8, range: 2.0, aspd: 1600, model: 'wolf', color: 0x8a8378, scale: 0.9, respawn: 12, tael: [4, 9],
+    drops: [['zanna_lupo', 0.25], ['ginseng_p', 0.05]] },
+  predone: { name: 'Predone delle Colline', lvl: 12, hp: 320, atk: 30, def: 10, exp: 95, speed: 5, aggro: 9, range: 2.4, aspd: 1600, model: 'bandit', color: 0x4a3a2f, scale: 1, respawn: 12, tael: [12, 26],
+    drops: [['benda_bandito', 0.25], ['ginseng_m', 0.04], ['minerale_ferro', 0.02]] },
+  soldato_terracotta: { name: 'Soldato di Terracotta', lvl: 20, hp: 650, atk: 58, def: 22, exp: 210, speed: 4.2, aggro: 9, range: 2.5, aspd: 1700, model: 'terracotta', color: 0xb07a52, scale: 0.95, respawn: 12, tael: [30, 60],
+    drops: [['coccio_terracotta', 0.25], ['ginseng_g', 0.02], ['minerale_ferro', 0.04]] },
   obelisco_minore: { name: 'Obelisco Corrotto', lvl: 8, hp: 3000, atk: 0, def: 12, exp: 900, stone: true, waves: ['lupo_alfa', 'bandito'], wave: 3, model: 'obelisk', color: 0x8a3ac0, scale: 1, respawn: 300, tael: [200, 400],
     drops: [['tomo_tecnica', 0.12], ['minerale_ferro', 0.6, 1, 3], ['ginseng_m', 0.5, 2, 4], ['frammento_obelisco', 0.08], ['pergamena_ritorno', 0.3]] },
   obelisco_abisso: { name: "Obelisco dell'Abisso", lvl: 18, hp: 9000, atk: 0, def: 30, exp: 3500, stone: true, waves: ['terracotta', 'spirito_lanterna'], wave: 3, model: 'obelisk', color: 0xd03a4a, scale: 1.3, respawn: 420, tael: [600, 1200],
@@ -397,6 +424,7 @@ export const NPC_ROLES = {
   fabbro: { name: 'Fabbro Gao', title: 'Fabbro' },
   maestro: { name: 'Eremita Shou', title: 'Maestro delle Vie' },
   guardia: { name: 'Guardia', title: 'Guardia del villaggio' },
+  stalliere: { name: 'Mastro Bo', title: 'Stalliere' },
 };
 
 export const GUARD_LINES = [

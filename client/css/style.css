@@ -283,3 +283,12 @@ label input { margin-top: 4px; }
 .pm .kick { background: none; border: none; color: #a0705a; cursor: pointer; font-size: 13px; padding: 0 0 0 4px; }
 #tf-invite { margin-top: 6px; font-size: 13px; padding: 3px 10px; }
 #chat-log .party { color: #8aff9a; }
+
+/* ---------- destriero ---------- */
+#stable-body { width: 330px; line-height: 1.45; }
+#stable-body .hn { font-size: 20px; font-weight: 700; color: #f6e2a8; text-align: center; }
+#stable-body .bar { height: 14px; margin: 6px 0; }
+#stable-body .bar .fill { background: linear-gradient(#e8c050, #8a6a10); }
+#stable-body .ms { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+#stable-body .ms .slot { width: 36px; height: 36px; }
+#stable-body .ms.lock { opacity: 0.45; }

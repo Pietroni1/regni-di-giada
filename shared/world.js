@@ -105,6 +105,7 @@ export const VILLAGE_LAYOUT = {
     { role: 'maestro', x: 0, z: -18.6, face: 0 },
     { role: 'guardia', x: -5, z: 36.5, face: 0 },
     { role: 'guardia', x: 5, z: 36.5, face: 0 },
+    { role: 'stalliere', x: -31, z: -3.5, face: Math.PI / 2 },
   ],
   lanterns: [[-4, 18], [4, 18], [-4, 28], [4, 28], [-14, -8], [14, -8], [-14, 8], [14, 8]],
   trees: [[-28, -25], [28, -25], [-12, 25], [12, 25], [-30, 28], [30, 28]],

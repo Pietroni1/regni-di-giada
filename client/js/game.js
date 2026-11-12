@@ -1,7 +1,7 @@
 // Logica di gioco lato client: entità, input, visuale, movimento, combattimento, messaggi dal server.
 import * as THREE from 'three';
 import { heightAt, buildColliders, resolveCollisions, KINGDOMS, PLAY_LIMIT, safeZoneAt } from '/shared/world.js';
-import { SKILLS, ITEMS, MOBS, CLASSES, NPC_ROLES, VIE, BUFFS, RESOURCES, QB_SIZE, RARITIES } from '/shared/data.js';
+import { SKILLS, ITEMS, MOBS, CLASSES, NPC_ROLES, VIE, BUFFS, RESOURCES, QB_SIZE, RARITIES, MOUNT_SKILLS, HORSE } from '/shared/data.js';
 import { buildModel } from './models.js';
 import { Fx } from './fx.js';
 import { UI } from './ui.js';
@@ -29,7 +29,7 @@ class CEnt {
     this.hp = info.hp ?? 1; this.mhp = info.mhp ?? 1; this.lvl = info.lvl ?? 0;
     const d = info.k === 'm' ? MOBS[info.ty] : null;
     this.boss = !!d?.boss; this.stone = !!d?.stone; this.aggr = !!(d && d.aggro > 0);
-    const needModel = !prev || prev.w !== info.w || prev.wu !== info.wu || prev.b !== info.b || prev.h !== info.h || prev.k !== info.k;
+    const needModel = !prev || prev.w !== info.w || prev.wu !== info.wu || prev.b !== info.b || prev.h !== info.h || prev.k !== info.k || (prev.mt || 0) !== (info.mt || 0);
     if (needModel) {
       if (this.rig) this.g.removeRig(this.rig);
       this.rig = buildModel(info);
@@ -158,6 +158,8 @@ export class Game {
       const first = !this.me;
       this.me = m;
       if (this.self) {
+        const mt = m.mounted && m.horse ? HORSE.tierOf(m.horse.lvl) : 0;
+        if ((this.self.info.mt || 0) !== mt) this.self.setInfo({ ...this.self.info, mt, x: this.self.x, z: this.self.z, r: this.self.r });
         this.self.hp = m.hp; this.self.mhp = m.mhp; this.self.lvl = m.lvl; this.self.info.lvl = m.lvl;
         if (m.dead && !this.self.rig.anim.dead) this.self.rig.anim.die();
         if (!m.dead && this.self.rig.anim.dead) { this.self.rig.anim.revive(); ui.hideDeath(); }
@@ -252,6 +254,7 @@ export class Game {
       no.onclick = () => { this.net.send({ t: 'preply', ok: 0 }); prev && prev(); };
     });
     n.on('applied', (m) => { ui.chat('sys', esc(m.m)); ui.notice(m.m); this.sound(m.m.includes('non') ? 'die' : 'ok'); });
+    n.on('stable', (m) => ui.openStable(m));
     n.on('shop', (m) => ui.openShop(m));
     n.on('smith', (m) => ui.openSmith(m));
     n.on('smith_res', (m) => ui.onSmithResult(m));
@@ -354,6 +357,7 @@ export class Game {
         case 'KeyC': this.ui.toggle('win-character'); return;
         case 'KeyK': this.ui.toggle('win-skills'); return;
         case 'KeyP': this.ui.toggle('win-dps'); return;
+        case 'KeyR': this.toggleMount(); return;
         case 'KeyH': case 'F1': e.preventDefault(); this.ui.toggle('win-help'); return;
         case 'KeyZ': this.pickupNear(); return;
         case 'Escape': if (!this.ui.closeAll()) { this.setTarget(null); this.intent = null; } return;
@@ -491,8 +495,25 @@ export class Game {
     if (best) this.intent = { type: 'pick', id: best.id, chain: true };
   }
 
+  toggleMount() {
+    if (!this.me || this.me.dead) return;
+    if (!this.me.horse) return this.ui.notice('Non hai un destriero: parla con lo Stalliere del villaggio', true);
+    this.net.send({ t: 'mount' });
+  }
+
+  // Barra rapida effettiva: in sella le prime quattro caselle diventano le tecniche a cavallo.
+  qbView() {
+    const me = this.me;
+    if (!me) return [];
+    if (!me.mounted) return me.qb;
+    const v = Array(QB_SIZE).fill(null);
+    MOUNT_SKILLS.forEach((s, i) => { v[i] = { k: 's', id: s }; });
+    v[QB_SIZE - 2] = me.qb[QB_SIZE - 2]; v[QB_SIZE - 1] = me.qb[QB_SIZE - 1];
+    return v;
+  }
+
   useQuickbar(i) {
-    const q = this.me?.qb?.[i];
+    const q = this.qbView()[i];
     if (!q) return;
     if (q.k === 's') this.useSkill(q.id);
     else {
@@ -505,6 +526,7 @@ export class Game {
   // ------------------------------------------------------------ abilità
   lvlOf(sid) {
     const sk = SKILLS[sid], me = this.me;
+    if (sk && sk.mount) return me && me.mounted && me.horse && me.horse.lvl >= sk.hlvl ? Math.min(20, me.horse.lvl) : 0;
     if (!sk || !me || sk.cls !== this.cls || me.lvl < sk.lvl) return 0;
     if (sk.via && sk.via !== me.via) return 0;
     return Math.max(1, me.sk[sid] || 0);
@@ -547,7 +569,8 @@ export class Game {
   useSkill(sid) {
     const sk = SKILLS[sid], me = this.me;
     if (!sk || !me || me.dead) return;
-    if (!this.lvlOf(sid)) return this.ui.notice(sk.via && me.via !== sk.via ? "Appartiene a un'altra Via" : `Si sblocca al livello ${sk.lvl}`, true);
+    if (me.mounted && !sk.mount) return this.ui.notice('Scendi da cavallo (R) per usare le tecniche della tua classe', true);
+    if (!this.lvlOf(sid)) return this.ui.notice(sk.mount ? (me.mounted ? `Serve un destriero di livello ${sk.hlvl}` : 'Le tecniche a cavallo si usano in sella (R)') : sk.via && me.via !== sk.via ? "Appartiene a un'altra Via" : `Si sblocca al livello ${sk.lvl}`, true);
     const now = performance.now();
     const busyUntil = Math.max(sk.offgcd ? 0 : this.gcdUntil, sk.offgcd ? 0 : (this.casting ? this.casting.until : 0), this.cds[sid] ? this.cds[sid].until : 0);
     if (busyUntil > now + 30) {
@@ -719,7 +742,7 @@ export class Game {
 
   updateCamera(dt) {
     const s = this.self;
-    const want = new THREE.Vector3(s.x, s.y + 1.8, s.z);
+    const want = new THREE.Vector3(s.x, s.y + 1.8 + (this.me && this.me.mounted ? 1.1 : 0), s.z);
     this.camTarget.lerp(want, Math.min(1, dt * 12));
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     const cam = this.camera;

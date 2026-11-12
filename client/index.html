@@ -104,6 +104,7 @@
     <button data-win="win-inventory" title="Inventario (I)">囊<small>I</small></button>
     <button data-win="win-skills" title="Abilità (K)">技<small>K</small></button>
     <button data-win="win-dps" title="Misuratore dei danni (P)">計<small>P</small></button>
+    <button id="btn-mount" title="Sali o scendi da cavallo (R)">馬<small>R</small></button>
     <button data-win="win-help" title="Aiuto (H)">?<small>H</small></button>
   </div>
 
@@ -128,6 +129,11 @@
     <div class="title">Misuratore dei danni<button class="close">×</button></div>
     <div id="dps-body"></div>
     <div class="row"><button id="dps-reset" class="btn">Azzera</button></div>
+  </div>
+
+  <div id="win-stable" class="window hidden" style="left:340px;top:140px">
+    <div class="title">Mastro Bo — Stalliere<button class="close">×</button></div>
+    <div id="stable-body"></div>
   </div>
 
   <div id="win-shop" class="window hidden" style="left:340px;top:140px">
@@ -158,6 +164,7 @@
         <tr><td>Tab</td><td>Seleziona il prossimo nemico</td></tr>
         <tr><td>1 – 9, 0</td><td>Barra rapida (abilità e oggetti)</td></tr>
         <tr><td>Z</td><td>Raccogli gli oggetti vicini</td></tr>
+        <tr><td>R</td><td>Sali o scendi da cavallo (serve un destriero dallo Stalliere)</td></tr>
         <tr><td>Alt (tenuto)</td><td>Mostra i nomi di tutti gli oggetti a terra</td></tr>
         <tr><td>I / C / K / P</td><td>Inventario / Personaggio / Abilità / Misuratore dei danni</td></tr>
         <tr><td>Invio</td><td>Chat (!testo grida al regno, #testo al gruppo, @nome sussurra)</td></tr>
