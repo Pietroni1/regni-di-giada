@@ -110,6 +110,7 @@ class Trail {
   }
   update(dt, a, b, active) {
     for (const s of this.samples) s.age += dt;
+    if (this.samples.length && this.samples[0].a.distanceTo(a) > 3) this.samples.length = 0; // teletrasporto o scatto: niente scia
     if (active) this.samples.unshift({ a: a.clone(), b: b.clone(), age: 0 });
     while (this.samples.length > this.N || (this.samples.length && this.samples[this.samples.length - 1].age > 0.24)) this.samples.pop();
     const n = this.samples.length;

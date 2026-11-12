@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { hasNature, buildNature, WIND } from './nature.js';
+import { makeTerrainPainted } from './terrain.js';
 import { DUNGEON, dungeonWalkable } from '/shared/data.js';
 import {
   heightAt, roadDistance, fbm, smoothstep, mulberry32, KINGDOMS, KINGDOM_IDS, CENTER, WALL_RADIUS,
@@ -191,6 +192,36 @@ const PATTERN_FRAG = `
     diffuseColor.rgb = pow(c, vec3(2.2));
   }
 `;
+// Pennellate dipinte (scala di grigi, ripetibili) per dare grana a intonaco, legno e pietra degli edifici.
+const BRUSH_TEX = (() => {
+  const N = 256, cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const g = cv.getContext('2d'), rnd = mulberry32(606);
+  g.fillStyle = '#b8b8b8'; g.fillRect(0, 0, N, N);
+  for (let i = 0; i < 900; i++) {
+    const x = rnd() * N, y = rnd() * N, L = 10 + rnd() * 34, a = (rnd() - 0.5) * 0.5, v = 120 + rnd() * 120, w = 2 + rnd() * 5;
+    for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) {
+      g.strokeStyle = `rgba(${v | 0},${v | 0},${v | 0},0.35)`; g.lineWidth = w; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(x + dx, y + dy); g.lineTo(x + dx + Math.cos(a) * L, y + dy + Math.sin(a) * L); g.stroke();
+    }
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+})();
+function painted(m) {
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => {
+    if (prev) prev.call(m, sh, r);
+    sh.uniforms.tBrush = { value: BRUSH_TEX };
+    sh.vertexShader = 'varying vec3 vPW;\nvarying vec3 vPN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+      vPW = (modelMatrix * vec4(transformed, 1.0)).xyz; vPN = normalize(mat3(modelMatrix) * objectNormal);`);
+    sh.fragmentShader = 'uniform sampler2D tBrush;\nvarying vec3 vPW;\nvarying vec3 vPN;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      { vec3 bw = pow(abs(vPN), vec3(3.0)); bw /= (bw.x + bw.y + bw.z);
+        float br = texture2D(tBrush, vPW.zy * 0.35).r * bw.x + texture2D(tBrush, vPW.xz * 0.35).r * bw.y + texture2D(tBrush, vPW.xy * 0.35).r * bw.z;
+        diffuseColor.rgb *= 0.72 + br * 0.55; }`);
+  };
+  return m;
+}
 function patternToon(side) {
   const m = soft({ vertexColors: true, side });
   m.onBeforeCompile = (sh) => {
@@ -221,7 +252,7 @@ function mergeStatic(root) {
   root.traverse(o => {
     if (!o.isMesh || o.isInstancedMesh || o.userData.keep) return;
     const m = o.material;
-    if (!(m.isMeshLambertMaterial || m.isMeshToonMaterial) || m.emissive.getHex() !== 0 || m.transparent || m.map || m.vertexColors) return;
+    if (!(m.isMeshLambertMaterial || m.isMeshToonMaterial || m.isMeshStandardMaterial) || m.emissive.getHex() !== 0 || m.transparent || m.map || m.vertexColors) return;
     const mat = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld);
     (m.side === THREE.DoubleSide ? buckets.double : buckets.front).push({ geo: o.geometry, color: m.color.getHex(), m: mat, pat: o.geometry.userData.pat || 0 });
     remove.push(o);
@@ -231,7 +262,7 @@ function mergeStatic(root) {
     if (!parts.length) continue;
     const geo = mergeParts(parts);
     const side = k === 'double' ? THREE.DoubleSide : THREE.FrontSide;
-    const mesh = new THREE.Mesh(geo, cutaway(geo.attributes.pat ? patternToon(side) : soft({ vertexColors: true, side }), (geo.attributes.pat ? 'pat' : 'st') + side));
+    const mesh = new THREE.Mesh(geo, cutaway(painted(geo.attributes.pat ? patternToon(side) : soft({ vertexColors: true, side })), (geo.attributes.pat ? 'pat' : 'st') + side));
     mesh.castShadow = true; mesh.receiveShadow = true;
     root.add(mesh);
   }
@@ -959,7 +990,7 @@ export function buildWorld(scene, post) {
   scene.add(sun); scene.add(sun.target);
   const sunDir = SUN_DIR;
 
-  const terrain = makeTerrain();
+  const terrain = makeTerrainPainted();
   scene.add(terrain);
   const water = makeWater();
   scene.add(water);
