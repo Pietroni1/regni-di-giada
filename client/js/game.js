@@ -4,6 +4,7 @@ import { heightAt, buildColliders, resolveCollisions, KINGDOMS, PLAY_LIMIT, safe
 import { SKILLS, ITEMS, MOBS, CLASSES, NPC_ROLES, VIE, BUFFS, RESOURCES, QB_SIZE, RARITIES, MOUNT_SKILLS, HORSE, DUNGEON, dungeonWalkable } from '/shared/data.js';
 import { buildModel, disposeRig } from './models.js';
 import { Fx } from './fx.js';
+import { VFX } from './vfx.js';
 import { UI } from './ui.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -29,7 +30,7 @@ class CEnt {
     this.hp = info.hp ?? 1; this.mhp = info.mhp ?? 1; this.lvl = info.lvl ?? 0;
     const d = info.k === 'm' ? MOBS[info.ty] : null;
     this.boss = !!d?.boss; this.stone = !!d?.stone; this.aggr = !!(d && d.aggro > 0);
-    const needModel = !prev || prev.w !== info.w || prev.wu !== info.wu || prev.b !== info.b || prev.h !== info.h || prev.k !== info.k || (prev.mt || 0) !== (info.mt || 0);
+    const needModel = !prev || prev.w !== info.w || prev.wu !== info.wu || prev.wr !== info.wr || prev.bu !== info.bu || prev.br !== info.br || prev.b !== info.b || prev.h !== info.h || prev.k !== info.k || (prev.mt || 0) !== (info.mt || 0);
     if (needModel) {
       if (this.rig) this.g.removeRig(this.rig);
       this.rig = buildModel(info);
@@ -104,6 +105,8 @@ export class Game {
     this.pickMeshes = [];
     this.labelLayer = document.getElementById('labels');
     this.fx = new Fx(scene, camera, document.getElementById('floaters'));
+    this.vfx = new VFX(scene, camera, renderer);
+    this.shake = 0;
     this.ui = new UI(this);
     this.colliders = buildColliders();
     this.keys = new Set();
@@ -293,11 +296,16 @@ export class Game {
         if (m.a && s) {
           if (d) s.face(d);
           if (!s.self || m.a !== 1) s.rig.anim.attack();
-          if (m.a === 2 && d) this.fx.arrow(s, d);
-          if (m.a === 3 && d) this.fx.bolt(s, d, s.info.k === 'm' ? 0xff8a3a : 0xfff0b0, 0.2, 0.25);
+          if (m.a === 2 && d) this.vfx.arrowShot(s, d, 0xffe8b0);
+          if (m.a === 3 && d) this.vfx.projectile(s, d, s.info.k === 'm' ? 0xff8a3a : 0xfff0b0, { size: 0.35, trail: 4, dur: 0.25 });
         }
         if (!d) return;
         if (m.v > 0) d.rig.anim.hit();
+        if (m.v > 0 && !m.dot && near(d)) {
+          const gt = s && s.rig.gear && s.rig.gear.tier;
+          this.vfx.impact(new THREE.Vector3(d.x, d.y + (d.rig.height || 2) * 0.55, d.z), gt ? gt.c1 : m.c ? 0xffd070 : 0xffe8c0, !!m.c);
+          if (m.c && ((s && s.self) || d.self)) this.shake = Math.max(this.shake, 0.18);
+        }
         const pos = new THREE.Vector3(d.x, d.y + (d.rig.height || 2) + 0.3, d.z);
         if (m.miss) { if (d.self || (s && s.self)) this.fx.number(pos, 'Schivato', 'miss'); return; }
         if (d.self) { this.fx.number(pos, m.ab ? `-${m.v} (${m.ab} assorbiti)` : `-${m.v}`, m.dot ? 'dot' : 'hurt'); }
@@ -314,37 +322,22 @@ export class Game {
         const melee = ['spin', 'quake', 'slash', 'dash'].includes(sk.fx);
         if (!m.ally) { if (melee) s.rig.anim.attack(); else s.rig.anim.castSpell(); }
         const at = m.x !== undefined ? { x: m.x, y: groundY(m.x, m.z), z: m.z } : tgt;
-        switch (sk.fx) {
-          case 'spin': this.fx.spin(s, sk.color, sk.radius || 3); this.fx.ring(s, sk.color, sk.radius || 3, 0.4); break;
-          case 'quake': this.fx.quake(s, sk.color, sk.radius || 5); break;
-          case 'aura': this.fx.aura(s, sk.color); break;
-          case 'heal': this.fx.sparkles(tgt, sk.color, 18, 1.1); this.fx.ring(tgt, sk.color, 2, 0.6); break;
-          case 'dash': this.fx.slash(s, sk.color); if (d) this.fx.ring(d, sk.color, 2.5, 0.4); break;
-          case 'lightning': if (sk.type === 'aoe_target') { this.fx.lightning(at, sk.color); for (let i = 0; i < 3; i++) { const a = Math.random() * 6.28, r = Math.random() * (sk.radius || 4); this.fx.lightning({ x: at.x + Math.cos(a) * r, y: at.y, z: at.z + Math.sin(a) * r }, sk.color); } } else { this.fx.slash(s, sk.color); this.fx.lightning(tgt, sk.color); } break;
-          case 'bolt': this.fx.bolt(s, tgt, sk.color, 0.35, 0.3, () => { if (sk.radius) this.fx.ring(at, sk.color, sk.radius, 0.45); }); break;
-          case 'arrow': this.fx.arrow(s, tgt, sk.color); this.fx.ring(tgt, sk.color, 1.6, 0.3); break;
-          case 'rain': this.fx.rain(at, sk.color, sk.radius || 5); break;
-          case 'wind': this.fx.wind(s, sk.color, sk.radius || 6); this.fx.ring(s, sk.color, sk.radius || 6, 0.6); break;
-          case 'taunt': this.fx.ring(tgt, sk.color, 3, 0.5, (tgt.rig?.height || 2) + 0.3); this.fx.aura(s, sk.color); break;
-          case 'mark': this.fx.ring(tgt, sk.color, 2.2, 0.6, 0.2); this.fx.sparkles(tgt, sk.color, 10, 0.9); break;
-          case 'shield': this.fx.aura(tgt, sk.color); this.fx.sparkles(tgt, sk.color, 12, 1.0); break;
-          case 'slash': default: this.fx.slash(s, sk.color); break;
-        }
+        this.vfx.skill(m.sk, sk, s, d, at);
         if (s.self) this.sound('skill');
         return;
       }
       case 'heal': {
         if (!d) return;
         if (d.self || near(d)) this.fx.number(new THREE.Vector3(d.x, d.y + 2.6, d.z), `+${m.v}`, 'heal');
-        if (!m.q) this.fx.sparkles(d, 0x7fff9f, 10, 0.8);
+        if (!m.q) this.vfx.rise(d, 0x7fff9f, 14, { to: 0xffffff, radius: 0.6 });
         return;
       }
       case 'die': if (d) { d.rig.anim.die(); if (d.info.k === 'm') d.hp = 0; if (this.target === d && !d.self) setTimeout(() => { if (this.target === d) this.setTarget(null); }, 600); } return;
-      case 'lvl': if (s) { this.fx.column(s, 0xffd860); if (s.self) this.sound('lvl'); } return;
+      case 'lvl': if (s) { this.vfx.levelUp(s); if (s.self) this.sound('lvl'); } return;
       case 'stun': if (d) { d.rig.anim.stun = m.ms / 1000; this.fx.ring(d, 0xffff80, 1.5, 0.5, (d.rig.height || 2) + 0.2); } return;
-      case 'slam': this.fx.quake({ x: m.x, y: groundY(m.x, m.z), z: m.z }, 0xff4020, m.r); if (s) s.rig.anim.attack(); return;
-      case 'wave': if (s) { this.fx.ring(s, 0xc060ff, 10, 0.9); this.fx.disc(s, 0x8a3ac0, 8, 0.8); this.fx.sparkles(s, 0xd080ff, 20, 1.2); } return;
-      case 'tp': if (s) this.fx.column(s, 0x8ad0ff); return;
+      case 'slam': this.vfx.skill('scossa', { color: 0xff4020, radius: m.r, type: 'aoe_self' }, { x: m.x, y: groundY(m.x, m.z), z: m.z, r: 0 }, null, null); if (s) s.rig.anim.attack(); return;
+      case 'wave': if (s) { this.vfx.shockwave(s, 0xc060ff, 10, 0.9); this.vfx.swirl(s, 0xd080ff, 0.8, 80, { radius: 2, height: 4 }); this.vfx.smokePuff({ x: s.x, y: groundY(s.x, s.z), z: s.z }, 0x4a2a6a, 24, 1.5, 1.2, { speed: 8 }); } return;
+      case 'tp': if (s) { this.vfx.pillar(s, 0x8ad0ff, 1.2, 14, 1.0); this.vfx.swirl(s, 0xc0e8ff, 0.8, 60); } return;
       case 'cast': if (s && !s.self) s.rig.anim.channel = m.ms / 1000; return;
       case 'castend': if (s && !s.self) s.rig.anim.channel = 0; return;
       case 'warn': this.fx.warn({ x: m.x, z: m.z }, m.r, m.ms); this.sound('proc'); return;
@@ -663,6 +656,7 @@ export class Game {
       else this.ui.updateTarget(this.target);
     }
     this.fx.update(dt);
+    this.vfx.update(dt);
     this.ui.updateCooldowns(now);
     this.ui.updateDeath(now);
     this.mmT = (this.mmT || 0) + dt;
@@ -786,6 +780,12 @@ export class Game {
     const gh = heightAt(cam.position.x, cam.position.z) + 0.8;
     if (cam.position.y < gh) cam.position.y = gh;
     cam.lookAt(this.camTarget);
+    if (this.vfx.shake > 0) { this.shake = Math.max(this.shake, this.vfx.shake); this.vfx.shake = 0; }
+    if (this.shake > 0) {
+      this.shake = Math.max(0, this.shake - dt);
+      const k = this.shake * 0.6;
+      cam.position.x += (Math.random() - 0.5) * k; cam.position.y += (Math.random() - 0.5) * k;
+    }
   }
 
   updateLabels(now) {

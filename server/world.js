@@ -426,7 +426,8 @@ export class World {
       case 'player': {
         const eq = e.ch.equip;
         return { ...base, k: 'p', n: e.name, cls: e.cls, kd: e.kingdom, lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp,
-          w: eq.weapon ? eq.weapon.id : null, wu: eq.weapon ? eq.weapon.up : 0, b: eq.body ? eq.body.id : null, h: eq.head ? eq.head.id : null,
+          w: eq.weapon ? eq.weapon.id : null, wu: eq.weapon ? eq.weapon.up : 0, wr: eq.weapon ? eq.weapon.r || 0 : 0,
+          b: eq.body ? eq.body.id : null, bu: eq.body ? eq.body.up : 0, br: eq.body ? eq.body.r || 0 : 0, h: eq.head ? eq.head.id : null,
           gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0, mt: e.mounted && e.ch.horse ? HORSE.tierOf(e.ch.horse.lvl) : 0 };
       }
       case 'mob': return { ...base, k: 'm', ty: e.type, n: e.name, lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp };

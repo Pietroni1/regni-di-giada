@@ -4,6 +4,7 @@ import { ITEMS, CLASSES, MOBS, RARITIES } from '/shared/data.js';
 import { KINGDOMS } from '/shared/world.js';
 import { lam, outlineMaterial, mergeParts, SOFT_GRADIENT } from './world3d.js';
 import { buildSkinnedHumanoid, hasSkinned, SkinAnim } from './skinned.js';
+import { GearFx } from './gear-fx.js';
 
 const geoCache = new Map();
 function G(key, make) { let g = geoCache.get(key); if (!g) { g = make(); geoCache.set(key, g); } return g; }
@@ -50,6 +51,8 @@ function katana(g, L, curve, metal, wrap, tier, short = false) {
   blade.position.y = ty - 0.012;
   blade.castShadow = true;
   g.add(blade);
+  g.userData.blade = [new THREE.Vector3(0, ty - 0.1, 0), new THREE.Vector3(0, ty - 0.012 - L, curve * 0.9)];
+  g.userData.trail = true;
 }
 function weaponMesh(id, up) {
   const it = ITEMS[id];
@@ -57,7 +60,8 @@ function weaponMesh(id, up) {
   if (!it) return g;
   const tier = it.tier || 1;
   const metalC = [0xa8a8a8, 0xb89a5a, 0x7ad0a0, 0xd8e4f0][tier - 1];
-  const metal = up >= 7 ? glow(up >= 9 ? 0xffd860 : 0x9ad8ff, 0.35 + (up - 7) * 0.2) : lam(metalC);
+  const glowCol = up >= 15 ? 0xfff0c8 : up >= 12 ? 0xc488ff : up >= 9 ? 0xffd860 : 0x9ad8ff;
+  const metal = up >= 7 ? glow(glowCol, 0.32 + (up - 7) * 0.04) : lam(metalC, { metalness: 0.6, roughness: 0.35 });
   const wood = lam(0x4a3220), wrap = lam(0x2a1a14);
   switch (it.wt) {
     case 'sword': {
@@ -81,11 +85,14 @@ function weaponMesh(id, up) {
       g.add(mesh(box(0.05, 0.2, 0.06), wrap, 0, 0, 0));
       const tipZ = 1.7 * Math.cos(Math.PI / 6) - 1.7;
       g.add(mesh(box(0.01, 1.7, 0.01), lam(0xe0e0d0), 0, 0.12, tipZ));
+      g.userData.blade = [new THREE.Vector3(0, 0.95, tipZ * 0.6), new THREE.Vector3(0, -0.7, tipZ * 0.6)];
       break;
     }
     case 'fists': {
       g.add(mesh(sph(0.13, 6, 5), up >= 7 ? metal : lam(tier >= 2 ? metalC : 0xe8e0c8), 0, -0.02, 0));
       if (tier >= 2) for (let i = 0; i < 3; i++) g.add(withRot(mesh(cone(0.025, 0.2, 4), metal, -0.06 + i * 0.06, -0.1, 0.1), 'x', 1.2));
+      g.userData.blade = [new THREE.Vector3(0, -0.02, 0.02), new THREE.Vector3(0, -0.08, 0.16)];
+      g.userData.trail = true;
       break;
     }
     case 'staff': {
@@ -94,6 +101,8 @@ function weaponMesh(id, up) {
       g.add(orb);
       g.add(mesh(G('ring', () => new THREE.TorusGeometry(0.18, 0.025, 4, 10)), lam(0xb8902a), 0, 1.5, 0));
       g.rotation.x = -0.15;
+      g.userData.blade = [new THREE.Vector3(0, 1.25, 0), new THREE.Vector3(0, 1.62, 0)];
+      g.userData.trail = true;
       break;
     }
   }
@@ -351,7 +360,7 @@ function mergeRig(rig) {
     rig.merged.push(geo);
   }
 }
-export function disposeRig(rig) { for (const g of rig.merged || []) g.dispose(); }
+export function disposeRig(rig) { for (const g of rig.merged || []) g.dispose(); if (rig.gear) rig.gear.dispose(); }
 
 function finish(rig, radius) {
   mergeRig(rig);
@@ -415,6 +424,7 @@ export function buildPlayerModel(info) {
   const rig = humanoid({ robe: look.robe, trim: look.trim, pants: look.pants, hair: look.hair, hairStyle: look.hairStyle, sash: k.hex, armor, skirt: info.cls !== 'ombra' });
   applyWeapon(rig, info.w, info.wu);
   setHat(rig, info.h, k.hex);
+  if (rig.skinned) rig.gear = new GearFx(rig, { wu: info.wu, wr: info.wr, bu: info.bu, br: info.br });
   rig.weaponType = info.w ? ITEMS[info.w]?.wt : 'fists';
   if (info.mt) {
     rig.horse = horseRig(info.mt);
@@ -704,6 +714,7 @@ Anim.prototype.updateSkinned = function (dt, speed) {
     r.body.position.y = 1.05 + (moving ? Math.abs(gal) * 0.1 : 0);
   }
   sk.update(dt, speed, !!r.mounted, this.stun, this.dead ? 0 : this.channel);
+  if (r.gear) r.gear.update(dt, !!(sk.os && !sk.os.hold && sk.os.left > 0.05 && !this.dead));
 };
 
 export function buildModel(info) {
