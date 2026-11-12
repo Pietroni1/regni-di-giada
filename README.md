@@ -139,26 +139,28 @@ Dal livello 20 il **Custode Yun** (accanto alla pagoda di ogni villaggio) affida
 
 ## Grafica
 
-Stile cel-shading da anime con contorni a inchiostro e architettura giappo-coreana. Tutto è generato dal codice: non servono modelli o texture esterne.
+Stile **dipinto a mano** da MMO stilizzato, con architettura giappo-coreana. Personaggi, animali, alberi e rocce sono modellati e animati in **Blender** con script Python (`tools/blender/`); texture ed effetti sono generati dal codice.
 
-- **Rendering:**
-  - bloom sulle luci: lanterne, magie, armi potenziate;
-  - antialiasing, vignettatura e ombre morbide.
-- **Atmosfera:**
-  - luce dorata del tardo pomeriggio;
-  - petali di ciliegio sospesi nell'aria;
-  - lago con increspature animate.
-- **Architettura:**
-  - tetti a coppi con gronde rialzate e ornamenti a coda di pesce sul colmo;
-  - sotto le gronde, travetti dipinti in stile *dancheong* (verde, rosso, oro);
-  - fasce decorate a losanghe sulle travi di case, pagode e portali;
-  - lanterne di pietra accese lungo le strade, davanti alle pagode e alle porte.
 - **Personaggi:**
-  - testa più grande con occhi espressivi, frangia e codino;
-  - kimono con maniche a campana, obi con nodo sulla schiena, hakama;
-  - spallacci a lamelle per chi porta l'armatura;
-  - le spade sono katane curve, i pugnali tantō.
-- **Visuale libera:** alberi, case e bancarelle che coprono il personaggio, o che stanno a ridosso della camera, si dissolvono con una retinatura.
+  - modello con scheletro a 19 ossa e 17 animazioni: camminata, corsa, sella, tre colpi di spada, pugnali, pugni, arco, magia, colpito, morte;
+  - forme lisce con ombre di contatto e bordi illuminati calcolati in Blender;
+  - metallo spazzolato, stoffa con trama, ciocche dei capelli, luce calda di contorno;
+  - armatura robusta: spallacci a cupola con borchie, bracciali, cinturone con medaglione;
+  - mentre si corre o si cavalca gli attacchi animano solo la parte alta del corpo;
+  - il polso si orienta da solo nella direzione del colpo.
+- **Animali:** lupo, cinghiale, orso, tigre e cavallo, ciascuno con scheletro, pelliccia dipinta e sei animazioni. Il cavallo in sella ha sella e bardatura secondo il livello.
+- **Natura:**
+  - pini giapponesi a nuvole, ciliegi in fiore, aceri, bambù, cespugli: chiome di foglie e fiori dipinti che ondeggiano al vento;
+  - rocce lisce col muschio;
+  - terreno dipinto: erba fiorita, sentieri, roccia sui pendii, sabbia, selciato nei villaggi, neve.
+- **Luce:** cielo fisico col sole, luce ambientale e riflessi presi dal cielo, nuvole morbide, petali nell'aria, lago che riflette il cielo.
+- **Architettura:** tetti a coppi, travetti dipinti in stile *dancheong*, fasce a losanghe, lanterne di pietra accese, pennellate su intonaco e legno.
+- **Armi e armature:**
+  - da +7 la lama brilla e lascia particelle: gelo a +7, braci a +9, archi elettrici a +12, colori cangianti a +15;
+  - ogni colpo lascia una scia luminosa;
+  - dal +9 o da Epica in su l'armatura ha un'aura di scintille; le Leggendarie anche un cerchio di rune sotto i piedi.
+- **Abilità:** ogni tecnica ha effetti densi intonati alla sua Via: fendenti luminosi, fulmini ramificati, terra che si crepa con detriti, fumo d'ombra e veleno, fuoco di chi, petali di loto, colonne di luce, bolla di giada. I colpi a segno fanno scintille, i critici anche un piccolo scossone della camera.
+- **Visuale libera:** alberi, case e bancarelle che coprono il personaggio si dissolvono con una retinatura.
 - **Qualità grafica:** si sceglie nella guida (tasto **H**) e resta salvata nel browser.
 
 | Qualità | Cosa cambia |
@@ -166,6 +168,24 @@ Stile cel-shading da anime con contorni a inchiostro e architettura giappo-corea
 | Alta | Tutto attivo; consigliata con scheda video dedicata |
 | Media | Ombre e antialiasing ridotti |
 | Bassa | Niente bloom, ombre, contorni né petali; per portatili e computer datati |
+
+### Modificare modelli e animazioni in Blender
+
+Servono Blender 4.0 o più recente (con il modulo `numpy`). I file `.glb` già generati sono nel repository, quindi per giocare Blender non serve. Per rigenerarli dopo una modifica agli script:
+
+```bash
+blender -b --factory-startup --python tools/blender/personaggio.py -- client/assets/personaggio.glb
+```
+
+```bash
+blender -b --factory-startup --python tools/blender/animali.py -- client/assets/animali.glb
+```
+
+```bash
+blender -b --factory-startup --python tools/blender/natura.py -- client/assets/natura.glb
+```
+
+Ogni script salva anche un file `.blend` accanto a sé (`tools/blender/`), da aprire in Blender per vedere modelli, ossa e animazioni.
 
 ## Sistemi presenti
 
@@ -187,7 +207,10 @@ Stile cel-shading da anime con contorni a inchiostro e architettura giappo-corea
 | `shared/data.js` | Classi, Vie, abilità, oggetti, mostri e drop, tabella del fabbro, negozi, PNG |
 | `shared/world.js` | Regni, posizione dei villaggi, terreno, strade, zone |
 | `server/world.js` | Generazione dei mostri sulla mappa, formule di danno ed esperienza, IA, comandi |
-| `client/js/models.js` | Aspetto di personaggi, mostri e PNG |
+| `client/js/models.js` | Aspetto di personaggi, mostri e PNG (colori, armi, cappelli) |
+| `tools/blender/*.py` | Modelli, scheletri e animazioni di personaggi, animali e natura |
+| `client/js/vfx.js` | Effetti delle abilità |
+| `client/js/gear-fx.js` | Effetti di armi e armature |
 | `client/js/world3d.js` | Grafica del mondo: edifici, decorazioni dei tetti, lanterne di pietra, alberi, cielo, acqua, petali |
 | `client/js/post.js` | Post-elaborazione e preimpostazioni di qualità grafica |
 | `client/css/style.css` | Aspetto dell'interfaccia |
