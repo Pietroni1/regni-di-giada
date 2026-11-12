@@ -267,3 +267,19 @@ label input { margin-top: 4px; }
 #tooltip .tb { color: #9ad8ff; }
 #tooltip .stars { font-size: 12px; letter-spacing: -1px; margin-left: 4px; }
 #tooltip .stars.s1, #tooltip .stars.s2 { color: #8a8a8a; } #tooltip .stars.s3 { color: #c8c8c8; } #tooltip .stars.s4 { color: #ffd060; } #tooltip .stars.s5 { color: #ff9a30; text-shadow: 0 0 6px #ff9a30; }
+
+/* ---------- gruppi ---------- */
+#party-frames { position: absolute; left: 12px; top: 232px; width: 230px; display: flex; flex-direction: column; gap: 4px; }
+#party-frames .ph { display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #8aff9a; padding: 0 2px; text-shadow: 0 1px 2px #000; }
+#party-frames .ph button { font-size: 12px; padding: 1px 8px; }
+.pm { background: linear-gradient(#2b1a14e6, #170d09e6); border: 1px solid var(--gold2); padding: 4px 6px; cursor: pointer; }
+.pm:hover { border-color: var(--gold); }
+.pm.sel { border-color: #8aff9a; box-shadow: 0 0 6px #8aff9a88; }
+.pm.far { opacity: 0.6; }
+.pm .pn { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; }
+.pm .pn small { color: var(--paper2); font-weight: 600; }
+.pm .bar { height: 11px; margin-top: 2px; }
+.pm .bar span { font-size: 10px; line-height: 10px; }
+.pm .kick { background: none; border: none; color: #a0705a; cursor: pointer; font-size: 13px; padding: 0 0 0 4px; }
+#tf-invite { margin-top: 6px; font-size: 13px; padding: 3px 10px; }
+#chat-log .party { color: #8aff9a; }

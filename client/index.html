@@ -71,10 +71,13 @@
     <div id="buff-row"></div>
   </div>
 
+  <div id="party-frames" class="hidden"></div>
+
   <div id="target-frame" class="hud-panel hidden">
     <div id="tf-name"></div>
     <div class="bar hp"><div class="fill"></div><span></span></div>
     <div id="tf-dots"></div>
+    <button id="tf-invite" class="btn hidden">Invita nel gruppo</button>
   </div>
 
   <div id="minimap-wrap" class="hud-panel">
@@ -87,7 +90,7 @@
 
   <div id="chat">
     <div id="chat-log"></div>
-    <input id="chat-input" maxlength="200" placeholder="Invio per scrivere — !grido  @nome sussurro  /aiuto">
+    <input id="chat-input" maxlength="200" placeholder="Invio per scrivere — !regno  #gruppo  @nome sussurro  /aiuto">
   </div>
 
   <div id="hud-bottom">
@@ -157,7 +160,8 @@
         <tr><td>Z</td><td>Raccogli gli oggetti vicini</td></tr>
         <tr><td>Alt (tenuto)</td><td>Mostra i nomi di tutti gli oggetti a terra</td></tr>
         <tr><td>I / C / K / P</td><td>Inventario / Personaggio / Abilità / Misuratore dei danni</td></tr>
-        <tr><td>Invio</td><td>Chat (!testo grida al regno, @nome sussurra)</td></tr>
+        <tr><td>Invio</td><td>Chat (!testo grida al regno, #testo al gruppo, @nome sussurra)</td></tr>
+        <tr><td>Gruppi</td><td>Seleziona un alleato e premi "Invita nel gruppo", oppure /invita nome. /lascia per uscire</td></tr>
         <tr><td>Esc</td><td>Chiudi finestre / deseleziona</td></tr>
       </table>
       <p><b>Combattimento:</b> le abilità condividono un tempo di ricarica globale di 1 secondo (quelle segnate come "fuori dal GCD" no).

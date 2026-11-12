@@ -116,6 +116,8 @@ export class World {
     this.players = new Set();
     this.spawners = [];
     this.nextId = 1;
+    this.parties = new Map();
+    this.nextParty = 1;
     this.regenAcc = 0;
     this.initNpcs();
     this.initSpawns();
@@ -235,9 +237,10 @@ export class World {
   }
 
   dropInstance(inst, x, z, owner) {
+    const op = owner ? this.ents.get(owner) : null;
     return this.add({
       kind: 'drop', item: inst, x: x + rand(-1.8, 1.8), z: z + rand(-1.8, 1.8),
-      owner: owner || 0, ownerUntil: NOW() + 20000, expire: NOW() + 120000,
+      owner: owner || 0, ownerParty: (op && op.party) || 0, ownerUntil: NOW() + 20000, expire: NOW() + 120000,
     });
   }
 
@@ -296,6 +299,7 @@ export class World {
   }
 
   removePlayer(p) {
+    this.leaveParty(p, true);
     p.online = false;
     this.saveChar(p);
     this.remove(p);
@@ -404,7 +408,7 @@ export class World {
       }
       case 'mob': return { ...base, k: 'm', ty: e.type, n: e.name, lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp };
       case 'npc': return { ...base, k: 'n', role: e.role, kd: e.kingdom, n: e.name };
-      case 'drop': return { ...base, k: 'd', it: e.item.id, n: e.item.n, up: e.item.up, r: e.item.r || 0, own: e.owner };
+      case 'drop': return { ...base, k: 'd', it: e.item.id, n: e.item.n, up: e.item.up, r: e.item.r || 0, own: e.owner, op: e.ownerParty || 0 };
     }
     return base;
   }
@@ -424,7 +428,24 @@ export class World {
     };
   }
 
+  partyState(party) {
+    return {
+      t: 'party', id: party.id, leader: party.leader,
+      members: party.members.map(id => this.ents.get(id)).filter(Boolean).map(q => ({
+        id: q.id, n: q.name, cls: q.cls, lvl: q.lvl, hp: Math.round(q.hp), mhp: q.maxHp, res: Math.floor(q.res), rmax: q.rmax, rt: q.rtype,
+        dead: q.dead ? 1 : 0, x: r1(q.x), z: r1(q.z), via: q.ch.via,
+      })),
+    };
+  }
+
   netTick() {
+    for (const party of this.parties.values()) {
+      const st = this.partyState(party);
+      const key = JSON.stringify(st);
+      if (key === party.last) continue;
+      party.last = key;
+      for (const id of party.members) { const q = this.ents.get(id); if (q) this.send(q, st); }
+    }
     for (const p of this.players) {
       const adds = [], ups = [], rms = [];
       const seen = new Set();
@@ -762,19 +783,38 @@ export class World {
     const d = m.d;
     let total = 0;
     for (const v of m.aggro.values()) total += v;
+    // il danno di un gruppo conta come un'unica quota, divisa tra i membri vicini (+10% per ogni compagno)
+    const shares = new Map();
     let top = null, tv = -1;
     for (const [pid, v] of m.aggro) {
       const p = this.ents.get(pid);
-      if (!p || p.kind !== 'player' || p.dead || dist(p, m) > 80) continue;
-      const exp = Math.max(1, Math.round(d.exp * (total > 0 ? v / total : 1) * expMod(p.lvl, d.lvl) * this.cfg.rates.exp * (1 + (p.expPct || 0) / 100)));
-      this.gainExp(p, exp);
-      if (v > tv) { tv = v; top = p; }
+      if (!p || p.kind !== 'player') continue;
+      if (v > tv && !p.dead) { tv = v; top = p; }
+      const key = p.party ? 'g' + p.party : 'p' + p.id;
+      const sh = shares.get(key) || { dmg: 0, party: p.party ? this.parties.get(p.party) : null, solo: p };
+      sh.dmg += v; shares.set(key, sh);
     }
     if (!top && killer && killer.kind === 'player') top = killer;
+    const near = (q) => q && q.kind === 'player' && q.online && !q.dead && dist(q, m) <= 80;
+    const groupOf = (q) => {
+      const party = q && q.party ? this.parties.get(q.party) : null;
+      return party ? party.members.map(id => this.ents.get(id)).filter(near) : (near(q) ? [q] : []);
+    };
+    for (const sh of shares.values()) {
+      const members = sh.party ? sh.party.members.map(id => this.ents.get(id)).filter(near) : (near(sh.solo) ? [sh.solo] : []);
+      if (!members.length) continue;
+      const pool = d.exp * (total > 0 ? sh.dmg / total : 1) * this.cfg.rates.exp * (1 + 0.1 * (members.length - 1));
+      const maxL = Math.max(...members.map(q => q.lvl));
+      for (const q of members) {
+        const gap = maxL - q.lvl > 15 ? 0.2 : 1; // niente "trasporto" di personaggi molto più bassi
+        this.gainExp(q, Math.max(1, Math.round(pool / members.length * expMod(q.lvl, d.lvl) * gap * (1 + (q.expPct || 0) / 100))));
+      }
+    }
     if (top && d.tael) {
       const amt = Math.round(randi(d.tael[0], d.tael[1]) * this.cfg.rates.tael * (1 + (top.taelPct || 0) / 100));
-      top.ch.tael += amt; top.selfDirty = true;
-      this.send(top, { t: 'gain', tael: amt });
+      const members = groupOf(top);
+      const each = Math.max(1, Math.round(amt / Math.max(1, members.length)));
+      for (const q of members) { q.ch.tael += each; q.selfDirty = true; this.send(q, { t: 'gain', tael: each }); }
     }
     const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
     const dmul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100);
@@ -875,6 +915,10 @@ export class World {
       case 'combine': return this.onCombine(p, msg.i | 0);
       case 'respawn': return this.respawn(p, msg.mode);
       case 'cancel': if (p.casting) this.cancelCast(p); return;
+      case 'pinv': return this.onPartyInvite(p, msg.id ? this.ents.get(msg.id) : this.playerByName(msg.n));
+      case 'preply': return this.onPartyReply(p, !!msg.ok);
+      case 'pleave': return this.leaveParty(p);
+      case 'pkick': return this.onPartyKick(p, msg.id);
     }
   }
 
@@ -1212,6 +1256,75 @@ export class World {
     if (notify || def.proc) this.send(p, { t: 'fx', k: 'proc', s: p.id, b: id });
   }
 
+  // ------------------------------------------------------------ gruppi
+  playerByName(n) {
+    const name = String(n || '').toLowerCase();
+    return [...this.players].find(q => q.name.toLowerCase() === name) || null;
+  }
+
+  partyOf(p) { return p.party ? this.parties.get(p.party) : null; }
+
+  partySys(party, m) { for (const id of party.members) { const q = this.ents.get(id); if (q) this.sys(q, m); } }
+
+  onPartyInvite(p, q) {
+    if (!q || q.kind !== 'player' || !q.online) return this.err(p, 'Giocatore non trovato');
+    if (q === p) return;
+    if (q.kingdom !== p.kingdom) return this.err(p, 'Puoi formare gruppi solo con il tuo regno');
+    if (q.party) return this.err(p, `${q.name} è già in un gruppo`);
+    const party = this.partyOf(p);
+    if (party && party.leader !== p.id) return this.err(p, 'Solo il capogruppo può invitare');
+    if (party && party.members.length >= 5) return this.err(p, 'Il gruppo è al completo');
+    q.pendingInvite = { from: p.id, at: NOW() };
+    this.send(q, { t: 'pinv', from: p.id, n: p.name });
+    this.sys(p, `Invito inviato a ${q.name}.`);
+  }
+
+  onPartyReply(q, ok) {
+    const inv = q.pendingInvite;
+    q.pendingInvite = null;
+    if (!inv || NOW() - inv.at > 60000) return;
+    const p = this.ents.get(inv.from);
+    if (!p || p.kind !== 'player' || !p.online) return this.err(q, "L'invito non è più valido");
+    if (!ok) return this.sys(p, `${q.name} ha rifiutato l'invito.`);
+    if (q.party) return;
+    let party = this.partyOf(p);
+    if (!party) {
+      party = { id: this.nextParty++, leader: p.id, members: [p.id] };
+      this.parties.set(party.id, party);
+      p.party = party.id;
+    }
+    if (party.members.length >= 5) return this.err(q, 'Il gruppo è al completo');
+    party.members.push(q.id);
+    q.party = party.id;
+    this.partySys(party, `${q.name} si è unito al gruppo.`);
+  }
+
+  leaveParty(p, silent) {
+    const party = this.partyOf(p);
+    if (!party) return;
+    party.members = party.members.filter(id => id !== p.id);
+    p.party = null;
+    this.send(p, { t: 'party', none: 1 });
+    if (!silent) this.sys(p, 'Hai lasciato il gruppo.');
+    if (party.members.length <= 1) {
+      for (const id of party.members) { const q = this.ents.get(id); if (q) { q.party = null; this.send(q, { t: 'party', none: 1 }); this.sys(q, 'Il gruppo si è sciolto.'); } }
+      this.parties.delete(party.id);
+      return;
+    }
+    if (party.leader === p.id) party.leader = party.members[0];
+    party.last = '';
+    this.partySys(party, `${p.name} ha lasciato il gruppo.`);
+  }
+
+  onPartyKick(p, id) {
+    const party = this.partyOf(p);
+    if (!party || party.leader !== p.id) return this.err(p, 'Solo il capogruppo può espellere');
+    const q = this.ents.get(id);
+    if (!q || !party.members.includes(q.id) || q === p) return;
+    this.sys(q, 'Sei stato espulso dal gruppo.');
+    this.leaveParty(q, true);
+  }
+
   // ------------------------------------------------------------ chat e comandi
   onChat(p, raw) {
     const msg = String(raw || '').replace(/[\u0000-\u001f]/g, '').slice(0, 200).trim();
@@ -1221,6 +1334,13 @@ export class World {
       const m = msg.slice(1).trim();
       if (!m) return;
       for (const q of this.players) if (q.kingdom === p.kingdom) this.send(q, { t: 'chat', ch: 'shout', n: p.name, kd: p.kingdom, m });
+      return;
+    }
+    if (msg[0] === '#') {
+      const party = this.partyOf(p), m = msg.slice(1).trim();
+      if (!party) return this.sys(p, 'Non sei in un gruppo.');
+      if (!m) return;
+      for (const id of party.members) { const q = this.ents.get(id); if (q) this.send(q, { t: 'chat', ch: 'party', n: p.name, kd: p.kingdom, m }); }
       return;
     }
     if (msg[0] === '@') {
@@ -1242,9 +1362,12 @@ export class World {
     const sys = m => this.sys(p, m);
     switch (c) {
       case 'aiuto': case 'help':
-        sys('Comandi: /online, /pos, /aiuto. Chat: !testo = grido al regno, @nome testo = sussurro.');
+        sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
         if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /via nome, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
+      case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
+      case 'lascia': return this.leaveParty(p);
+      case 'espelli': { const q = this.playerByName(a[0]); return q ? this.onPartyKick(p, q.id) : sys('Giocatore non trovato.'); }
       case 'online': return sys(`In linea (${this.players.size}): ${[...this.players].map(q => `${q.name} [${q.lvl}]`).join(', ')}`);
       case 'pos': return sys(`Posizione: ${Math.round(p.x)}, ${Math.round(p.z)}`);
     }
@@ -1416,7 +1539,7 @@ export class World {
     const d = this.ents.get(id);
     if (!d || d.kind !== 'drop' || p.dead) return;
     if (dist(d, p) > 4) return;
-    if (d.owner && d.owner !== p.id && NOW() < d.ownerUntil) return this.err(p, 'Questo bottino appartiene a un altro giocatore');
+    if (d.owner && d.owner !== p.id && !(d.ownerParty && d.ownerParty === p.party) && NOW() < d.ownerUntil) return this.err(p, 'Questo bottino appartiene a un altro giocatore');
     const it = ITEMS[d.item.id];
     if (!this.canAdd(p, d.item.id, d.item.n)) return this.err(p, 'Inventario pieno');
     this.addItem(p, d.item.id, d.item.n, d.item.up, it.stack ? null : d.item);

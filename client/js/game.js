@@ -236,6 +236,21 @@ export class Game {
       }
     });
     n.on('dead', (m) => { this.intent = null; ui.showDeath(m.by, m.lost); this.sound('die'); });
+    n.on('party', (m) => {
+      const was = this.party;
+      this.party = m.none ? null : m;
+      if (!this.party && was) ui.notice('Non sei più in un gruppo');
+      ui.renderParty();
+      for (const e of this.ents.values()) e.labelKey = '';
+      if (this.target) ui.updateTarget(this.target);
+    });
+    n.on('pinv', (m) => {
+      this.sound('proc');
+      ui.confirm(`<b>${esc(m.n)}</b> ti invita nel suo gruppo. Accetti?`, () => this.net.send({ t: 'preply', ok: 1 }));
+      const no = document.getElementById('confirm-no');
+      const prev = no.onclick;
+      no.onclick = () => { this.net.send({ t: 'preply', ok: 0 }); prev && prev(); };
+    });
     n.on('applied', (m) => { ui.chat('sys', esc(m.m)); ui.notice(m.m); this.sound(m.m.includes('non') ? 'die' : 'ok'); });
     n.on('shop', (m) => ui.openShop(m));
     n.on('smith', (m) => ui.openSmith(m));
@@ -418,6 +433,8 @@ export class Game {
     if (canvas.style.cursor !== cur) canvas.style.cursor = cur;
   }
 
+  inParty(id) { return !!(this.party && this.party.members.some(m => m.id === id)); }
+
   isHostile(e) {
     if (!e || e === this.self) return false;
     if (e.info.k === 'm') return e.hp > 0;
@@ -467,7 +484,7 @@ export class Game {
     let best = null, bd = 8;
     for (const e of this.ents.values()) {
       if (e.info.k !== 'd') continue;
-      if (e.info.own && e.info.own !== this.myId) continue;
+      if (e.info.own && e.info.own !== this.myId && !(e.info.op && this.party && e.info.op === this.party.id)) continue;
       const d = Math.hypot(e.x - this.self.x, e.z - this.self.z);
       if (d < bd) { bd = d; best = e; }
     }
@@ -600,7 +617,7 @@ export class Game {
     this.ui.updateCooldowns(now);
     this.ui.updateDeath(now);
     this.mmT = (this.mmT || 0) + dt;
-    if (this.mmT > 0.1) { this.mmT = 0; this.ui.drawMinimap(this.self, this.ents, this.target); this.hoverUpdate(); }
+    if (this.mmT > 0.1) { this.mmT = 0; this.ui.drawMinimap(this.self, this.ents, this.target); this.hoverUpdate(); this.ui.renderParty(); }
   }
 
   updateSelf(dt, now) {
@@ -744,13 +761,13 @@ export class Game {
         html += `<div class="ln">${e.boss ? '☠ ' : ''}${esc(e.info.n)} <span style="color:#d8c8a0">Lv.${e.lvl}</span></div>`;
       } else if (k === 'p') {
         const kd = KINGDOMS[e.info.kd];
-        html += `<div class="ln" style="color:${kd.color}">${e.info.gm ? '[GM] ' : ''}${esc(e.info.n)} <span style="color:#d8c8a0">Lv.${e.lvl}</span></div>`;
+        html += `<div class="ln" style="color:${this.inParty(e.id) ? '#8aff9a' : kd.color}">${e.info.gm ? '[GM] ' : ''}${esc(e.info.n)} <span style="color:#d8c8a0">Lv.${e.lvl}</span></div>`;
       } else if (k === 'n') {
         cls += ' npc';
         html += `<div class="lt">${esc(NPC_ROLES[e.info.role].title)}</div><div class="ln">${esc(e.info.n)}</div>`;
       } else if (k === 'd') {
         const it = ITEMS[e.info.it];
-        cls += ' drop' + (e.info.own && e.info.own !== this.myId ? ' own' : '');
+        cls += ' drop' + (e.info.own && e.info.own !== this.myId && !(e.info.op && this.party && e.info.op === this.party.id) ? ' own' : '');
         const rc = e.info.r ? RARITIES[e.info.r].color : null;
         html += `<div class="ln"${rc ? ` style="color:${rc}"` : ''}>${esc(it ? it.name : '?')}${e.info.n > 1 ? ' x' + e.info.n : ''}${e.info.up ? ' +' + e.info.up : ''}</div>`;
       }

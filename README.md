@@ -50,7 +50,7 @@ I dati (account e personaggi) stanno in `data/db.json`. Le password sono salvate
 
 **Controlli:** WASD per muoversi, clic sinistro per muoversi, attaccare, parlare o raccogliere. Tasto destro trascinato o Q/E per ruotare la visuale, rotella per lo zoom. Spazio attacca, Tab cambia bersaglio, 1-9 e 0 usano la barra rapida, Z raccoglie, I/C/K/P/H aprono inventario, personaggio, abilità, misuratore dei danni e guida, Invio apre la chat.
 
-**Chat:** `!testo` grida a tutto il regno, `@nome testo` sussurra, `/online` mostra chi è in linea, `/pos` mostra la posizione.
+**Chat:** `!testo` grida a tutto il regno, `#testo` scrive al gruppo, `@nome testo` sussurra, `/online` mostra chi è in linea, `/pos` mostra la posizione.
 
 **GM:**
 
@@ -90,6 +90,15 @@ Ogni arma o armatura che cade ha una **rarità**: Comune, Pregiato, Raro, Epico 
 - **Gemme**: Rubino, Zaffiro, Giada, Ambra, Onice e Perla, ognuna su 3 gradi. Clic destro su 3 gemme uguali per fonderle nel grado successivo.
 - **Fabbro**: potenziamento fino a **+15**. Da +10 serve l'Essenza Celeste. Ogni fallimento aggiunge il 2% di "perseveranza" a quell'oggetto, fino al 20%. Con il Sigillo del Fabbro un fallimento non distrugge l'oggetto: da +9 in su lo fa scendere di un livello. Il pulsante **Smonta** trasforma un oggetto in materiali e restituisce le gemme.
 - **Bottino**: ogni mostro può lasciare equipaggiamento del suo livello; obelischi e boss lasciano oggetti più rari, gemme, modificatori ed essenze. Tieni premuto **Alt** per vedere i nomi di tutti gli oggetti a terra.
+
+## Gruppi
+
+Fino a 5 giocatori dello stesso regno. Seleziona un alleato e premi **Invita nel gruppo**, oppure scrivi `/invita nome`. Per uscire usa `/lascia`; il capogruppo può espellere qualcuno dal riquadro del compagno o con `/espelli nome`.
+
+- **Esperienza:** il danno del gruppo vale come un'unica quota, divisa tra i membri entro 80 metri con un bonus del 10% per ogni compagno. Chi è più di 15 livelli sotto il membro più alto ne riceve solo il 20%.
+- **Tael e bottino:** i tael vengono divisi tra i membri vicini. Il bottino appartiene a tutto il gruppo per i primi 20 secondi.
+- **Riquadri dei compagni:** vita e risorsa sono sempre visibili, anche da lontano; un clic seleziona il compagno, per esempio per curarlo.
+- **Chat e mappa:** `#testo` scrive al gruppo. I compagni appaiono in verde sulla minimappa e sopra la testa.
 
 ## Sistemi presenti
 

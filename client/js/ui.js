@@ -693,6 +693,7 @@ export class UI {
     const k = KINGDOMS[m.kd];
     const name = `<b style="color:${k ? k.color : '#e0a0ff'}">${esc(m.n)}</b>`;
     if (m.ch === 'shout') this.chat('shout', `[Regno] ${name}: ${esc(m.m)}`);
+    else if (m.ch === 'party') this.chat('party', `[Gruppo] <b>${esc(m.n)}</b>: ${esc(m.m)}`);
     else if (m.ch === 'wh') this.chat('wh', m.to ? `A <b>${esc(m.to)}</b>: ${esc(m.m)}` : `<b>${esc(m.n)}</b> sussurra: ${esc(m.m)}`);
     else this.chat('', `${name}: ${esc(m.m)}`);
   }
@@ -738,6 +739,41 @@ export class UI {
     if (i.k === 'm' || i.k === 'p') { bar.style.display = ''; this.setBar('#target-frame .bar.hp', ent.hp, ent.mhp); }
     else bar.style.display = 'none';
     if (tf.dataset.id !== String(ent.id)) { tf.dataset.id = ent.id; this.renderTargetDots(performance.now()); }
+    const g = this.g, party = g.party;
+    const canInvite = i.k === 'p' && i.kd === g.kd && !(party && party.members.some(m => m.id === ent.id)) && (!party || (party.leader === g.myId && party.members.length < 5));
+    $('tf-invite').classList.toggle('hidden', !canInvite);
+    $('tf-invite').onclick = () => g.net.send({ t: 'pinv', id: ent.id });
+  }
+
+  renderParty() {
+    const el = $('party-frames');
+    const party = this.g.party;
+    if (!party) { el.classList.add('hidden'); el.innerHTML = ''; el.dataset.h = ''; return; }
+    el.classList.remove('hidden');
+    const me = this.g.myId, lead = party.leader === me;
+    const self = this.g.self;
+    const html = `<div class="ph"><span>Gruppo (${party.members.length}/5)</span><button class="btn" id="party-leave">Lascia</button></div>` +
+      party.members.filter(m => m.id !== me).map(m => {
+        const c = CLASSES[m.cls], R = RESOURCES[m.rt];
+        const far = self && Math.hypot(m.x - self.x, m.z - self.z) > 100;
+        const sel = this.g.target && this.g.target.id === m.id;
+        return `<div class="pm ${far ? 'far' : ''} ${sel ? 'sel' : ''}" data-pm="${m.id}">
+          <div class="pn"><span>${party.leader === m.id ? '★ ' : ''}${esc(m.n)}</span><span><small>${c.name} ${m.lvl}</small>${lead ? `<button class="kick" data-kick="${m.id}" title="Espelli">✕</button>` : ''}</span></div>
+          <div class="bar hp"><div class="fill" style="width:${m.dead ? 0 : Math.max(0, m.hp / m.mhp * 100)}%"></div><span>${m.dead ? 'Caduto' : `${m.hp} / ${m.mhp}`}</span></div>
+          <div class="bar mp"><div class="fill" style="width:${m.rmax ? m.res / m.rmax * 100 : 0}%;background:linear-gradient(${R.color}, #10101088)"></div></div>
+        </div>`;
+      }).join('');
+    if (el.dataset.h === html) return;
+    el.dataset.h = html;
+    el.innerHTML = html;
+    $('party-leave').onclick = () => this.confirm('Lasciare il gruppo?', () => this.g.net.send({ t: 'pleave' }));
+    el.querySelectorAll('[data-kick]').forEach(b => { b.onclick = (e) => { e.stopPropagation(); const id = +b.dataset.kick; const m = party.members.find(x => x.id === id); this.confirm(`Espellere ${esc(m.n)} dal gruppo?`, () => this.g.net.send({ t: 'pkick', id })); }; });
+    el.querySelectorAll('[data-pm]').forEach(d => {
+      d.onclick = () => {
+        const ent = this.g.ents.get(+d.dataset.pm);
+        if (ent) this.g.setTarget(ent); else this.notice('Compagno troppo lontano', true);
+      };
+    });
   }
 
   // ------------------------------------------------------------ minimappa
@@ -788,12 +824,21 @@ export class UI {
       const i = e.info;
       let c = null, r = 2.5;
       if (i.k === 'm') { if (e.hp <= 0) continue; c = e.boss ? '#ff3a1a' : e.stone ? '#c060ff' : '#e04030'; r = e.boss ? 5 : e.stone ? 4 : 2.5; }
-      else if (i.k === 'p') { c = KINGDOMS[i.kd].color; r = 3.5; }
+      else if (i.k === 'p') { c = this.g.inParty(e.id) ? '#8aff9a' : KINGDOMS[i.kd].color; r = 3.5; }
       else if (i.k === 'n') { c = '#ffd860'; r = 3; }
       else if (i.k === 'd') { c = '#d8e8ff'; r = 1.6; }
       if (!c) continue;
       ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
       if (target === e) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
+    }
+    // compagni di gruppo fuori dal campo visivo: puntino sul bordo
+    for (const m of (this.g.party ? this.g.party.members : [])) {
+      if (m.id === this.g.myId || ents.has(m.id)) continue;
+      let dx = m.x - self.x, dz = m.z - self.z;
+      const d = Math.hypot(dx, dz), lim = R * 0.92;
+      if (d > lim) { dx = dx / d * lim; dz = dz / d * lim; }
+      ctx.fillStyle = '#8aff9a'; ctx.strokeStyle = '#000';
+      ctx.beginPath(); ctx.arc(S / 2 + dx * k, S / 2 + dz * k, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
     ctx.translate(S / 2, S / 2);
     ctx.rotate(-self.r + Math.PI);
