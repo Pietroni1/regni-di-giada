@@ -1,6 +1,7 @@
 // Avvio del client: rendering, schermate di accesso e selezione personaggio.
 import * as THREE from 'three';
 import { buildWorld } from './world3d.js';
+import { Post, QUALITIES } from './post.js';
 import { Net } from './net.js';
 import { Game } from './game.js';
 import { CLASSES } from '/shared/data.js';
@@ -20,8 +21,10 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.3, 1500);
+const post = new Post(renderer, scene, camera);
+window.__post = post;
 addEventListener('resize', () => {
-  renderer.setSize(innerWidth, innerHeight);
+  post.resize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
 });
@@ -33,7 +36,7 @@ let menuKingdom = KINGDOM_IDS[Math.floor(Math.random() * 3)];
 async function boot() {
   show('loading');
   await new Promise(r => setTimeout(r, 30));
-  world = buildWorld(scene);
+  world = buildWorld(scene, post);
   net = new Net();
   try { await net.connect(); }
   catch { $('loading').querySelector('.loading-text').textContent = 'Impossibile collegarsi al server. Controlla che sia avviato e ricarica la pagina.'; return; }
@@ -46,6 +49,8 @@ async function boot() {
     $('loading').querySelector('.loading-text').innerHTML = (kickedMsg || 'Connessione al server persa.') + '<br><br><button class="btn primary" onclick="location.reload()">Ricollegati</button>';
   };
   game = new Game(renderer, scene, camera, world, net);
+  game.post = post;
+  setupGfxButtons();
   window.__game = game;
   setupMenus();
   show('login-screen');
@@ -55,6 +60,15 @@ async function boot() {
 }
 
 let kickedMsg = '';
+
+function setupGfxButtons() {
+  const el = $('gfx-buttons');
+  const render = () => {
+    el.innerHTML = Object.entries(QUALITIES).map(([k, q]) => `<button class="btn ${post.quality === k ? 'primary' : ''}" data-q="${k}" style="padding:2px 10px;font-size:14px">${q.name}</button>`).join(' ');
+    el.querySelectorAll('[data-q]').forEach(b => { b.onclick = () => { post.set(b.dataset.q); render(); }; });
+  };
+  render();
+}
 
 function setupMenus() {
   const auth = (t) => {
@@ -144,8 +158,8 @@ function loop(now) {
     if (camera.position.y < gh) camera.position.y = gh;
     camera.lookAt(focus);
   }
-  world.update(dt, focus);
-  renderer.render(scene, camera);
+  world.update(dt, focus, game && game.active ? camera : null);
+  if (!window.__freeze) post.render();
 }
 
 boot();

@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { heightAt, buildColliders, resolveCollisions, KINGDOMS, PLAY_LIMIT, safeZoneAt, DUNGEON_X } from '/shared/world.js';
 import { SKILLS, ITEMS, MOBS, CLASSES, NPC_ROLES, VIE, BUFFS, RESOURCES, QB_SIZE, RARITIES, MOUNT_SKILLS, HORSE, DUNGEON, dungeonWalkable } from '/shared/data.js';
-import { buildModel } from './models.js';
+import { buildModel, disposeRig } from './models.js';
 import { Fx } from './fx.js';
 import { UI } from './ui.js';
 
@@ -66,6 +66,12 @@ class CEnt {
       this.r = angLerp(this.r, this.tr, Math.min(1, dt * 10));
     }
     this.y = groundY(this.x, this.z);
+    // contorni accesi solo vicino alla visuale (e se la qualità li prevede)
+    const ol = this.rig.outlines;
+    if (ol && ol.length) {
+      const g = this.g, on = !!(g.post && g.post.q.outlines) && Math.hypot(this.x - g.camTarget.x, this.z - g.camTarget.z) < 45;
+      if (on !== this.olOn) { this.olOn = on; for (const o of ol) o.visible = on; }
+    }
     const root = this.rig.root;
     root.position.set(this.x, this.y, this.z);
     root.rotation.y = this.r;
@@ -118,6 +124,7 @@ export class Game {
   addRig(rig) { this.scene.add(rig.root); this.pickMeshes.push(rig.pick); }
   removeRig(rig) {
     this.scene.remove(rig.root);
+    disposeRig(rig);
     const i = this.pickMeshes.indexOf(rig.pick);
     if (i >= 0) this.pickMeshes.splice(i, 1);
   }
@@ -212,7 +219,8 @@ export class Game {
       this.self.x = m.x; this.self.z = m.z;
       if (m.r !== undefined) this.self.r = m.r;
       this.lastSent = { x: m.x, z: m.z };
-      if (Math.hypot(from.x - m.x, from.z - m.z) > 3) this.fx.dash(from, { x: m.x, y: groundY(m.x, m.z), z: m.z }, 0x9ad8ff);
+      const jump = Math.hypot(from.x - m.x, from.z - m.z);
+      if (jump > 3 && jump < 30) this.fx.dash(from, { x: m.x, y: groundY(m.x, m.z), z: m.z }, 0x9ad8ff);
       if (m.alive) { this.intent = null; ui.hideDeath(); }
     });
     n.on('st', (m) => {

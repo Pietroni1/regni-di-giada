@@ -137,6 +137,36 @@ Dal livello 20 il **Custode Yun** (accanto alla pagoda di ogni villaggio) affida
 - **Esito:** completata in tempo, il sigillo sale di **+3** se impieghi al massimo il 60% del tempo, di **+2** entro l'80% e di **+1** altrimenti. Fuori tempo o abbandonando, scende di 1.
 - **Premi:** equipaggiamento di grado 4, più numeroso e più raro ai livelli alti (almeno Raro dal +6, Epico dal +10), Essenza Celeste, gemme, Pietre dell'Affinamento, tael ed esperienza.
 
+## Grafica
+
+Stile cel-shading da anime con contorni a inchiostro e architettura giappo-coreana. Tutto è generato dal codice: non servono modelli o texture esterne.
+
+- **Rendering:**
+  - bloom sulle luci: lanterne, magie, armi potenziate;
+  - antialiasing, vignettatura e ombre morbide.
+- **Atmosfera:**
+  - luce dorata del tardo pomeriggio;
+  - petali di ciliegio sospesi nell'aria;
+  - lago con increspature animate.
+- **Architettura:**
+  - tetti a coppi con gronde rialzate e ornamenti a coda di pesce sul colmo;
+  - sotto le gronde, travetti dipinti in stile *dancheong* (verde, rosso, oro);
+  - fasce decorate a losanghe sulle travi di case, pagode e portali;
+  - lanterne di pietra accese lungo le strade, davanti alle pagode e alle porte.
+- **Personaggi:**
+  - testa più grande con occhi espressivi, frangia e codino;
+  - kimono con maniche a campana, obi con nodo sulla schiena, hakama;
+  - spallacci a lamelle per chi porta l'armatura;
+  - le spade sono katane curve, i pugnali tantō.
+- **Visuale libera:** alberi, case e bancarelle che coprono il personaggio, o che stanno a ridosso della camera, si dissolvono con una retinatura.
+- **Qualità grafica:** si sceglie nella guida (tasto **H**) e resta salvata nel browser.
+
+| Qualità | Cosa cambia |
+|---|---|
+| Alta | Tutto attivo; consigliata con scheda video dedicata |
+| Media | Ombre e antialiasing ridotti |
+| Bassa | Niente bloom, ombre, contorni né petali; per portatili e computer datati |
+
 ## Sistemi presenti
 
 - **Regni:** Fenice Vermiglia (sud), Tigre Bianca (ovest) e Drago di Giada (est). Ognuno ha un villaggio fortificato che è zona sicura.
@@ -158,7 +188,8 @@ Dal livello 20 il **Custode Yun** (accanto alla pagoda di ogni villaggio) affida
 | `shared/world.js` | Regni, posizione dei villaggi, terreno, strade, zone |
 | `server/world.js` | Generazione dei mostri sulla mappa, formule di danno ed esperienza, IA, comandi |
 | `client/js/models.js` | Aspetto di personaggi, mostri e PNG |
-| `client/js/world3d.js` | Grafica del mondo: edifici, alberi, cielo |
+| `client/js/world3d.js` | Grafica del mondo: edifici, decorazioni dei tetti, lanterne di pietra, alberi, cielo, acqua, petali |
+| `client/js/post.js` | Post-elaborazione e preimpostazioni di qualità grafica |
 | `client/css/style.css` | Aspetto dell'interfaccia |
 
 Dopo una modifica riavvia il server e ricarica la pagina.

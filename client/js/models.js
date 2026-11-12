@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { ITEMS, CLASSES, MOBS, RARITIES } from '/shared/data.js';
 import { KINGDOMS } from '/shared/world.js';
-import { lam } from './world3d.js';
+import { lam, toon, outlineMaterial, mergeParts } from './world3d.js';
 
 const geoCache = new Map();
 function G(key, make) { let g = geoCache.get(key); if (!g) { g = make(); geoCache.set(key, g); } return g; }
@@ -22,6 +22,34 @@ const withRot = (m, axis, v) => { m.rotation[axis] = v; return m; };
 const glow = (c, i = 1) => new THREE.MeshLambertMaterial({ color: c, emissive: c, emissiveIntensity: i, flatShading: true });
 
 // ------------------------------------------------------------------ armi
+// Lama curva estrusa (katana o tanto): filo verso il basso, punta che sale.
+function bladeGeo(L, curve, w) {
+  return G(`blade${L},${curve},${w}`, () => {
+    const s = new THREE.Shape();
+    s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0);
+    s.quadraticCurveTo(w / 2, -L * 0.55, w / 2 + curve, -L * 0.87);
+    s.lineTo(-w / 2 + curve + 0.006, -L);
+    s.quadraticCurveTo(-w / 2, -L * 0.55, -w / 2, 0);
+    const g = new THREE.ExtrudeGeometry(s, { depth: 0.022, bevelEnabled: false, curveSegments: 6 });
+    g.translate(0, 0, -0.011);
+    g.rotateY(-Math.PI / 2);
+    return g;
+  });
+}
+function katana(g, L, curve, metal, wrap, tier, short = false) {
+  const hl = short ? 0.17 : 0.3;
+  const gold = lam(tier >= 3 ? 0xd8b048 : 0x8a6a2a), cord = lam(tier >= 2 ? 0xe8e0d0 : 0x8a2a1a);
+  g.add(mesh(cyl(0.032, 0.035, hl, 6), wrap, 0, 0.02, 0));
+  for (let i = 0; i < (short ? 2 : 4); i++) g.add(mesh(cyl(0.037, 0.037, 0.022, 6), cord, 0, 0.02 - hl / 2 + 0.05 + i * (hl - 0.1) / Math.max(1, (short ? 1 : 3)), 0));
+  g.add(mesh(cyl(0.04, 0.036, 0.04, 6), gold, 0, 0.02 + hl / 2 + 0.02, 0));
+  const ty = 0.02 - hl / 2 - 0.015;
+  g.add(mesh(cyl(short ? 0.06 : 0.09, short ? 0.06 : 0.09, 0.024, 10), gold, 0, ty, 0));
+  g.add(mesh(box(0.03, 0.06, 0.09), gold, 0, ty - 0.04, 0));
+  const blade = new THREE.Mesh(bladeGeo(L, curve, short ? 0.06 : 0.075), metal);
+  blade.position.y = ty - 0.012;
+  blade.castShadow = true;
+  g.add(blade);
+}
 function weaponMesh(id, up) {
   const it = ITEMS[id];
   const g = new THREE.Group();
@@ -32,15 +60,12 @@ function weaponMesh(id, up) {
   const wood = lam(0x4a3220), wrap = lam(0x2a1a14);
   switch (it.wt) {
     case 'sword': {
-      g.add(mesh(cyl(0.035, 0.035, 0.28, 6), wrap, 0, 0, 0));
-      g.add(mesh(box(0.26, 0.05, 0.1), lam(0x8a6a2a), 0, -0.15, 0));
-      g.add(mesh(box(0.07, 1.15 + tier * 0.08, 0.025), metal, 0, -0.75 - tier * 0.04, 0));
+      katana(g, 1.1 + tier * 0.08, 0.085, metal, wrap, tier);
       g.rotation.x = -1.35;
       break;
     }
     case 'daggers': {
-      g.add(mesh(cyl(0.03, 0.03, 0.18, 6), wrap, 0, 0, 0));
-      g.add(mesh(box(0.06, 0.5, 0.02), metal, 0, -0.32, 0));
+      katana(g, 0.46, 0.025, metal, wrap, tier, true);
       g.rotation.x = -1.4;
       break;
     }
@@ -75,57 +100,101 @@ function humanoid(o) {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const skin = lam(o.skin ?? 0xe0b48a);
+  const skin = lam(o.skin ?? 0xe8bc94);
   const robe = lam(o.robe), trim = lam(o.trim ?? 0x8a6a3a);
+  const pantsM = lam(o.pants ?? 0x3a3a3a), sashM = lam(o.sash ?? 0x8a2020);
+  const hairC = o.hair != null ? lam(o.hair) : null;
   const mkLeg = (sx) => {
     const pv = new THREE.Group(); pv.position.set(sx, 0.95, 0);
-    pv.add(mesh(cyl(0.11, 0.09, 0.9, 6), lam(o.pants ?? 0x3a3a3a), 0, -0.45, 0));
-    pv.add(mesh(box(0.16, 0.1, 0.3), lam(o.shoes ?? 0x2a1f18), 0, -0.9, 0.06));
+    // hakama: gamba ampia che si allarga verso il basso, calza bianca e sandalo
+    pv.add(mesh(cyl(0.12, 0.17, 0.8, 7), pantsM, 0, -0.42, 0));
+    pv.add(mesh(cyl(0.065, 0.07, 0.09, 6), lam(0xe8e0d0), 0, -0.86, 0.01));
+    pv.add(mesh(box(0.15, 0.06, 0.3), lam(o.shoes ?? 0x2a1f18), 0, -0.92, 0.05));
     body.add(pv); return pv;
   };
   const legL = mkLeg(0.15), legR = mkLeg(-0.15);
   const torso = new THREE.Group(); torso.position.y = 0.95; body.add(torso);
-  torso.add(mesh(cyl(0.3, 0.25, 0.78, 8), robe, 0, 0.42, 0));
-  if (o.skirt !== false) torso.add(mesh(cyl(0.27, 0.44, 0.6, 8), robe, 0, -0.18, 0));
-  torso.add(mesh(cyl(0.29, 0.29, 0.12, 8), lam(o.sash ?? 0x8a2020), 0, 0.08, 0));
-  const collar = trim;
-  const c1 = mesh(box(0.07, 0.5, 0.03), collar, 0.07, 0.55, 0.27); c1.rotation.z = 0.35; torso.add(c1);
-  const c2 = mesh(box(0.07, 0.5, 0.03), collar, -0.07, 0.55, 0.27); c2.rotation.z = -0.35; torso.add(c2);
+  torso.add(mesh(cyl(0.29, 0.24, 0.78, 8), robe, 0, 0.42, 0));
+  if (o.skirt !== false) torso.add(mesh(cyl(0.26, 0.46, 0.62, 8), robe, 0, -0.2, 0));
+  // obi largo, cordino e nodo sulla schiena
+  torso.add(mesh(cyl(0.305, 0.285, 0.22, 8), sashM, 0, 0.1, 0));
+  torso.add(mesh(cyl(0.312, 0.312, 0.035, 8), trim, 0, 0.1, 0));
+  torso.add(mesh(box(0.32, 0.18, 0.1), sashM, 0, 0.12, -0.3));
+  for (const s of [-1, 1]) torso.add(withRot(mesh(box(0.1, 0.34, 0.04), sashM, s * 0.09, -0.08, -0.33), 'z', s * 0.22));
+  // colletto incrociato del kimono, con sottoveste chiara
+  for (const s of [-1, 1]) {
+    torso.add(withRot(mesh(box(0.09, 0.52, 0.03), trim, s * 0.075, 0.55, 0.265), 'z', s * 0.38));
+    torso.add(withRot(mesh(box(0.035, 0.4, 0.03), lam(0xf0ebdc), s * 0.03, 0.62, 0.262), 'z', s * 0.38));
+  }
   if (o.armor) {
     const am = lam(o.armor);
-    torso.add(mesh(box(0.52, 0.42, 0.12), am, 0, 0.5, 0.22));
-    for (const s of [-1, 1]) { const sp = mesh(box(0.26, 0.12, 0.34), am, s * 0.36, 0.78, 0); sp.rotation.z = s * -0.35; torso.add(sp); }
-    torso.add(mesh(cyl(0.3, 0.46, 0.3, 8), am, 0, -0.1, 0));
+    torso.add(mesh(box(0.54, 0.44, 0.12), am, 0, 0.5, 0.21));
+    for (const y of [0.4, 0.52, 0.64]) torso.add(mesh(box(0.56, 0.025, 0.13), trim, 0, y, 0.215));
+    // spallacci a lamelle (tre piastre sovrapposte per lato)
+    for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {
+      const sp = mesh(box(0.3 - i * 0.02, 0.1, 0.38), am, s * (0.38 + i * 0.035), 0.82 - i * 0.11, 0);
+      sp.rotation.z = s * -(0.35 + i * 0.1); torso.add(sp);
+    }
+    torso.add(mesh(cyl(0.31, 0.47, 0.32, 8), am, 0, -0.1, 0));
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; torso.add(withRot(mesh(box(0.02, 0.3, 0.02), trim, Math.sin(a) * 0.4, -0.12, Math.cos(a) * 0.4), 'y', a)); }
   }
   if (o.cape) { const cp = mesh(box(0.6, 1.2, 0.04), lam(o.cape), 0, 0.15, -0.3); cp.rotation.x = 0.12; torso.add(cp); }
   const mkArm = (sx) => {
     const pv = new THREE.Group(); pv.position.set(sx, 0.72, 0); torso.add(pv);
-    pv.add(mesh(cyl(0.1, 0.13, 0.62, 6), lam(o.sleeve ?? o.robe), 0, -0.3, 0));
-    pv.add(mesh(sph(0.08, 6, 5), skin, 0, -0.66, 0));
-    const grip = new THREE.Group(); grip.position.set(0, -0.7, 0); pv.add(grip);
+    const sl = lam(o.sleeve ?? o.robe);
+    // manica larga a campana con orlo, polso e mano
+    pv.add(mesh(cyl(0.1, 0.12, 0.32, 6), sl, 0, -0.14, 0));
+    pv.add(mesh(cyl(0.13, 0.2, 0.36, 7), sl, 0, -0.44, -0.02));
+    pv.add(mesh(cyl(0.2, 0.205, 0.045, 7), trim, 0, -0.62, -0.02));
+    pv.add(mesh(cyl(0.045, 0.05, 0.12, 5), skin, 0, -0.62, 0));
+    pv.add(mesh(sph(0.075, 6, 5), skin, 0, -0.7, 0));
+    const grip = new THREE.Group(); grip.position.set(0, -0.72, 0); pv.add(grip);
     return { pv, grip };
   };
-  const armR = mkArm(-0.39), armL = mkArm(0.39);
+  const armR = mkArm(-0.41), armL = mkArm(0.41);
+  // testa più grande, occhi espressivi
   const head = new THREE.Group(); head.position.y = 0.88; torso.add(head);
   head.add(mesh(cyl(0.07, 0.08, 0.12, 6), skin, 0, 0, 0));
   if (o.faceless) {
-    head.add(mesh(sph(0.21, 10, 8), lam(0xe8e4dc), 0, 0.22, 0));
-    for (const s of [-1, 1]) head.add(mesh(box(0.07, 0.02, 0.02), glow(0xff2a1a, 1.5), s * 0.07, 0.24, 0.19));
+    head.add(mesh(sph(0.25, 12, 10), lam(0xe8e4dc), 0, 0.24, 0));
+    for (const s of [-1, 1]) head.add(mesh(box(0.08, 0.025, 0.02), glow(0xff2a1a, 1.5), s * 0.08, 0.25, 0.235));
   } else {
-    head.add(mesh(sph(0.2, 10, 8), skin, 0, 0.2, 0));
-    for (const s of [-1, 1]) head.add(mesh(box(0.045, 0.03, 0.02), lam(0x1a1210), s * 0.07, 0.22, 0.185));
+    const hd = mesh(sph(0.25, 12, 10), skin, 0, 0.24, 0); hd.scale.set(1, 0.98, 0.95); head.add(hd);
+    const eye = lam(o.eye ?? 0x2a1a12), white = lam(0xfaf6ee), brow = lam(o.hair ?? 0x1a1210);
+    for (const s of [-1, 1]) {
+      head.add(mesh(box(0.085, 0.072, 0.02), white, s * 0.085, 0.235, 0.232));
+      head.add(mesh(box(0.05, 0.07, 0.02), eye, s * 0.08, 0.232, 0.237));
+      head.add(mesh(box(0.018, 0.018, 0.02), white, s * 0.07, 0.25, 0.241));
+      head.add(withRot(mesh(box(0.09, 0.018, 0.02), brow, s * 0.085, 0.3, 0.228), 'z', s * -0.14));
+    }
+    head.add(mesh(box(0.05, 0.012, 0.02), lam(0x9a5040), 0, 0.14, 0.216));
   }
-  const hairC = o.hair != null ? lam(o.hair) : null;
+  const fringe = () => {
+    for (let i = -2; i <= 2; i++) head.add(withRot(mesh(cone(0.055, 0.14, 4), hairC, i * 0.068, 0.39, 0.2 - Math.abs(i) * 0.02), 'x', Math.PI + 0.25));
+    for (const s of [-1, 1]) head.add(mesh(box(0.06, 0.3, 0.09), hairC, s * 0.23, 0.17, 0.05));
+  };
   switch (o.hairStyle) {
-    case 'topknot': head.add(mesh(cap(0.215), hairC, 0, 0.22, -0.02)); head.add(mesh(sph(0.09, 6, 5), hairC, 0, 0.45, -0.04)); break;
-    case 'long': head.add(mesh(cap(0.215), hairC, 0, 0.22, -0.02)); head.add(mesh(box(0.34, 0.5, 0.1), hairC, 0, 0.05, -0.15)); break;
-    case 'bun': head.add(mesh(cap(0.215), hairC, 0, 0.22, -0.02)); head.add(mesh(sph(0.1, 6, 5), hairC, 0, 0.32, -0.18)); break;
-    case 'hood': head.add(mesh(cap(0.25), lam(o.robe), 0, 0.18, -0.03)); head.add(mesh(box(0.36, 0.1, 0.06), lam(o.trim ?? 0x6b1e1e), 0, 0.12, 0.19)); break;
+    case 'topknot':
+      head.add(mesh(cap(0.265), hairC, 0, 0.25, -0.02)); fringe();
+      head.add(mesh(sph(0.09, 6, 5), hairC, 0, 0.5, -0.06));
+      head.add(mesh(cyl(0.05, 0.05, 0.05, 6), trim, 0, 0.44, -0.05));
+      head.add(withRot(mesh(box(0.11, 0.5, 0.06), hairC, 0, 0.12, -0.27), 'x', 0.2));
+      break;
+    case 'long':
+      head.add(mesh(cap(0.265), hairC, 0, 0.25, -0.02)); fringe();
+      head.add(mesh(box(0.42, 0.62, 0.1), hairC, 0, 0.04, -0.18));
+      break;
+    case 'bun':
+      head.add(mesh(cap(0.265), hairC, 0, 0.25, -0.02)); fringe();
+      head.add(mesh(sph(0.11, 6, 5), hairC, 0, 0.36, -0.22));
+      head.add(withRot(mesh(box(0.3, 0.02, 0.02), trim, 0, 0.38, -0.24), 'z', 0.4));
+      break;
+    case 'hood': head.add(mesh(cap(0.3), lam(o.robe), 0, 0.22, -0.03)); head.add(mesh(box(0.42, 0.11, 0.06), lam(o.trim ?? 0x6b1e1e), 0, 0.15, 0.22)); break;
     case 'bald': break;
   }
-  if (o.beard) head.add(withRot(mesh(cone(0.12, 0.45, 6), lam(0xe8e8e8), 0, -0.05, 0.12), 'x', Math.PI));
-  const hatGroup = new THREE.Group(); head.add(hatGroup);
-  return { root, body, torso, head, hatGroup, legL, legR, armL, armR, height: 2.3 };
+  if (o.beard) head.add(withRot(mesh(cone(0.12, 0.45, 6), lam(0xe8e8e8), 0, -0.02, 0.17), 'x', Math.PI));
+  const hatGroup = new THREE.Group(); hatGroup.scale.setScalar(1.15); hatGroup.position.y = 0.02; head.add(hatGroup);
+  return { root, body, torso, head, hatGroup, legL, legR, armL, armR, height: 2.35 };
 }
 
 function setHat(rig, id, color) {
@@ -232,7 +301,52 @@ function obelisk(color, scale) {
 }
 
 // ------------------------------------------------------------------ fabbriche di modelli
+// Contorni dei modelli animati: un figlio per ogni mesh opaca (si accendono solo da vicino).
+function addOutlines(rig) {
+  const list = [];
+  rig.root.traverse(m => {
+    if (!m.isMesh || m.userData.outline || m === rig.pick) return;
+    const mat = m.material;
+    if (mat.transparent || (mat.emissive && mat.emissive.getHex() !== 0) || mat.isMeshBasicMaterial) return;
+    const o = new THREE.Mesh(m.geometry, outlineMaterial(0.028));
+    o.userData.outline = true;
+    o.castShadow = false;
+    list.push([m, o]);
+  });
+  for (const [m, o] of list) m.add(o);
+  rig.outlines = list.map(x => x[1]);
+}
+
+// Fonde le mesh opache di ogni gruppo animato in un'unica mesh a colori per vertice: molte meno draw call.
+const RIG_MAT = toon({ vertexColors: true });
+function mergeRig(rig) {
+  const groups = [];
+  rig.root.traverse(o => { if (o.isGroup) groups.push(o); });
+  rig.merged = [];
+  for (const g of groups) {
+    const parts = [], rm = [];
+    for (const c of g.children) {
+      if (!c.isMesh || c.children.length || c.userData.keep) continue;
+      const m = c.material;
+      if (!m.isMeshToonMaterial || m.transparent || m.vertexColors || m.map || m.side !== THREE.FrontSide || (m.emissive && m.emissive.getHex() !== 0)) continue;
+      c.updateMatrix();
+      parts.push({ geo: c.geometry, color: m.color.getHex(), m: c.matrix.clone() });
+      rm.push(c);
+    }
+    if (rm.length < 2) continue;
+    for (const c of rm) g.remove(c);
+    const geo = mergeParts(parts);
+    const mm = new THREE.Mesh(geo, RIG_MAT);
+    mm.castShadow = true;
+    g.add(mm);
+    rig.merged.push(geo);
+  }
+}
+export function disposeRig(rig) { for (const g of rig.merged || []) g.dispose(); }
+
 function finish(rig, radius) {
+  mergeRig(rig);
+  if (!rig.drop) addOutlines(rig);
   const pickH = rig.height;
   const pick = new THREE.Mesh(G(`pick${radius},${pickH}`, () => new THREE.CylinderGeometry(radius, radius, pickH, 8)), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
   pick.position.y = pickH / 2;
@@ -413,7 +527,7 @@ export function buildMobModel(info) {
       rig = humanoid({ robe: 0x2a1a3a, trim: 0x5a3a8a, pants: 0x1a1024, hair: 0x0a0a0a, hairStyle: 'hood', sash: 0x5a3a8a, skirt: true });
       applyWeapon(rig, 'pugnali_serpe', 0);
       rig.root.traverse(m => { if (m.isMesh) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.78; m.material.emissive = new THREE.Color(0x2a1048); m.material.emissiveIntensity = 0.6; } });
-      for (const sx of [-1, 1]) rig.head.add(mesh(box(0.06, 0.03, 0.02), glow(0xc080ff, 1.6), sx * 0.07, 0.22, 0.2));
+      for (const sx of [-1, 1]) rig.head.add(mesh(box(0.07, 0.03, 0.02), glow(0xc080ff, 1.6), sx * 0.08, 0.25, 0.25));
       break;
     }
     case 'custode': {
