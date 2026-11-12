@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { TOON_GRADIENT } from './world3d.js';
+import { SOFT_GRADIENT } from './world3d.js';
 
 let BASE = null;
 const UPPER = /^(spine|chest|neck|head|shoulder_|upper_arm_|forearm_|hand_)/;
@@ -112,12 +112,12 @@ function withMask(m, mask, tag, pre) {
 const matCache = new Map();
 function cached(key, make) { let m = matCache.get(key); if (!m) { m = make(); matCache.set(key, m); } return m; }
 const bodyMat = (tex, mask, ghost) => cached(`b${tex.id}|${mask}|${ghost ? JSON.stringify(ghost) : ''}`, () => {
-  const m = new THREE.MeshToonMaterial({ map: tex, gradientMap: TOON_GRADIENT });
+  const m = new THREE.MeshToonMaterial({ map: tex, gradientMap: SOFT_GRADIENT });
   if (ghost) { m.transparent = true; m.opacity = ghost.opacity; m.emissive = new THREE.Color(ghost.emissive); m.emissiveIntensity = ghost.intensity ?? 0.6; m.depthWrite = false; }
   return withMask(m, mask, ghost ? 'ghost' : 'body');
 });
 const lineMat = (mask) => cached(`o${mask}`, () => withMask(new THREE.MeshBasicMaterial({ color: 0x1a1008, side: THREE.BackSide }), mask, 'line',
-  (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = position + normal * 0.022;'); }));
+  (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = position + normal * 0.014;'); }));
 const depthMat = (mask) => cached(`d${mask}`, () => withMask(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), mask, 'depth'));
 
 // ------------------------------------------------------------------ istanza

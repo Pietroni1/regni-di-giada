@@ -5,6 +5,7 @@ import { Post, QUALITIES } from './post.js';
 import { Net } from './net.js';
 import { Game } from './game.js';
 import { loadCharacterAssets } from './skinned.js';
+import { loadNatureAssets } from './nature.js';
 import { CLASSES } from '/shared/data.js';
 import { KINGDOMS, KINGDOM_IDS, heightAt } from '/shared/world.js';
 
@@ -37,6 +38,7 @@ let menuKingdom = KINGDOM_IDS[Math.floor(Math.random() * 3)];
 async function boot() {
   show('loading');
   await new Promise(r => setTimeout(r, 30));
+  try { await loadNatureAssets(); } catch (e) { console.warn('Alberi da Blender non caricati, uso quelli procedurali:', e); }
   world = buildWorld(scene, post);
   try { await loadCharacterAssets(); } catch (e) { console.warn('Modello del personaggio non caricato, uso quello procedurale:', e); }
   net = new Net();

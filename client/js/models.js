@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { ITEMS, CLASSES, MOBS, RARITIES } from '/shared/data.js';
 import { KINGDOMS } from '/shared/world.js';
-import { lam, toon, outlineMaterial, mergeParts } from './world3d.js';
+import { lam, outlineMaterial, mergeParts, SOFT_GRADIENT } from './world3d.js';
 import { buildSkinnedHumanoid, hasSkinned, SkinAnim } from './skinned.js';
 
 const geoCache = new Map();
@@ -316,7 +316,7 @@ function addOutlines(rig) {
     if (!m.isMesh || m.isSkinnedMesh || m.userData.outline || m === rig.pick) return;
     const mat = m.material;
     if (mat.transparent || (mat.emissive && mat.emissive.getHex() !== 0) || mat.isMeshBasicMaterial) return;
-    const o = new THREE.Mesh(m.geometry, outlineMaterial(0.028));
+    const o = new THREE.Mesh(m.geometry, outlineMaterial(0.018));
     o.userData.outline = true;
     o.castShadow = false;
     list.push([m, o]);
@@ -327,7 +327,7 @@ function addOutlines(rig) {
 }
 
 // Fonde le mesh opache di ogni gruppo animato in un'unica mesh a colori per vertice: molte meno draw call.
-const RIG_MAT = toon({ vertexColors: true });
+const RIG_MAT = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: SOFT_GRADIENT });
 function mergeRig(rig) {
   const groups = [];
   rig.root.traverse(o => { if (o.isGroup) groups.push(o); });
@@ -337,7 +337,7 @@ function mergeRig(rig) {
     for (const c of g.children) {
       if (!c.isMesh || c.children.length || c.userData.keep) continue;
       const m = c.material;
-      if (!m.isMeshToonMaterial || m.transparent || m.vertexColors || m.map || m.side !== THREE.FrontSide || (m.emissive && m.emissive.getHex() !== 0)) continue;
+      if (!(m.isMeshToonMaterial || m.isMeshStandardMaterial) || m.transparent || m.vertexColors || m.map || m.side !== THREE.FrontSide || (m.emissive && m.emissive.getHex() !== 0)) continue;
       c.updateMatrix();
       parts.push({ geo: c.geometry, color: m.color.getHex(), m: c.matrix.clone() });
       rm.push(c);

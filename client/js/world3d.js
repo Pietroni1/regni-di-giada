@@ -1,6 +1,8 @@
 // Costruzione del mondo 3D statico: cielo, terreno, acqua, vegetazione, villaggi, altopiano.
 // Tutta la grafica è procedurale (nessun file esterno), stile low-poly anni 2000.
 import * as THREE from 'three';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { hasNature, buildNature, WIND } from './nature.js';
 import { DUNGEON, dungeonWalkable } from '/shared/data.js';
 import {
   heightAt, roadDistance, fbm, smoothstep, mulberry32, KINGDOMS, KINGDOM_IDS, CENTER, WALL_RADIUS,
@@ -50,6 +52,17 @@ export const TOON_GRADIENT = (() => {
   return t;
 })();
 export function toon(opts) { return new THREE.MeshToonMaterial({ gradientMap: TOON_GRADIENT, ...opts }); }
+// Ombreggiatura anime morbida per i personaggi: passaggi di luce sfumati invece di tre bande nette.
+export const SOFT_GRADIENT = (() => {
+  const v = [70, 120, 175, 225, 250, 255];
+  const t = new THREE.DataTexture(new Uint8Array(v.flatMap(x => [x, x, x, 255])), v.length, 1, THREE.RGBAFormat);
+  t.minFilter = t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+})();
+// Materiale del mondo: opaco, con luce ambientale dal cielo.
+export function soft(opts) { return new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, ...opts }); }
 
 // Contorno "a scafo invertito": la stessa geometria, spinta lungo le normali e disegnata dal retro.
 const outlineCache = new Map();
@@ -104,7 +117,7 @@ const matCache = new Map();
 export function lam(color, extra = {}) {
   const key = color + '|' + JSON.stringify(extra);
   let m = matCache.get(key);
-  if (!m) { m = toon({ color, ...extra }); matCache.set(key, m); }
+  if (!m) { m = soft({ color, ...extra }); matCache.set(key, m); }
   return m;
 }
 function M(geo, mat, x = 0, y = 0, z = 0, shadow = true) {
@@ -179,7 +192,7 @@ const PATTERN_FRAG = `
   }
 `;
 function patternToon(side) {
-  const m = toon({ vertexColors: true, side });
+  const m = soft({ vertexColors: true, side });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = 'attribute vec2 puv;\nattribute float pat;\nvarying vec2 vPuv;\nvarying float vPat;\n' +
       sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vPuv = puv; vPat = pat;');
@@ -218,10 +231,9 @@ function mergeStatic(root) {
     if (!parts.length) continue;
     const geo = mergeParts(parts);
     const side = k === 'double' ? THREE.DoubleSide : THREE.FrontSide;
-    const mesh = new THREE.Mesh(geo, cutaway(geo.attributes.pat ? patternToon(side) : toon({ vertexColors: true, side }), (geo.attributes.pat ? 'pat' : 'st') + side));
+    const mesh = new THREE.Mesh(geo, cutaway(geo.attributes.pat ? patternToon(side) : soft({ vertexColors: true, side }), (geo.attributes.pat ? 'pat' : 'st') + side));
     mesh.castShadow = true; mesh.receiveShadow = true;
     root.add(mesh);
-    if (k === 'front') { const o = new THREE.Mesh(geo, outlineMaterial(0.06, true)); o.userData.outline = true; root.add(o); }
   }
 }
 
@@ -274,36 +286,49 @@ export function curvedRoof(w, d, h, lift = 0.5, seg = 14) {
 }
 
 // ------------------------------------------------------------------ cielo
+const SUN_DIR = new THREE.Vector3(-0.62, 0.42, 0.42).normalize();
 function makeSky() {
-  const geo = new THREE.SphereGeometry(900, 24, 12);
-  const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { top: { value: new THREE.Color(0x4a7cc4) }, mid: { value: new THREE.Color(0xa9c9e4) }, bottom: { value: new THREE.Color(0xf4d8b0) } },
-    vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 bottom; varying vec3 vP;
-      void main(){ float h = vP.y; vec3 c = h > 0.12 ? mix(mid, top, smoothstep(0.12, 0.6, h)) : mix(bottom, mid, smoothstep(-0.05, 0.12, h));
-      gl_FragColor = vec4(c, 1.0); }`,
-  });
-  const sky = new THREE.Mesh(geo, mat);
+  const sky = new Sky();
+  sky.scale.setScalar(1300);
+  const u = sky.material.uniforms;
+  u.turbidity.value = 4.5; u.rayleigh.value = 1.4; u.mieCoefficient.value = 0.005; u.mieDirectionalG.value = 0.85;
+  u.sunPosition.value.copy(SUN_DIR).multiplyScalar(1000);
+  // il cielo fisico è molto luminoso: lo riportiamo alla scala della scena
+  sky.material.fragmentShader = sky.material.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );', 'gl_FragColor = vec4( retColor * 0.42, 1.0 );');
+  sky.material.fog = false;
   sky.renderOrder = -10;
   return sky;
 }
 
+function cloudTexture() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  const rnd = mulberry32(31);
+  for (let i = 0; i < 22; i++) {
+    const x = 30 + rnd() * 68, y = 44 + rnd() * 40, r = 14 + rnd() * 22;
+    const grd = g.createRadialGradient(x, y - r * 0.2, r * 0.1, x, y, r);
+    grd.addColorStop(0, 'rgba(255,255,255,0.55)'); grd.addColorStop(0.6, 'rgba(250,246,240,0.25)'); grd.addColorStop(1, 'rgba(240,236,230,0)');
+    g.fillStyle = grd; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 function makeClouds(group) {
-  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, flatShading: true, fog: false });
+  const tex = cloudTexture();
   const rnd = mulberry32(77);
   const clouds = [];
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 30; i++) {
     const c = new THREE.Group();
     const n = 3 + Math.floor(rnd() * 4);
     for (let k = 0; k < n; k++) {
-      const s = 10 + rnd() * 14;
-      const m = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), cloudMat);
-      m.position.set(k * 14 - n * 7, rnd() * 5, rnd() * 10 - 5);
-      m.scale.y = 0.45;
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xffffff, transparent: true, opacity: 0.75 + rnd() * 0.2, depthWrite: false, fog: false }));
+      const s = 60 + rnd() * 70;
+      m.scale.set(s * 1.6, s * 0.7, 1);
+      m.position.set(k * 38 - n * 19, rnd() * 10, rnd() * 20 - 10);
       c.add(m);
     }
-    c.position.set(rnd() * 900 - 450, 120 + rnd() * 60, rnd() * 900 - 450);
+    c.position.set(rnd() * 1000 - 500, 150 + rnd() * 80, rnd() * 1000 - 500);
     group.add(c); clouds.push(c);
   }
   return clouds;
@@ -346,7 +371,7 @@ function makeTerrain() {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: makeDetailTexture() });
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, map: makeDetailTexture(), roughness: 0.95, metalness: 0 });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   return mesh;
@@ -376,7 +401,7 @@ function makeWater() {
   const geo = new THREE.PlaneGeometry(1400, 1400, 1, 1);
   geo.rotateX(-Math.PI / 2);
   const normalMap = waterNormalTexture();
-  const mat = new THREE.MeshPhongMaterial({ color: 0x2a7a96, transparent: true, opacity: 0.84, shininess: 140, specular: 0xd8ecff, normalMap, normalScale: new THREE.Vector2(0.55, 0.55) });
+  const mat = new THREE.MeshStandardMaterial({ color: 0x1f5a70, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.86, normalMap, normalScale: new THREE.Vector2(0.4, 0.4), envMapIntensity: 1.4 });
   const m = new THREE.Mesh(geo, mat);
   m.position.y = -0.05;
   m.receiveShadow = true;
@@ -459,6 +484,7 @@ function makeVegetation(group) {
     }
   }
 
+  if (hasNature()) { buildNature(group, lists, cutaway); return; }
   const trunk = 0x5a3e28, darkTrunk = 0x3e2a1c;
   const geos = {
     pine: mergeParts([
@@ -495,8 +521,7 @@ function makeVegetation(group) {
       { geo: new THREE.IcosahedronGeometry(0.6, 0), color: 0x557a36, m: mtx(0.7, 0.4, 0.3) },
     ]),
   };
-  const mat = cutaway(toon({ vertexColors: true }), 'veg');
-  const outMat = outlineMaterial(0.07, true);
+  const mat = cutaway(soft({ vertexColors: true }), 'veg');
   const dummy = new THREE.Object3D();
   const col = new THREE.Color();
   for (const k in lists) {
@@ -511,10 +536,7 @@ function makeVegetation(group) {
     });
     im.castShadow = k !== 'bush'; im.receiveShadow = true;
     group.add(im);
-    const om = new THREE.InstancedMesh(geos[k], outMat, arr.length);
-    om.instanceMatrix = im.instanceMatrix;
-    om.userData.outline = true;
-    group.add(om);
+
   }
 }
 
@@ -745,10 +767,7 @@ function buildStoneLanterns(scene) {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) parts.push({ geo: new THREE.BoxGeometry(0.1, 0.52, 0.1), color: stone, m: mtx(sx * 0.24, 1.71, sz * 0.24) });
   const geo = mergeParts(parts);
   const n = spots.length;
-  const body = new THREE.InstancedMesh(geo, toon({ vertexColors: true }), n);
-  const out = new THREE.InstancedMesh(geo, outlineMaterial(0.04), n);
-  out.instanceMatrix = body.instanceMatrix;
-  out.userData.outline = true;
+  const body = new THREE.InstancedMesh(geo, soft({ vertexColors: true }), n);
   const fireMat = new THREE.MeshBasicMaterial();
   fireMat.color.setRGB(2.4, 1.35, 0.5);
   const fire = new THREE.InstancedMesh(new THREE.BoxGeometry(0.34, 0.4, 0.34), fireMat, n);
@@ -760,7 +779,7 @@ function buildStoneLanterns(scene) {
     fire.setMatrixAt(i, d.matrix);
   });
   body.castShadow = true; body.receiveShadow = true;
-  scene.add(body); scene.add(out); scene.add(fire);
+  scene.add(body); scene.add(fire);
   return spots.length;
 }
 
@@ -920,17 +939,17 @@ export function buildDungeon(scene, ox, oz) {
 }
 
 export function buildWorld(scene, post) {
-  scene.background = new THREE.Color(0x9cc0e0);
-  scene.fog = new THREE.Fog(0xe8d6b4, 90, 340);
+  scene.background = new THREE.Color(0xb8cde0);
+  scene.fog = new THREE.Fog(0xc8d4dc, 110, 420);
   const sky = makeSky();
   scene.add(sky);
   const cloudGroup = new THREE.Group();
   scene.add(cloudGroup);
   const clouds = makeClouds(cloudGroup);
 
-  const hemi = new THREE.HemisphereLight(0xffe9cc, 0x4a5a38, 1.3);
+  const hemi = new THREE.HemisphereLight(0xb8ccff, 0x6a5a40, 0.6);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffdcaa, 2.7);
+  const sun = new THREE.DirectionalLight(0xffdcae, 4.2);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   const sc = sun.shadow.camera;
@@ -938,7 +957,7 @@ export function buildWorld(scene, post) {
   sun.shadow.bias = -0.0008;
   sun.shadow.normalBias = 0.6;
   scene.add(sun); scene.add(sun.target);
-  const sunDir = new THREE.Vector3(-0.62, 0.55, 0.42).normalize();
+  const sunDir = SUN_DIR;
 
   const terrain = makeTerrain();
   scene.add(terrain);
@@ -965,6 +984,15 @@ export function buildWorld(scene, post) {
   buildStoneLanterns(scene);
 
   if (post) { applyQuality(post.q); post.onChange(applyQuality); }
+  // luce ambientale e riflessi presi dal cielo
+  if (post) {
+    const pmrem = new THREE.PMREMGenerator(post.renderer);
+    const envScene = new THREE.Scene();
+    envScene.add(makeSky());
+    scene.environment = pmrem.fromScene(envScene, 0, 1, 3000).texture;
+    scene.environmentIntensity = 0.65;
+    pmrem.dispose();
+  }
   let t = 0, indoor = false;
   const outdoorFog = scene.fog, indoorFog = new THREE.Fog(0x161010, 28, 120);
   const outdoorBg = scene.background, indoorBg = new THREE.Color(0x161010);
@@ -977,9 +1005,10 @@ export function buildWorld(scene, post) {
       scene.fog = on ? indoorFog : outdoorFog;
       scene.background = on ? indoorBg : outdoorBg;
       sky.visible = !on; cloudGroup.visible = !on;
-      hemi.intensity = on ? 1.15 : 1.3;
-      hemi.color.set(on ? 0xffd8b8 : 0xffe9cc);
-      sun.intensity = on ? 0.5 : 2.7;
+      hemi.intensity = on ? 1.15 : 0.6;
+      hemi.color.set(on ? 0xffd8b8 : 0xb8ccff);
+      sun.intensity = on ? 0.5 : 4.2;
+      scene.environmentIntensity = on ? 0.15 : 0.65;
       petals.visible = !on && (!post || post.q.petals);
     },
     buildDungeon: (ox, oz) => { const r = buildDungeon(scene, ox, oz); if (post) applyQuality(post.q); return r; },
@@ -993,6 +1022,7 @@ export function buildWorld(scene, post) {
       for (const fl of animated.flags) fl.rotation.y = Math.sin(t * 1.7 + fl.id) * 0.25;
       for (const l of animated.lights) l.intensity = 5 + Math.sin(t * 9) * 0.8 + Math.sin(t * 23) * 0.5;
       water.userData.normalMap.offset.set(t * 0.012, t * 0.007);
+      WIND.value = t;
       if (petals.visible) petals.userData.update(dt, focus);
     },
   };
