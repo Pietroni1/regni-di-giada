@@ -26,7 +26,7 @@ export const hasSkinned = () => !!BASE;
 export const characterClips = () => BASE && BASE.clips;
 
 // ------------------------------------------------------------------ parti e atlante
-export const PARTS = { base: 0, hakama: 1, codino: 2, lunghi: 3, crocchia: 4, cappuccio: 5, barba: 6, armatura: 7, frangia: 8, mantello: 9, colletto: 10 };
+export const PARTS = { base: 0, hakama: 1, codino: 2, lunghi: 3, crocchia: 4, cappuccio: 5, barba: 6, armatura: 7, frangia: 8, mantello: 9, colletto: 10, maniche: 11 };
 const PAL = ['pelle', 'veste', 'bordo', 'pantaloni', 'fascia', 'scarpe', 'capelli', 'armatura', 'calze', 'sottoveste', 'oro', 'maniche', 'barba', 'mantello'];
 const hexCss = (c) => '#' + ((c ?? 0x808080) >>> 0).toString(16).padStart(6, '0');
 
@@ -36,7 +36,7 @@ function maskFor(o) {
   if (hair) m |= (1 << PARTS[hair]) | (1 << PARTS.frangia);
   if (o.hairStyle === 'hood') m |= 1 << PARTS.cappuccio;
   if (o.skirt !== false) m |= 1 << PARTS.hakama;
-  if (o.armor) m |= 1 << PARTS.armatura; else m |= 1 << PARTS.colletto;
+  if (o.armor) m |= 1 << PARTS.armatura; else m |= (1 << PARTS.colletto) | (1 << PARTS.maniche);
   if (o.beard) m |= 1 << PARTS.barba;
   if (o.cape) m |= 1 << PARTS.mantello;
   return m;
@@ -114,8 +114,52 @@ function cached(key, make) { let m = matCache.get(key); if (!m) { m = make(); ma
 const bodyMat = (tex, mask, ghost) => cached(`b${tex.id}|${mask}|${ghost ? JSON.stringify(ghost) : ''}`, () => {
   const m = new THREE.MeshToonMaterial({ map: tex, gradientMap: SOFT_GRADIENT });
   if (ghost) { m.transparent = true; m.opacity = ghost.opacity; m.emissive = new THREE.Color(ghost.emissive); m.emissiveIntensity = ghost.intensity ?? 0.6; m.depthWrite = false; }
-  return withMask(m, mask, ghost ? 'ghost' : 'body');
+  return withMask(m, mask, ghost ? 'ghost' : 'body', paintedShade);
 });
+// Ombreggiatura dipinta: occlusione e curvatura calcolate in Blender (terza UV) + gradiente dall'alto,
+// materiali procedurali per parte (metallo spazzolato, stoffa, ciocche di capelli) e luce di contorno.
+const PAINT_FRAG = `
+  float slotI = floor(vMapUv.x * 16.0);
+  bool palette = vMapUv.y < 0.0625;
+  vec3 bp = vBind;
+  float n1 = pnoise(bp * 9.0), n2 = pnoise(bp * 31.0);
+  if (palette) {
+    if (slotI == 7.0 || slotI == 10.0) {          // metallo: spazzolato verticale, graffi, macchie
+      float brush = pnoise(vec3(bp.x * 70.0, bp.y * 5.0, bp.z * 70.0));
+      diffuseColor.rgb *= 0.82 + brush * 0.3 + n1 * 0.1;
+      diffuseColor.rgb += step(0.93, pnoise(bp * vec3(90.0, 12.0, 90.0))) * 0.12;
+    } else if (slotI == 6.0) {                     // capelli: ciocche e riflesso ad anello
+      float ang = atan(bp.x, bp.z);
+      diffuseColor.rgb *= 0.78 + 0.32 * (0.5 + 0.5 * sin(ang * 46.0 + n1 * 5.0));
+      diffuseColor.rgb += vec3(0.16, 0.13, 0.11) * smoothstep(0.035, 0.0, abs(bp.y - 2.06 - n1 * 0.03)) ;
+    } else if (slotI == 0.0 || slotI == 12.0) {    // pelle e barba: appena pittorica
+      diffuseColor.rgb *= 0.97 + n1 * 0.06;
+    } else {                                       // stoffe: trama fine e pieghe morbide
+      float weave = sin((bp.x + bp.y) * 420.0) * sin((bp.x - bp.y + bp.z) * 420.0);
+      diffuseColor.rgb *= 0.9 + n1 * 0.16 + weave * 0.025 - n2 * 0.05;
+    }
+  }
+  diffuseColor.rgb *= vShade * 1.08;
+`;
+const PNOISE = `
+  float phash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+  float pnoise(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(phash(i), phash(i + vec3(1,0,0)), f.x), mix(phash(i + vec3(0,1,0)), phash(i + vec3(1,1,0)), f.x), f.y),
+               mix(mix(phash(i + vec3(0,0,1)), phash(i + vec3(1,0,1)), f.x), mix(phash(i + vec3(0,1,1)), phash(i + vec3(1,1,1)), f.x), f.y), f.z); }
+`;
+function paintedShade(sh) {
+  sh.uniforms.uRim = { value: new THREE.Color(0xffd8a8) };
+  sh.vertexShader = 'attribute vec2 uv2;\nvarying float vShade;\nvarying vec3 vBind;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+    '#include <begin_vertex>\n  vBind = position;\n  vShade = uv2.x * uv2.y * mix(0.84, 1.1, clamp(position.y / 2.2, 0.0, 1.0));');
+  sh.fragmentShader = 'uniform vec3 uRim;\nvarying float vShade;\nvarying vec3 vBind;\n' + PNOISE + sh.fragmentShader
+    .replace('#include <map_fragment>', '#include <map_fragment>\n' + PAINT_FRAG)
+    .replace('#include <opaque_fragment>', `{
+      float rim = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0);
+      float metal = (vMapUv.y < 0.0625 && (floor(vMapUv.x * 16.0) == 7.0 || floor(vMapUv.x * 16.0) == 10.0)) ? 1.0 : 0.0;
+      outgoingLight += uRim * rim * (0.22 + metal * 0.45) * (0.6 + 0.4 * diffuseColor.rgb);
+    }
+    #include <opaque_fragment>`);
+}
 const lineMat = (mask) => cached(`o${mask}`, () => withMask(new THREE.MeshBasicMaterial({ color: 0x1a1008, side: THREE.BackSide }), mask, 'line',
   (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = position + normal * 0.014;'); }));
 const depthMat = (mask) => cached(`d${mask}`, () => withMask(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), mask, 'depth'));

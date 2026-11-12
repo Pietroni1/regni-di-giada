@@ -25,7 +25,7 @@ ATLAS = 256
 SLOT = {'pelle': 0, 'veste': 1, 'bordo': 2, 'pantaloni': 3, 'fascia': 4, 'scarpe': 5, 'capelli': 6, 'armatura': 7,
         'calze': 8, 'sottoveste': 9, 'oro': 10, 'maniche': 11, 'barba': 12, 'mantello': 13}
 PART = {'base': 0, 'hakama': 1, 'codino': 2, 'lunghi': 3, 'crocchia': 4, 'cappuccio': 5, 'barba': 6,
-        'armatura': 7, 'frangia': 8, 'mantello': 9, 'colletto': 10}
+        'armatura': 7, 'frangia': 8, 'mantello': 9, 'colletto': 10, 'maniche': 11}
 FACE = (32, 40, 192)  # x, y, lato in pixel
 HEAD_C, HEAD_R, HEAD_RZ = Vector((0, 0, 1.95)), 0.25, 0.25 * 1.05
 
@@ -183,6 +183,7 @@ add(lathe([((0, 0, 0.90), .165, .125), ((0, 0, 1.02), .155, .118), ((0, 0, 1.20)
     bones=('hips', 'spine', 'chest', 'neck', 'shoulder_L', 'shoulder_R'))
 add(lathe([((0, 0, 1.56), .062, .062), ((0, 0, 1.80), .058, .058)], n=10), 'pelle', bones=('chest', 'neck', 'head'))
 add(sphere(HEAD_C, HEAD_R, (1, .95, 1.05), seg=24, rings=16), 'face', bones=('head',))
+add(cone((0, -.232, 1.888), .021, .045, (math.radians(-100), 0, 0), seg=8), 'pelle', bones=('head',))
 for s in 'LR':
     k = side(s)
     add(sphere((.245 * k, .01, 1.93), .05, (.45, .75, 1), seg=8, rings=6), 'pelle', bones=('head',))
@@ -192,12 +193,12 @@ for s in 'LR':
         bones=(f'shoulder_{s}', f'upper_arm_{s}', f'forearm_{s}'))
     add(lathe([((.355 * k, 0, 1.30), .058, .058), ((.42 * k, 0, 1.20), .052, .052), ((.49 * k, 0, 1.09), .042, .042)], n=10), 'pelle',
         bones=(f'upper_arm_{s}', f'forearm_{s}', f'hand_{s}'))
-    add(sphere((.515 * k, -.01, 1.035), .062, (.75, .95, 1.25), seg=10, rings=7), 'pelle', bones=(f'forearm_{s}', f'hand_{s}'))
+    add(sphere((.52 * k, -.012, 1.03), .074, (.78, .95, 1.22), seg=12, rings=8), 'pelle', bones=(f'forearm_{s}', f'hand_{s}'))
     # manica larga a campana con orlo
     add(solidify(lathe([((.30 * k, 0, 1.385), .082, .085), ((.38 * k, 0, 1.255), .115, .13), ((.465 * k, 0, 1.12), .145, .165)], n=12,
-                       cap0=False, cap1=False), .016), 'maniche', bones=(f'upper_arm_{s}', f'forearm_{s}'))
+                       cap0=False, cap1=False), .016), 'maniche', 'maniche', bones=(f'upper_arm_{s}', f'forearm_{s}'))
     add(solidify(lathe([((.458 * k, 0, 1.131), .147, .167), ((.47 * k, 0, 1.112), .149, .169)], n=12, cap0=False, cap1=False), .018),
-        'bordo', bones=(f'upper_arm_{s}', f'forearm_{s}'))
+        'bordo', 'maniche', bones=(f'upper_arm_{s}', f'forearm_{s}'))
     # gamba (pantaloni aderenti), calza, sandalo
     add(lathe([((.10 * k, 0, .97), .092, .088), ((.11 * k, 0, .74), .08, .078), ((.115 * k, 0, .52), .066, .066)], n=10), 'pantaloni',
         bones=('hips', f'thigh_{s}', f'shin_{s}'))
@@ -264,6 +265,27 @@ for k in (1, -1):
             bones=(f'shoulder_{s}', f'upper_arm_{s}'), smooth=False)
         add(box(((.305 + .03 * i) * k, 0, 1.40 - .085 * i), (.036, .265, .016), (0, -(.30 + .08 * i) * k, 0)), 'bordo', 'armatura',
             bones=(f'shoulder_{s}', f'upper_arm_{s}'), smooth=False)
+for k in (1, -1):
+    s = 'L' if k > 0 else 'R'
+    sb = (f'shoulder_{s}', f'upper_arm_{s}')
+    dome = sphere((.285 * k, 0, 1.50), .175, (1.1, 1.0, .9), seg=20, rings=12)
+    cut(dome, lambda c: c.z < 1.47)
+    add(solidify(dome, .025), 'armatura', 'armatura', bones=sb)
+    add(solidify(lathe([((.285 * k, 0, 1.474), .19, .174), ((.285 * k, 0, 1.494), .192, .176)], n=20, cap0=False, cap1=False), .03),
+        'oro', 'armatura', bones=sb)
+    for j in range(4):
+        a = -0.9 + j * 0.6
+        add(sphere((.285 * k + math.sin(a) * .1 * k, math.cos(a) * -.13, 1.58), .022, seg=8, rings=5), 'oro', 'armatura', bones=sb)
+    # bracciale di metallo con bordi dorati
+    fb = (f'upper_arm_{s}', f'forearm_{s}', f'hand_{s}')
+    add(lathe([((.37 * k, 0, 1.275), .072, .072), ((.43 * k, 0, 1.18), .07, .07), ((.475 * k, 0, 1.115), .064, .064)], n=14), 'armatura', 'armatura', bones=fb)
+    for t0 in (.36, .47):
+        z = 1.30 - (t0 - .355) / .135 * .21
+        add(lathe([((t0 * k, 0, z + .012), .078, .078), ((t0 * k, 0, z - .012), .078, .078)], n=14), 'oro', 'armatura', bones=fb)
+# cinturone di cuoio con medaglione
+add(lathe([((0, 0, .985), .205, .162), ((0, 0, 1.045), .205, .162)], n=20), 'scarpe', 'armatura', bones=('hips', 'spine'))
+add(lathe([((0, -.162, 1.015), .07, .07), ((0, -.19, 1.015), .07, .07)], n=16), 'oro', 'armatura', bones=('hips',))
+add(lathe([((0, -.19, 1.015), .045, .045), ((0, -.198, 1.015), .045, .045)], n=16), 'armatura', 'armatura', bones=('hips',))
 for i in range(7):
     a = -math.pi * 0.75 + i * (math.pi * 1.5 / 6)  # davanti e ai lati
     x, y = math.sin(a) * .235, -math.cos(a) * .19
@@ -273,38 +295,160 @@ for i in range(7):
 # mantello
 add(box((0, .2, 1.0), (.5, .025, 1.15), (-.08, 0, 0)), 'mantello', 'mantello', bones=('spine', 'chest', 'hips'), smooth=False)
 
-# ------------------------------------------------------------------ unione in una sola mesh
-master = bmesh.new()
-uv0 = master.loops.layers.uv.new('UVMap')
-uv1 = master.loops.layers.uv.new('Part')
-dl = master.verts.layers.deform.verify()
+# ------------------------------------------------------------------ una mesh per parte: forme lisce suddivise + pezzi duri
 BI = {n: i for i, n in enumerate(BONE_NAMES)}
-for pc in PIECES:
-    bm = pc['bm']
-    vmap = {}
-    for v in bm.verts:
-        nv = master.verts.new(v.co)
-        for b, w in weights_for(v.co, pc['bones']):
-            nv[dl][BI[b]] = w
-        vmap[v] = nv
-    for f in bm.faces:
-        nf = master.faces.new([vmap[v] for v in f.verts])
-        nf.smooth = pc['smooth']
-        for lp in nf.loops:
-            lp[uv0].uv = face_uv(lp.vert.co) if pc['slot'] == 'face' else slot_uv(pc['slot'])
-            lp[uv1].uv = (pc['part'], 0)
-    bm.free()
+PART_NAMES = {v: k for k, v in PART.items()}
+SHADE_OUT = os.path.join(os.path.dirname(OUT), 'personaggio_ombre.png')
 
-me = bpy.data.meshes.new('personaggio')
-master.to_mesh(me)
-master.free()
-body = bpy.data.objects.new('personaggio', me)
-scene.collection.objects.link(body)
-for n in BONE_NAMES:
-    body.vertex_groups.new(name=n)
+
+def to_bmesh(pieces):
+    bm = bmesh.new()
+    uv0 = bm.loops.layers.uv.new('UVMap')
+    uv1 = bm.loops.layers.uv.new('Part')
+    dl = bm.verts.layers.deform.verify()
+    for pc in pieces:
+        src, vmap = pc['bm'], {}
+        for v in src.verts:
+            nv = bm.verts.new(v.co)
+            for b, w in weights_for(v.co, pc['bones']):
+                nv[dl][BI[b]] = w
+            vmap[v] = nv
+        for f in src.faces:
+            nf = bm.faces.new([vmap[v] for v in f.verts])
+            nf.smooth = pc['smooth']
+            for lp in nf.loops:
+                lp[uv0].uv = face_uv(lp.vert.co) if pc['slot'] == 'face' else slot_uv(pc['slot'])
+                lp[uv1].uv = (pc['part'], 0)
+    return bm
+
+
+def make_obj(name, bm):
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    scene.collection.objects.link(ob)
+    for n in BONE_NAMES:
+        ob.vertex_groups.new(name=n)
+    return ob
+
+
+def apply_subsurf(ob, levels=1):
+    """Suddivisione (Catmull-Clark): forme organiche lisce, UV e pesi conservati."""
+    mod = ob.modifiers.new('liscio', 'SUBSURF')
+    mod.levels = mod.render_levels = levels
+    mod.uv_smooth = 'NONE'
+    dg = bpy.context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    ob.modifiers.remove(mod)
+    old = ob.data
+    ob.data = me
+    bpy.data.meshes.remove(old)
+    for poly in me.polygons:
+        poly.use_smooth = True
+
+
+def select_only(obs, active):
+    for o in scene.objects:
+        o.select_set(False)
+    for o in obs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = active
+
+
+part_objs = []
+for pid in sorted({pc['part'] for pc in PIECES}):
+    softp = [pc for pc in PIECES if pc['part'] == pid and pc['smooth']]
+    hardp = [pc for pc in PIECES if pc['part'] == pid and not pc['smooth']]
+    name = 'parte_' + PART_NAMES[pid]
+    obs = []
+    if softp:
+        so = make_obj(name, to_bmesh(softp))
+        apply_subsurf(so)
+        obs.append(so)
+    if hardp:
+        obs.append(make_obj(name + '_duro', to_bmesh(hardp)))
+    if len(obs) > 1:
+        select_only(obs, obs[0])
+        bpy.ops.object.join()
+    part_objs.append(obs[0])
+for pc in PIECES:
+    pc['bm'].free()
+
+# ------------------------------------------------------------------ ombre dipinte, calcolate per vertice
+# Occlusione ambientale (raggi verso l'emisfero, solo contro la parte stessa: nascondere hakama o
+# capelli non lascia macchie scure) e curvatura (bordi convessi più chiari, cavità più scure).
+# I due valori finiscono nella terza UV ("Ombra"): il gioco li usa come ombreggiatura dipinta.
+from mathutils.bvhtree import BVHTree
+
+def hemisphere(n=20):
+    out, ga = [], math.pi * (3 - math.sqrt(5))
+    for i in range(n):
+        z = 1 - (i + 0.5) / n
+        r = math.sqrt(max(0.0, 1 - z * z))
+        out.append(Vector((math.cos(ga * i) * r, math.sin(ga * i) * r, z)))
+    return out
+
+HEMI = hemisphere(20)
+
+def shade_part(ob):
+    me = ob.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.normal_update()
+    tree = BVHTree.FromBMesh(bm)
+    ao, curv = {}, {}
+    for v in bm.verts:
+        n = v.normal
+        t = n.orthogonal().normalized()
+        b = n.cross(t)
+        o = v.co + n * 0.004
+        occ = 0.0
+        for d in HEMI:
+            w = d.z
+            dirv = (t * d.x + b * d.y + n * d.z).normalized()
+            hit = tree.ray_cast(o, dirv, 0.26)
+            if hit[0] is not None:
+                occ += w * (1 - hit[3] / 0.26)
+        ao[v.index] = 1 - min(1.0, occ / sum(h.z for h in HEMI) * 1.6)
+        c, k = 0.0, 0
+        for e in v.link_edges:
+            u = e.other_vert(v)
+            dv = v.co - u.co
+            l2 = dv.length_squared
+            if l2 > 1e-10:
+                c += (v.normal - u.normal).dot(dv) / l2
+                k += 1
+        curv[v.index] = c / max(1, k)
+    bm.free()
+    vals = sorted(abs(x) for x in curv.values())
+    scale = vals[int(len(vals) * 0.92)] or 1.0
+    lay = me.uv_layers.new(name='Ombra')
+    for lp in me.loops:
+        i = lp.vertex_index
+        cv = max(-1.0, min(1.0, curv[i] / scale))
+        lay.data[lp.index].uv = (0.4 + 0.6 * ao[i], 1 - (1.0 + 0.22 * cv))  # glTF capovolge v
+
+for ob in part_objs:
+    shade_part(ob)
+print('ombre calcolate')
+
+# ------------------------------------------------------------------ unione finale
+select_only(part_objs, part_objs[0])
+bpy.ops.object.join()
+body = part_objs[0]
+body.name = 'personaggio'
+me = body.data
+me.name = 'personaggio'
+me.materials.clear()
 mat = bpy.data.materials.new('personaggio')
 mat.use_nodes = True
 me.materials.append(mat)
+for poly in me.polygons:
+    poly.material_index = 0
+me.uv_layers.active = me.uv_layers['UVMap']
+for ln in [l.name for l in me.uv_layers]:
+    print('UV', ln)
 print('vertici:', len(me.vertices), 'facce:', len(me.polygons))
 
 # ------------------------------------------------------------------ armatura
