@@ -5,3 +5,4 @@ screenshots/
 *.zip
 *.bundle
 *.blend1
+__pycache__/

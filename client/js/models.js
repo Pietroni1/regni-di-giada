@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { ITEMS, CLASSES, MOBS, RARITIES } from '/shared/data.js';
 import { KINGDOMS } from '/shared/world.js';
 import { lam, outlineMaterial, mergeParts, SOFT_GRADIENT } from './world3d.js';
-import { buildSkinnedHumanoid, hasSkinned, SkinAnim } from './skinned.js';
+import { buildSkinnedHumanoid, hasSkinned, SkinAnim, externalFor, externalDef } from './skinned.js';
 import { GearFx } from './gear-fx.js';
 import { hasAnimals, buildSkinnedAnimal, AnimalAnim } from './animals.js';
 
@@ -333,7 +333,7 @@ function addOutlines(rig) {
   });
   for (const [m, o] of list) m.add(o);
   rig.outlines = list.map(x => x[1]);
-  if (rig.outlineMesh) rig.outlines.push(rig.outlineMesh);
+  if (rig.outlineMeshes) rig.outlines.push(...rig.outlineMeshes); else if (rig.outlineMesh) rig.outlines.push(rig.outlineMesh);
 }
 
 // Fonde le mesh opache di ogni gruppo animato in un'unica mesh a colori per vertice: molte meno draw call.
@@ -433,9 +433,9 @@ export function buildPlayerModel(info) {
   const look = c.look;
   const tier = info.b ? (ITEMS[info.b]?.tier || 1) : 0;
   const armor = tier >= 2 ? [0, 0, 0x7a6a50, 0x5a8a74, 0xb8c0c8][tier] : look.armor;
-  const rig = humanoid({ robe: look.robe, trim: look.trim, pants: look.pants, hair: look.hair, hairStyle: look.hairStyle, sash: k.hex, armor, skirt: info.cls !== 'ombra' });
+  const rig = humanoid({ robe: look.robe, trim: look.trim, pants: look.pants, hair: look.hair, hairStyle: look.hairStyle, sash: k.hex, armor, skirt: info.cls !== 'ombra', model: externalFor('classi', info.cls) });
   applyWeapon(rig, info.w, info.wu);
-  setHat(rig, info.h, k.hex);
+  if (!rig.external) setHat(rig, info.h, k.hex);
   if (rig.skinned) rig.gear = new GearFx(rig, { wu: info.wu, wr: info.wr, bu: info.bu, br: info.br });
   rig.weaponType = info.w ? ITEMS[info.w]?.wt : 'fists';
   if (info.mt) {
@@ -476,7 +476,7 @@ const NPC_LOOKS = {
 export function buildNpcModel(info) {
   const look = NPC_LOOKS[info.role] || NPC_LOOKS.guardia;
   const k = KINGDOMS[info.kd];
-  const rig = humanoid({ ...look, sash: k.hex, armor: info.role === 'guardia' ? k.hex : look.armor });
+  const rig = humanoid({ ...look, sash: k.hex, armor: info.role === 'guardia' ? k.hex : look.armor, model: externalFor('png', info.role) });
   if (look.weapon) applyWeapon(rig, look.weapon, 0);
   if (info.role === 'guardia') {
     const spear = new THREE.Group();
@@ -485,7 +485,7 @@ export function buildNpcModel(info) {
     spear.add(mesh(box(0.2, 0.15, 0.05), lam(k.hex), 0, 2.05, 0));
     rig.armR.grip.add(spear);
     rig.armR.pv.rotation.x = -0.35;
-    setHat(rig, look.helm, k.hex);
+    if (!rig.external) setHat(rig, look.helm, k.hex);
   }
   if (info.role === 'fabbro') {
     const hammer = new THREE.Group();
@@ -515,6 +515,14 @@ export function buildNpcModel(info) {
 export function buildMobModel(info) {
   const d = MOBS[info.ty];
   let rig;
+  const ext = externalFor('mostri', info.ty);
+  if (ext) {
+    rig = humanoid({ model: ext });
+    const def = externalDef(ext) || {};
+    if (def.arma) applyWeapon(rig, def.arma, 0); else rig.weaponType = 'fists';
+    if (def.scala) { rig.root.scale.multiplyScalar(def.scala); rig.height *= def.scala; }
+    return finish(rig, 0.6 * (d.scale || 1) * (def.scala || 1));
+  }
   switch (d.model) {
     case 'wolf': rig = hasAnimals() ? buildSkinnedAnimal('lupo', { color: d.color, color2: lighten(d.color, 0.45), eyes: info.ty === 'lupo_alfa' ? 0xffc030 : null, glowEyes: info.ty === 'lupo_alfa' }) : quadruped({ color: d.color, color2: 0x5a5652, w: 0.55, h: 0.55, len: 1.45, legH: 0.6, legW: 0.15, hw: 0.42, hh: 0.4, hl: 0.4, snout: 0.32, ears: 'point', tail: 0.6, eyes: info.ty === 'lupo_alfa' ? 0xffc030 : null }); break;
     case 'boar': rig = hasAnimals() ? buildSkinnedAnimal('cinghiale', { color: d.color, color2: lighten(d.color, -0.3), dark: 0x1a120c }) : quadruped({ color: d.color, color2: 0x3a2a1c, w: 0.8, h: 0.75, len: 1.5, legH: 0.42, legW: 0.18, hw: 0.55, hh: 0.5, hl: 0.4, snout: 0.25, ears: 'point', tusks: true, hump: true, tail: 0.2 }); break;

@@ -10,18 +10,40 @@ import { SOFT_GRADIENT } from './world3d.js';
 let BASE = null;
 const UPPER = /^(spine|chest|neck|head|shoulder_|upper_arm_|forearm_|hand_)/;
 
-export async function loadCharacterAssets() {
-  const gltf = await new GLTFLoader().loadAsync('/assets/personaggio.glb');
+function splitClips(animations) {
   const clips = {};
-  for (const c of gltf.animations) {
+  for (const c of animations) {
     clips[c.name] = {
       full: c,
       upper: new THREE.AnimationClip(c.name + '_alto', c.duration, c.tracks.filter(t => UPPER.test(t.name))),
       lower: new THREE.AnimationClip(c.name + '_basso', c.duration, c.tracks.filter(t => !UPPER.test(t.name))),
     };
   }
-  BASE = { scene: gltf.scene, clips };
+  return clips;
 }
+export async function loadCharacterAssets() {
+  const gltf = await new GLTFLoader().loadAsync('/assets/personaggio.glb');
+  BASE = { scene: gltf.scene, clips: splitClips(gltf.animations) };
+}
+
+// Modelli ad alta definizione importati (tools/blender/importa_modello.py), elencati in assets/modelli/indice.json:
+// { "modelli": { "orco": { "file": "orco.glb" } }, "classi": { "lama": "samurai" }, "mostri": { "generale": "orco" }, "png": { "guardia": "..." } }
+let EXT = {}, INDEX = { classi: {}, mostri: {}, png: {} };
+export async function loadExternalModels() {
+  let idx;
+  try { const r = await fetch('/assets/modelli/indice.json', { cache: 'no-cache' }); if (!r.ok) return; idx = await r.json(); } catch { return; }
+  INDEX = { classi: idx.classi || {}, mostri: idx.mostri || {}, png: idx.png || {} };
+  const loader = new GLTFLoader();
+  await Promise.all(Object.entries(idx.modelli || {}).map(async ([name, def]) => {
+    try {
+      const g = await loader.loadAsync('/assets/modelli/' + def.file);
+      g.scene.traverse((n) => { if (n.isMesh && n.material) { n.material.metalness = Math.min(n.material.metalness ?? 0, 0.3); n.material.envMapIntensity = 0.8; } });
+      EXT[name] = { scene: g.scene, clips: splitClips(g.animations), def };
+    } catch (e) { console.warn('Modello non caricato:', name, e); }
+  }));
+}
+export const externalDef = (name) => EXT[name] && EXT[name].def;
+export const externalFor = (kind, key) => { const n = INDEX[kind] && INDEX[kind][key]; return n && EXT[n] ? n : null; };
 export const hasSkinned = () => !!BASE;
 export const characterClips = () => BASE && BASE.clips;
 
@@ -174,8 +196,9 @@ function attach(bone, pos, quat) {
   return g;
 }
 // Impugnatura: -Y lungo la mano (verso le dita), Z in avanti, come nei modelli delle armi.
-function gripFrame(k) {
-  const dir = new THREE.Vector3(0.05 * k, -0.10, 0.01).normalize();
+// La direzione della mano è l'asse Y dell'osso a riposo (come in Blender).
+function gripFrame(bone) {
+  const dir = new THREE.Vector3().setFromMatrixColumn(bone.matrixWorld, 1).normalize();
   const y = dir.clone().negate();
   const z = new THREE.Vector3(0, 0, 1);
   z.sub(y.clone().multiplyScalar(z.dot(y))).normalize();
@@ -184,32 +207,42 @@ function gripFrame(k) {
 }
 
 export function buildSkinnedHumanoid(o) {
-  const model = cloneSkinned(BASE.scene);
-  let mesh = null;
+  const ext = o.model && EXT[o.model];
+  const src = ext || BASE;
+  const model = cloneSkinned(src.scene);
+  const meshes = [];
   const bones = {};
-  model.traverse((n) => { if (n.isSkinnedMesh) mesh = n; if (n.isBone) bones[n.name] = n; });
-  const mask = maskFor(o);
-  mesh.material = bodyMat(atlas(lookFor(o)), mask, o.ghost);
-  mesh.customDepthMaterial = depthMat(mask);
-  mesh.castShadow = true; mesh.receiveShadow = true;
-  mesh.userData.skinnedBody = true;
-  const line = mesh.clone();
-  line.material = lineMat(mask);
-  line.castShadow = false; line.receiveShadow = false;
-  line.userData.outline = true;
-  mesh.parent.add(line);
+  model.traverse((n) => { if (n.isSkinnedMesh) meshes.push(n); if (n.isBone) bones[n.name] = n; });
+  const mask = ext ? 1 : maskFor(o);
+  const lines = [];
+  for (const mesh of meshes) {
+    if (!ext) { mesh.material = bodyMat(atlas(lookFor(o)), mask, o.ghost); mesh.customDepthMaterial = depthMat(mask); }
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    mesh.userData.skinnedBody = true;
+    mesh.frustumCulled = false;
+    const line = mesh.clone();
+    line.material = lineMat(mask);
+    line.castShadow = false; line.receiveShadow = false;
+    line.userData.outline = true;
+    mesh.parent.add(line);
+    lines.push(line);
+  }
   model.updateMatrixWorld(true);
-  const head = attach(bones.head, new THREE.Vector3(0, 1.71, 0), new THREE.Quaternion());
+  const bonePos = (b) => new THREE.Vector3().setFromMatrixPosition(b.matrixWorld);
+  const boneDir = (b) => new THREE.Vector3().setFromMatrixColumn(b.matrixWorld, 1).normalize();
+  const head = attach(bones.head, bonePos(bones.head).add(new THREE.Vector3(0, -0.03, 0)), new THREE.Quaternion());
   const hatGroup = new THREE.Group(); hatGroup.scale.setScalar(1.15); hatGroup.position.y = 0.02; head.add(hatGroup);
-  const gripR = attach(bones.hand_R, new THREE.Vector3(-0.515, 1.035, 0.01), gripFrame(-1));
-  const gripL = attach(bones.hand_L, new THREE.Vector3(0.515, 1.035, 0.01), gripFrame(1));
+  const handLen = ext ? 0.08 : 0.06;
+  const gripR = attach(bones.hand_R, bonePos(bones.hand_R).add(boneDir(bones.hand_R).multiplyScalar(handLen)), gripFrame(bones.hand_R));
+  const gripL = attach(bones.hand_L, bonePos(bones.hand_L).add(boneDir(bones.hand_L).multiplyScalar(handLen)), gripFrame(bones.hand_L));
   const root = new THREE.Group();
   root.add(model);
+  const box = new THREE.Box3().setFromObject(model);
   const dummy = () => new THREE.Object3D();
   return {
-    root, body: model, skinned: true, mesh, outlineMesh: line, bones, head, hatGroup, extraPose: {},
+    root, body: model, skinned: true, external: !!ext, mesh: meshes[0], outlineMesh: lines[0], outlineMeshes: lines, bones, head, hatGroup, extraPose: {},
     armR: { grip: gripR, pv: dummy() }, armL: { grip: gripL, pv: dummy() }, torso: dummy(), legL: dummy(), legR: dummy(),
-    height: 2.35,
+    clips: src.clips, height: ext ? Math.max(2, box.max.y) : 2.35,
   };
 }
 
@@ -234,7 +267,7 @@ export class SkinAnim {
   act(name, part) {
     const k = name + '|' + part;
     let a = this.acts[k];
-    if (!a) { a = this.mixer.clipAction(BASE.clips[name][part]); this.acts[k] = a; }
+    if (!a) { a = this.mixer.clipAction((this.rig.clips || BASE.clips)[name][part]); this.acts[k] = a; }
     return a;
   }
 

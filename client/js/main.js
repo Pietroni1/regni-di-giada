@@ -4,7 +4,7 @@ import { buildWorld } from './world3d.js';
 import { Post, QUALITIES } from './post.js';
 import { Net } from './net.js';
 import { Game } from './game.js';
-import { loadCharacterAssets } from './skinned.js';
+import { loadCharacterAssets, loadExternalModels } from './skinned.js';
 import { loadNatureAssets } from './nature.js';
 import { loadAnimalAssets } from './animals.js';
 import { CLASSES } from '/shared/data.js';
@@ -42,6 +42,7 @@ async function boot() {
   try { await loadNatureAssets(); } catch (e) { console.warn('Alberi da Blender non caricati, uso quelli procedurali:', e); }
   world = buildWorld(scene, post);
   try { await loadCharacterAssets(); } catch (e) { console.warn('Modello del personaggio non caricato, uso quello procedurale:', e); }
+  await loadExternalModels();
   try { await loadAnimalAssets(); } catch (e) { console.warn('Animali da Blender non caricati, uso quelli procedurali:', e); }
   net = new Net();
   try { await net.connect(); }
