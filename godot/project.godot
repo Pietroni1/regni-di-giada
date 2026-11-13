@@ -1,0 +1,30 @@
+; Regni di Giada — client Godot 4. Si apre dall'editor di Godot (Importa → questo file).
+config_version=5
+
+[application]
+
+config/name="Regni di Giada"
+config/description="Client Godot di Regni di Giada: si collega al server Node del progetto."
+run/main_scene="res://scene/principale.tscn"
+config/features=PackedStringArray("4.4", "GL Compatibility")
+
+[autoload]
+
+Dati="*res://script/dati.gd"
+Rete="*res://script/rete.gd"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+textures/default_filters/anisotropic_filtering_level=3
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
