@@ -16,7 +16,7 @@ Gameplay alla WoW, grind coreano, dungeon a tempo (Prove del Sigillo), cavalcatu
 npm install
 npm start          # http://localhost:3000 — account GM: "admin" (server/config.json)
 ```
-Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/aiuto`.
+Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n [raggio]`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/aiuto`.
 
 ## Struttura
 - `server/` — Node.js (HTTP + WebSocket), logica autoritativa (`world.js`), database JSON (`db.js`).
@@ -30,6 +30,7 @@ Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/s
   - `models.js` costruzione dei modelli per giocatori, PNG, mostri, armi, cavalli.
   - `vfx.js` effetti delle abilità; `gear-fx.js` effetti di armi/armature; `post.js` bloom e qualità.
 - `tools/blender/` — script Python per Blender che generano i `.glb` in `client/assets/`.
+- `tools/sim/` — simulazione del combattimento senza browser (`npm run sim`, vedi «Sistema di combattimento»).
 
 ## Pipeline Blender
 ```
@@ -107,15 +108,49 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
 - Fase 3 fatta: **kit «2 accumuli + 4 scarichi»** per ogni Via (campo `ruolo` in `SKILLS`: `accumulo`, `medio`, `potente`).
   Di base: 2 accumuli (livello 1, gratuiti, generano risorsa/punti) e lo scarico medio singolo (livello 3). Dalla Via: scarico
   medio ad area (5), supporto (7), scarico potente singolo (9), scarico potente ad area (12), supporto (15), Suprema (15).
-  Costi: medio 30-40, potente 45-60 (Mana 4-5% e 7-9%); per Ombra, Monaco e Mistico i potenti consumano anche tutti i punti.
-  Energia e Chi rigenerano solo 7/s: senza accumuli non si regge il ritmo. `DATA_VERSION = 4` azzera abilità e barra rapida.
+  Costi: medio 30-35, potente 45-60 (Mana 4-5% e 10-12%); per Ombra, Monaco e Mistico i potenti consumano anche tutti i punti.
+  Energia 5,5/s e Chi 7/s: senza accumuli non si regge il ritmo. `DATA_VERSION = 4` azzera abilità e barra rapida.
   Mistico: accumuli con tempo di lancio, scarichi istantanei; la Benedizione ha cure al posto dei danni (`spendBonus`).
   Motore: i `dot` valgono anche per le tecniche ad area, `waves` anche fuori dalle Supreme, passivo `chainHeal` (Loto).
   Client: ruolo nel tooltip e nella finestra Abilità, tacca colorata sotto i tasti della barra (verde/oro/rosso).
 - **Postura** di élite e boss: fatta (`shared/postura.js`, `colpisciPostura`/`tickPostura` nel server, barre nel client).
-- Simulazione senza browser (un bot per Via su fantocci, 40 s): circa 190-280 danni al secondo al livello 30 per tutte le Vie;
-  barra Suprema piena in 45-55 s. È un bot ingenuo: la taratura fine va fatta giocando.
-- Da fare: taratura giocando (soprattutto cure e difensore), effetti a vista da ricontrollare su PC con GPU.
+- **Simulazione senza browser**: `npm run sim` (`tools/sim/simula.mjs`). Avvia da sé un server di prova, crea un personaggio
+  per Via (livello, arma, punti statistica e abilità), lo porta davanti ai fantocci e gioca una rotazione sensata (tabella
+  `ROTAZIONI` nel file); stampa danni al secondo, quote per ruolo, danno per uso e per punto di risorsa degli scarichi,
+  risorsa sprecata, tempo della barra Suprema, Squilibri e il confronto con gli obiettivi di taratura.
+  Opzioni: `--livello 30 --secondi 60 --vie fulmine,arco --bersagli 1|5 --ripeti 2 --dettagli --json file`;
+  `--velocita 4` accelera l'orologio del server (per tarare in fretta; i numeri definitivi a velocità 1).
+  Dopo ogni ritocco ai numeri di `shared/data.js`: `npm run sim -- --velocita 4`, anche con `--bersagli 5` e `--livello 15`.
+  `/spawn tipo n [raggio]` ha un raggio facoltativo (serve allo strumento per i gruppi stretti).
+- **Taratura fatta con lo strumento** (solo numeri: moltiplicatori, costi, `RESOURCES`, `SUPREMA`, `BONUS_RISORSA`).
+  Obiettivi: Vie da danno entro ±10% (±15% su 5 bersagli), difensore e guaritore al 60-75%, scarico potente più forte del
+  medio per uso ma meno per punto di risorsa, accumuli al 20-35% dei danni, barra Suprema in 45-60 s, Suprema sotto il 20%.
+  Risultato (danni al secondo, 60 s, media di 2 prove a velocità reale; fra parentesi i secondi della barra Suprema al 30):
+
+  | Via | liv. 30, 1 bersaglio | liv. 30, 5 bersagli | liv. 15, 1 bersaglio | liv. 15, 5 bersagli |
+  |---|---|---|---|---|
+  | fulmine | 987 (54 s) | 2267 (46 s) | 454 | 997 |
+  | montagna (difensore) | 684 (54 s) | 1599 (48 s) | 316 | 710 |
+  | pugnali | 1103 (54 s) | 2211 (46 s) | 442 | 945 |
+  | arco | 1039 (51 s) | 2304 (45 s) | 421 | 933 |
+  | ferro | 1010 (50 s) | 2273 (45 s) | 459 | 1033 |
+  | loto | 973 (53 s) | 2302 (47 s) | 446 | 1034 |
+  | tempesta | 1034 (53 s) | 2122 (45 s) | 485 | 979 |
+  | benedizione (guaritore) | 664 (57 s) | 1012 (57 s) | 292 | 460 |
+
+  Prima della taratura, con lo stesso bot: da 789 (loto) a 1266 (pugnali) su un bersaglio, da 1557 a 3170 su cinque.
+  Come gioca il bot: 2 punti statistica su 3 al valore primario (la Montagna 2 su 3 in vitalità, da difensore), di fronte
+  al bersaglio, scarico potente a punti pieni, scarico medio con la risorsa che avanza; contro un gruppo il Monaco usa
+  Calcio della Gru + scarico medio ad area (la sequenza rende meno); il guaritore fa danni tenendo su di sé Loto e Scudo.
+  **Fuori obiettivo, da sapere**: accumuli dell'Arco al 17% (la Freccia Inchiodante, che pure dà punti, conta come supporto: con lei 25%) e
+  dell'Ombra al 10% su 5 bersagli (i suoi accumuli colpiscono un nemico solo); Benedizione al 45% su 5 bersagli (non ha
+  scarichi ad area che fanno danni); in prove lunghe (180 s) il Mistico cala del 5-10% perché il Mana si consuma.
+  Gli attacchi base pesano molto (dal 13% del Mistico al 39% dei Pugnali): per questo gli scarichi dei Pugnali sono bassi.
+- Due difetti del motore corretti durante la taratura: l'effetto «prossimo accumulo istantaneo» (Tempesta Imminente) veniva
+  consumato dal lancio già in corso; le Cariche spese da Scudo di Giada e Pioggia di Petali non riempivano la barra Suprema.
+- Da fare: prova a vista giocando (soprattutto cure e difensore: lo strumento misura solo i danni), effetti da ricontrollare
+  su PC con GPU. La Postura (`shared/postura.js`) non è stata tarata: il Mistico squilibra il fantoccio 2-3 volte al minuto,
+  le altre classi 5.
 
 ## Altri passi grafici in sospeso
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.

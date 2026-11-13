@@ -5,7 +5,8 @@
   "type": "module",
   "description": "MMORPG privato in stile orientale classico, giocabile dal browser",
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "sim": "node tools/sim/simula.mjs"
   },
   "dependencies": {
     "three": "0.170.0",
