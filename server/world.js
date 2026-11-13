@@ -545,7 +545,7 @@ export class World {
       const c = p.casting;
       p.casting = null;
       this.send(p, { t: 'castend', ok: 1 });
-      this.resolveSkill(p, c.sid, c.tid, 0);
+      this.resolveSkill(p, c.sid, c.tid, 0, true);
     }
     // ondate delle Tecniche Supreme
     if (p.waves.length && p.waves[0].at <= t) {
@@ -1235,7 +1235,8 @@ export class World {
     }
   }
 
-  resolveSkill(p, sid, tid, gcd) {
+  // lanciata: la tecnica arriva dalla fine di un tempo di lancio vero (non resa istantanea da un effetto)
+  resolveSkill(p, sid, tid, gcd, lanciata = false) {
     const sk = SKILLS[sid];
     const lvl = this.lvlOf(p, sid);
     if (!sk || !lvl || p.dead) return;
@@ -1258,7 +1259,12 @@ export class World {
       if (sk.spend && d.spenderDmg) bonus += d.spenderDmg;
     }
     const behind = !!(sk.behind && target && (this.isBehind(p, target) || this.hasBuffWith(p, 'consume', sid) && p.buffs.some(b => BUFFS[b.id].behind)));
-    p.buffs = p.buffs.filter(b => { const d = BUFFS[b.id]; return !((d.consume && d.consume.includes(sid)) || (sk.spend && d.consumeSpender)); });
+    // un effetto «prossimo lancio istantaneo» ottenuto mentre il lancio era già in corso resta per il lancio dopo
+    p.buffs = p.buffs.filter(b => {
+      const d = BUFFS[b.id];
+      if (lanciata && d.instant && d.instant.includes(sid)) return true;
+      return !((d.consume && d.consume.includes(sid)) || (sk.spend && d.consumeSpender));
+    });
     const base = sk.dmg === 'magic' ? p.matk : sk.dmg === 'hybrid' ? (p.atk + p.matk) * 0.55 : sk.dmg === 'best' ? Math.max(p.atk, p.matk) : p.atk;
     const pctFor = (tgt) => {
       let pct = p.dmgPct + bonus + (behind ? sk.behind.dmg : 0) + this.vulnFrom(tgt, p);
@@ -1350,7 +1356,7 @@ export class World {
         break;
       case 'heal_aoe': {
         let extra = 0;
-        if (sk.spendBonus && p.pts > 0) { extra = p.pts * sk.spendBonus; p.pts = 0; }
+        if (sk.spendBonus && p.pts > 0) { extra = p.pts * sk.spendBonus; this.supDaPunti(p, p.pts); p.pts = 0; }
         for (const q of this.players) {
           if (q.kingdom !== p.kingdom || q.dead || dist(q, target) > sk.radius) continue;
           const amt = sk.healPct ? q.maxHp * skillVal(sk.heal, lvl) : p.matk * skillVal(sk.heal, lvl) + 40;
@@ -1366,7 +1372,7 @@ export class World {
         break;
       case 'shield': {
         let extra = 0;
-        if (sk.spendBonus && p.pts > 0) { extra = p.pts * sk.spendBonus; p.pts = 0; }
+        if (sk.spendBonus && p.pts > 0) { extra = p.pts * sk.spendBonus; this.supDaPunti(p, p.pts); p.pts = 0; }
         target.shield = Math.round(p.matk * skillVal(sk.shield, lvl) * (1 + (p.healPct + extra) / 100));
         target.shieldUntil = t + 15000;
         target.selfDirty = true;
@@ -1398,6 +1404,11 @@ export class World {
     p.selfDirty = true; this.touch(p);
     this.send(p, { t: 'cd', s: sid, ms: (sk.cd || 0) * 1000, gcd: gcd ?? (sk.offgcd ? 0 : this.gcdMs(p)) });
     this.fx(p, fxd);
+  }
+
+  // Punti consumati da cure e scudi (`spendBonus`): riempiono la barra Suprema come quelli degli scarichi.
+  supDaPunti(p, n) {
+    if (p.lvl >= SUPREMA.lvl) p.sup = Math.min(SUPREMA.max, p.sup + n * SUPREMA.perPt);
   }
 
   // Monaco: Pugno → Calcio → Palmo in ordine attiva la Forma Perfetta.
@@ -1841,7 +1852,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n], /heal, /risorsa, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n] [raggio], /heal, /risorsa, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -1881,8 +1892,9 @@ export class World {
       case 'spawn': {
         const ty = a[0];
         if (!MOBS[ty]) return sys('Mostro inesistente. Scrivi /mobs per la lista.');
-        const n = clamp(parseInt(a[1], 10) || 1, 1, 30);
-        for (let i = 0; i < n; i++) this.spawnMob(ty, p.x + rand(-5, 5), p.z + rand(-5, 5), null, true);
+        // terzo parametro facoltativo: raggio della dispersione (predefinito 5), usato da tools/sim per gruppi compatti
+        const n = clamp(parseInt(a[1], 10) || 1, 1, 30), rg = clamp(parseFloat(a[2]) || 5, 0.05, 30);
+        for (let i = 0; i < n; i++) this.spawnMob(ty, p.x + rand(-rg, rg), p.z + rand(-rg, rg), null, true);
         return;
       }
       case 'heal': p.hp = p.maxHp; if (p.rtype !== 'ira') p.res = p.rmax; p.selfDirty = true; this.touch(p); return;
