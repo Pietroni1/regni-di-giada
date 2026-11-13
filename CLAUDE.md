@@ -31,6 +31,7 @@ Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/s
   - `vfx.js` effetti delle abilità; `gear-fx.js` effetti di armi/armature; `post.js` bloom e qualità.
 - `tools/blender/` — script Python per Blender che generano i `.glb` in `client/assets/`.
 - `tools/sim/` — simulazione del combattimento senza browser (`npm run sim`, vedi «Sistema di combattimento»).
+- `godot/` — client Godot 4.4 (vedi «Client Godot»); `tools/godot/` — esportazione dei dati per Godot.
 
 ## Pipeline Blender
 ```
@@ -152,7 +153,29 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   su PC con GPU. La Postura (`shared/postura.js`) non è stata tarata: il Mistico squilibra il fantoccio 2-3 volte al minuto,
   le altre classi 5.
 
-## Altri passi grafici in sospeso
+## Client Godot (in corso — direzione scelta dall'autore)
+L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Godot 4.4** (`godot/`). Il server Node,
+`shared/` e la simulazione restano; il client nel browser resta com'è finché quello Godot non lo raggiunge.
+- Avvio e struttura: `godot/LEGGIMI.md`. Dati per Godot: `npm run godot:dati` (`tools/godot/esporta.mjs`) scrive
+  `godot/dati/gioco.json` (tabelle di `shared/data.js` + geografia, ostacoli, vegetazione), `godot/dati/terreno.bin`
+  (altezze a 2 m e pesi dei materiali a 1 m, calcolati con `heightAt`) e copia i `.glb` in `godot/modelli/` togliendo
+  Draco (`togli_draco.mjs`, usa il decodificatore di `node_modules/three`). Va rilanciato quando cambiano dati o modelli.
+- Fatto: accesso e scelta/creazione del personaggio, terreno dipinto (shader procedurali), acqua, vegetazione da
+  `natura.glb` (MultiMesh), villaggi costruiti da codice (`edifici.gd`: tetti concavi a coppi, pagoda, mura, porte),
+  giocatori/PNG con corpo base + capi + armi + animazioni Mixamo, animali da `animali.glb`, movimento con gli stessi
+  urti del server, visuale, bersagli, attacco automatico, barra rapida con ricariche, Slancio/punti/Suprema, chat con
+  comandi GM, targhette e numeri di danno, effetti delle tecniche per tipo `fx` (`effetti.gd`).
+- Renderer predefinito: **Compatibilità** (è l'unico verificabile nel container, via `xvfb-run` + `--rendering-driver opengl3`;
+  Forward+ richiede Vulkan). Con Forward+ la luce va riguardata a vista.
+- Prove automatiche: `godot --path godot -- --server=localhost:3999 --auto=utente:password:Personaggio --foto=cartella
+  "--comandi=/level 30;tecnica lama_tuono;attendi 0.1;foto nome"` (copione in `principale.gd`). Nel container il rendering
+  è ~1 fps: usare `--fixed-fps 30` (il tempo di gioco avanza di 1/30 a fotogramma, così gli effetti si fotografano) e
+  `--write-movie file.avi` per i video. Verificato a vista così: villaggio, Lama del Tuono sul fantoccio.
+- Da fare: inventario e finestre (Abilità, Personaggio, negozi, fabbro), gruppo, minimappa, cripta delle Prove,
+  cavalcature, suoni, modelli per i mostri che ora sono sagome, parte alta/bassa del corpo separate nelle animazioni
+  (ora l'attacco è a corpo intero), presa delle armi da rifinire, edifici veri fatti in Blender.
+
+## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.
 - Da fare: luce da HDRI vera; il bilanciamento `LUCE` va riguardato a vista insieme a GTAO e correzione colore.
 - Fatto (`world3d.js`, `terrain.js`): ombra del sole agganciata alla visuale con scatto al texel e scostamenti in
