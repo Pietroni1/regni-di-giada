@@ -16,7 +16,7 @@ Gameplay alla WoW, grind coreano, dungeon a tempo (Prove del Sigillo), cavalcatu
 npm install
 npm start          # http://localhost:3000 — account GM: "admin" (server/config.json)
 ```
-Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n [raggio]`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/aiuto`.
+Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n [raggio]`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/risorsa`, `/punti`, `/suprema`, `/aiuto`.
 
 ## Struttura
 - `server/` — Node.js (HTTP + WebSocket), logica autoritativa (`world.js`), database JSON (`db.js`).
@@ -186,9 +186,22 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   Non provati: fine della Prova con boss e ricompense, vendita, Vie Montagna/Arco/Loto/Benedizione, cure sugli alleati.
 - Aggiunti: capelli per stile (`metti_testa` in `personaggio.gd`: crocchia, lunghi, cappuccio, corti), pelo degli animali
   (`pelo.gdshader`: dorso scuro, ventre chiaro, tigrato). Occhi e volti provati e tolti: sul manichino non rendono.
-- Da fare (prossimo passo voluto dall'autore: **migliorare la grafica**): gemme e pergamene sugli oggetti (`apply`), suoni,
-  presa delle armi (la spada punta indietro da fermo), visuale che entra nelle chiome degli alberi e negli stendardi,
-  edifici veri fatti in Blender, corpi base originali con volto, resa con Forward+ da guardare su PC con GPU.
+- **Basi di gioco** (richieste dall'autore prima della sua prova): icone degli effetti attivi su di sé (`me.buffs`) e di
+  quelli messi sul bersaglio (messaggi `dot`, `stun`, `post` → `gioco.effetti_bersagli`), coda dei comandi (`gioco.coda`,
+  mezzo secondo), bottino e tael in chat, colonna di luce sugli oggetti a terra, intenti `parla`/`raccogli` (si cammina fino
+  al PNG o all'oggetto), rinascita sul posto o al villaggio, gemme e pergamene (`apply`, `combine`), trascinamento fra
+  inventario, equipaggiamento e barra rapida, menu (Esc), impostazioni salvate (`impostazioni.gd`, autoload), aiuto (H),
+  suoni generati da codice (`suoni.gd`, autoload: `Suoni.suona(nome, dB, intonazione)`), barra dell'esperienza.
+- **Eseguibile**: `godot/export_presets.cfg` (Windows e Linux, `include_filter="dati/*"`). Nel container:
+  `godot --headless --path godot --export-release "Windows" ../esporta/RegniDiGiada.exe` (modelli di esportazione in
+  `~/.local/share/godot/export_templates/4.4.1.stable/`). L'eseguibile Linux esportato è stato provato ed entra in gioco;
+  quello Windows non si può provare qui. `esporta/` è ignorata da git.
+- Limiti delle prove nel container: i suoni non si possono ascoltare (nessuna uscita audio); con `--fixed-fps` il tempo
+  reale corre ~30 volte più del tempo di gioco, quindi i timer basati sull'orologio (ricariche, icone degli effetti) scadono
+  subito nelle foto; a 1 fps reale il movimento è limitato a 0,1 s per fotogramma (`gioco.gd`).
+- Da fare (prossimo passo voluto dall'autore: **migliorare la grafica**): presa delle armi da ricontrollare, edifici veri
+  fatti in Blender, corpi base originali con volto, modelli per scimmie e banditi, resa con Forward+ da guardare su PC
+  con GPU, suoni veri al posto di quelli sintetici.
 
 ## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.
