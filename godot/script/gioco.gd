@@ -754,8 +754,8 @@ func _visuale(_dt: float) -> void:
 		var t := 1.0
 		while t < distanza and cripta != null:
 			var q := centro + d * t
-			if not cripta.calpestabile(q.x, q.z, 0.6):
-				libera = maxf(2.0, t - 0.5)
+			if not cripta.calpestabile(q.x, q.z, -0.2):
+				libera = maxf(3.5, t - 0.3)
 				break
 			t += 0.5
 	_dist_vista = minf(libera, lerpf(_dist_vista, libera, minf(1.0, _dt * 6.0)))

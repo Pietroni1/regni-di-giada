@@ -233,12 +233,16 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 		"spin":
 			fendente(da, colore, raggio * 0.95, TAU, 0.38 if forte else 0.3)
 			anello(qui, colore, raggio, 0.45)
-			if forte or String(sk.get("via", "")) == "fulmine":
+			if String(sk.get("via", "")) == "fulmine":
 				for i in range(5 if forte else 3):
 					var a := randf() * TAU
 					var d := raggio * (0.4 + 0.5 * randf())
 					fulmine(Dati.suolo(qui.x + cos(a) * d, qui.z + sin(a) * d), colore, 11.0, 3.2, 0.32)
 			if forte:
+				# secondo giro più largo e schegge del colore della tecnica
+				get_tree().create_timer(0.12).timeout.connect(fendente.bind(da, colore.lightened(0.35), raggio * 1.15, TAU, 0.34, 0.25))
+				anello(qui, colore, raggio * 1.2, 0.6, 0.1, 1.0)
+				scintille(qui + Vector3(0, 1.0, 0), colore, 36, 9.0, 0.6, -6.0)
 				scuoti(0.45)
 		"slash":
 			fendente(da, colore, 3.4 if forte else 2.6, 2.9 if forte else 2.4, 0.3, randf_range(-0.5, 0.5))

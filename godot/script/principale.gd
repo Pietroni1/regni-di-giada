@@ -221,6 +221,17 @@ func _prova_automatica() -> void:
 						Rete.manda({"t": "npc", "id": e.id})
 						break
 			"sella": Rete.manda({"t": "mount"})
+			"accetta": Rete.manda({"t": "preply", "ok": true})
+			"scegli":
+				gioco.hud.finestre.scelta = int(p[1])
+				gioco.hud.finestre.aggiorna()
+			"potenzia": gioco.hud.finestre._potenzia(false)
+			"usa":
+				var lista: Array = gioco.inv.get("inv", [])
+				for j in range(lista.size()):
+					if lista[j] is Dictionary and String(lista[j].id) == p[1]:
+						Rete.manda({"t": "use", "i": j})
+						break
 			"prova":
 				for e: Entita in gioco.ents.values():
 					if e.tipo == "n" and String(e.info.get("role", "")) == "custode":

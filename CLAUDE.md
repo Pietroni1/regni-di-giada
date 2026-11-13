@@ -179,10 +179,16 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   riquadri dei compagni, «Invita nel gruppo» sul bersaglio), **scuderia e cavalcature** (cavallo da `animali.glb`, posa
   `sella`, barra con le tecniche a cavallo), figure per lanterne, ombre, statue di terracotta, custode e obelischi.
   Il renderer Compatibilità regge poche luci: nella cripta restano accese solo le lanterne entro 42 m (`Cripta._process`).
-- Visto a schermo: finestre Prove e scuderia, sella nel villaggio, ingresso nella cripta e combattimento lì dentro.
-  Non provati: gruppo con due giocatori, fine della Prova e ricompense, boss, fabbro, dialoghi, classi diverse dalla Lama.
+- Provato a schermo con il copione automatico: Lama (Fulmine), Ombra (Pugnali), Monaco (Ferro), Mistico (Tempesta) con
+  scarichi potenti e Suprema; finestre Prove e scuderia; sella; cripta e combattimento lì dentro; invito al gruppo da un
+  secondo giocatore (bot) e riquadro del compagno; dialogo del maestro; fabbro. Comandi GM aggiunti per le prove:
+  `/punti` (punti al massimo) e `/suprema` (barra piena).
+  Non provati: fine della Prova con boss e ricompense, vendita, Vie Montagna/Arco/Loto/Benedizione, cure sugli alleati.
+- Aggiunti: capelli per stile (`metti_testa` in `personaggio.gd`: crocchia, lunghi, cappuccio, corti), pelo degli animali
+  (`pelo.gdshader`: dorso scuro, ventre chiaro, tigrato). Occhi e volti provati e tolti: sul manichino non rendono.
 - Da fare (prossimo passo voluto dall'autore: **migliorare la grafica**): gemme e pergamene sugli oggetti (`apply`), suoni,
-  presa delle armi, colori degli animali, edifici veri fatti in Blender, resa con Forward+ da guardare su PC con GPU.
+  presa delle armi (la spada punta indietro da fermo), visuale che entra nelle chiome degli alberi e negli stendardi,
+  edifici veri fatti in Blender, corpi base originali con volto, resa con Forward+ da guardare su PC con GPU.
 
 ## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.

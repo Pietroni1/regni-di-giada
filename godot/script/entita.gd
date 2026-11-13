@@ -97,6 +97,7 @@ func _costruisci() -> void:
 					veste["nubi"] = {"stoffa": Color(0.5, 0.1, 0.1)}
 					veste["elmo_drago"] = true
 				corpo = Personaggio.umano("base_uomo", veste, "bow" if modello == "bandit_archer" else "sword", 2, Color(0.62, 0.48, 0.38))
+				corpo.metti_testa("hood" if modello != "general" else "short", Color(0.08, 0.07, 0.06), colore.darkened(0.2))
 				corpo.scale = Vector3.ONE * scala
 			elif modello == "terracotta" or modello == "custode":
 				# guerrieri di terracotta: il corpo base tutto color argilla, con corazza ed elmo
@@ -127,6 +128,8 @@ func _costruisci() -> void:
 				veste["cappello_paglia"] = true
 				arma = "staff"
 			corpo = Personaggio.umano("base_donna" if String(info.get("role", "")) == "erbe" else "base_uomo", veste, arma, 1)
+			var ruolo := String(info.get("role", ""))
+			corpo.metti_testa("long" if ruolo == "erbe" else ("short" if veste.has("elmo_bronzo") or veste.has("cappello_paglia") else "topknot"), Color(0.75, 0.75, 0.72) if ruolo in ["maestro", "erbe"] else Color(0.1, 0.08, 0.07))
 		"d":
 			corpo = Personaggio.new()
 			var rar := int(info.get("r", 0))
@@ -168,7 +171,15 @@ func _giocatore() -> Personaggio:
 		grado_arma = int(Dati.ITEMS[arma].get("tier", 1))
 	var lista: Array = Dati.indice.get("classi", {}).get(String(info.get("cls", "lama")), ["base_uomo", "base_donna"])
 	var modello: String = lista[mini(1 if String(info.get("sx", "m")) == "f" else 0, lista.size() - 1)]
-	return Personaggio.umano(modello, wear, tipo_arma, grado_arma)
+	var p := Personaggio.umano(modello, wear, tipo_arma, grado_arma)
+	var donna := String(info.get("sx", "m")) == "f"
+	var stile := String(look.get("hairStyle", "short"))
+	if donna and stile in ["topknot", "bald"]:
+		stile = "long"
+	if info.get("h") != null:
+		stile = "short" if stile != "bald" else "bald"      # sotto l'elmo niente crocchie o code
+	p.metti_testa(stile, Dati.colore(look.get("hair", 0x1a1210)) if look.get("hair") != null else Color(0.1, 0.08, 0.07), Dati.colore(look.get("robe", 0x26293a)))
+	return p
 
 
 ## Aggiorna l'aspetto quando cambia l'equipaggiamento.

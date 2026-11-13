@@ -335,6 +335,7 @@ func _aggiorna_gruppo() -> void:
 		c.queue_free()
 	if g.is_empty():
 		return
+	riq_invito.visible = false
 	for m in g.get("members", []):
 		if int(m.id) == gioco.mio_id:
 			continue

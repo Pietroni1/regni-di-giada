@@ -202,10 +202,10 @@ static func animale(modello: String, tinta: Color, scala := 1.0) -> Personaggio:
 	p.scheletro = radice.get_node(specie + "_scheletro/Skeleton3D")
 	for n in p.scheletro.get_children():
 		if n is MeshInstance3D:
-			var m := StandardMaterial3D.new()
-			m.albedo_color = tinta
-			m.vertex_color_use_as_albedo = false
-			m.roughness = 0.9
+			var m := ShaderMaterial.new()
+			m.shader = preload("res://shader/pelo.gdshader")
+			m.set_shader_parameter("colore", tinta)
+			m.set_shader_parameter("strisce", 1.0 if specie == "tigre" else 0.0)
 			n.material_override = m
 	var sorgente: AnimationPlayer = radice.find_children("*", "AnimationPlayer", true, false)[0]
 	var lib := _libreria_animale(specie, sorgente, p.scheletro)
@@ -267,6 +267,56 @@ static func fantoccio() -> Personaggio:
 	Edifici.scatola(Vector3(0.5, 0.06, 0.02), Vector3(0, 1.35, 0.33), Edifici.mat(Color(0.7, 0.12, 0.1), 0.8), p)
 	p.altezza = 2.4
 	return p
+
+
+# ------------------------------------------------------------------ capelli e volto
+## Acconciatura agganciata all'osso della testa (i volti arriveranno con i corpi base veri: sul manichino non rendono). stile: topknot, long, hood, bald, short.
+func metti_testa(stile: String, capelli: Color, cappuccio := Color(0.15, 0.15, 0.2)) -> void:
+	if scheletro == null or scheletro.find_bone("head") < 0:
+		return
+	var ba := BoneAttachment3D.new()
+	ba.bone_name = "head"
+	scheletro.add_child(ba)
+	var su := altezza - 0.28 - scheletro.get_bone_global_rest(scheletro.find_bone("head")).origin.y   # 0: l'osso è alla base del cranio
+	var r := 0.135
+	var centro := Vector3(0, 0.125 + su, 0.012)
+	if stile == "bald":
+		return
+	if stile == "hood":
+		var stoffa := Edifici.mat(cappuccio, 0.9)
+		_sfera(ba, centro + Vector3(0, 0.02, -0.03), r * 1.22, stoffa, Vector3(1.0, 1.05, 1.08), true)
+		_sfera(ba, centro + Vector3(0, -0.06, -0.05), r * 1.12, stoffa, Vector3(1.05, 1.0, 0.95))
+		return
+	var m := Edifici.mat(capelli, 0.55)
+	_sfera(ba, centro + Vector3(0, 0.012, -0.012), r * 1.07, m, Vector3(1.0, 1.0, 1.06), true)          # calotta
+	_sfera(ba, centro + Vector3(0, -0.02, -0.05), r * 1.0, m, Vector3(1.03, 0.95, 0.9))                 # nuca
+	for sx in [-1.0, 1.0]:
+		Edifici.scatola(Vector3(0.02, 0.1, 0.07), centro + Vector3(sx * r * 0.98, -0.03, 0.01), m, ba)  # basette
+	match stile:
+		"topknot":
+			_sfera(ba, centro + Vector3(0, r * 1.18, -0.03), 0.05, m, Vector3(1, 1.15, 1))
+			Edifici.cilindro(0.028, 0.03, 0.03, centro + Vector3(0, r * 0.98, -0.03), Edifici.mat(Color(0.7, 0.12, 0.1), 0.7), ba, 8)
+		"long":
+			var coda := Edifici.scatola(Vector3(0.2, 0.42, 0.06), centro + Vector3(0, -0.24, -0.115), m, ba)
+			coda.rotation.x = -0.12
+			for sx in [-1.0, 1.0]:
+				Edifici.scatola(Vector3(0.035, 0.26, 0.05), centro + Vector3(sx * r * 0.95, -0.16, 0.03), m, ba)
+
+
+func _sfera(genitore: Node3D, pos: Vector3, raggio: float, m: Material, scala := Vector3.ONE, mezza := false) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var s := SphereMesh.new()
+	s.radius = raggio
+	s.height = raggio if mezza else raggio * 2.0
+	s.is_hemisphere = mezza
+	s.radial_segments = 20
+	s.rings = 10
+	mi.mesh = s
+	mi.material_override = m
+	mi.position = pos
+	mi.scale = scala
+	genitore.add_child(mi)
+	return mi
 
 
 # ------------------------------------------------------------------ armi
