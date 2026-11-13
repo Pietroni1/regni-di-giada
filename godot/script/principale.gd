@@ -220,6 +220,12 @@ func _prova_automatica() -> void:
 					if e.tipo == "n" and String(e.info.get("role", "")) == p[1]:
 						Rete.manda({"t": "npc", "id": e.id})
 						break
+			"sella": Rete.manda({"t": "mount"})
+			"prova":
+				for e: Entita in gioco.ents.values():
+					if e.tipo == "n" and String(e.info.get("role", "")) == "custode":
+						Rete.manda({"t": "trial", "npc": e.id, "a": p[1]})
+						break
 			"impara": Rete.manda({"t": "skup", "s": p[1]})
 			"cammina": gioco.intento = {"tipo": "muovi", "x": float(p[1]), "z": float(p[2])}
 			"suprema": gioco.usa_suprema()

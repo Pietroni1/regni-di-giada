@@ -22,7 +22,7 @@ float pennello(vec2 p, float scala) {
 	float a = rum(p * 0.03) * 6.283;
 	vec2 d = vec2(cos(a), sin(a));
 	vec2 q = vec2(dot(p, d), dot(p, vec2(-d.y, d.x)));
-	return rum(q * vec2(0.35, 1.9) * scala);
+	return rum(q * vec2(0.8, 1.5) * scala) * 0.6 + rum(q * vec2(2.1, 3.3) * scala + 5.0) * 0.4;
 }
 // ciottoli: celle di Voronoi con fuga scura
 vec2 ciottoli(vec2 p) {

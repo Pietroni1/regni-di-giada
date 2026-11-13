@@ -174,10 +174,15 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   "--comandi=/level 30;tecnica lama_tuono;attendi 0.1;foto nome"` (copione in `principale.gd`). Nel container il rendering
   è ~1 fps: usare `--fixed-fps 30` (il tempo di gioco avanza di 1/30 a fotogramma, così gli effetti si fotografano) e
   `--write-movie file.avi` per i video. Verificato a vista così: villaggio, Lama del Tuono e Tempesta di Lame sul fantoccio, lupi fuori dalle mura.
-- Da fare: gruppo, cripta delle Prove, scuderia e cavalcature, gemme e pergamene sugli oggetti (`apply`), suoni,
-  modelli per i mostri che ora sono sagome, colori degli animali, presa delle armi da rifinire, erba ancora a righe
-  (`pennello` in `terreno.gdshader`), edifici veri fatti in Blender. Delle finestre ho visto a schermo Inventario,
-  Personaggio, Abilità e negozio; fabbro e dialoghi sono scritti ma non provati.
+- Fatto anche: **Prove del Sigillo** (`cripta.gd` costruisce stanze e muri da `DUNGEON` all'origine data da `dg_start`;
+  ambiente buio in `gioco.gd` `_ambiente`; finestra delle Prove e riquadro con tempo/forze/custode), **gruppo** (inviti,
+  riquadri dei compagni, «Invita nel gruppo» sul bersaglio), **scuderia e cavalcature** (cavallo da `animali.glb`, posa
+  `sella`, barra con le tecniche a cavallo), figure per lanterne, ombre, statue di terracotta, custode e obelischi.
+  Il renderer Compatibilità regge poche luci: nella cripta restano accese solo le lanterne entro 42 m (`Cripta._process`).
+- Visto a schermo: finestre Prove e scuderia, sella nel villaggio, ingresso nella cripta e combattimento lì dentro.
+  Non provati: gruppo con due giocatori, fine della Prova e ricompense, boss, fabbro, dialoghi, classi diverse dalla Lama.
+- Da fare (prossimo passo voluto dall'autore: **migliorare la grafica**): gemme e pergamene sugli oggetti (`apply`), suoni,
+  presa delle armi, colori degli animali, edifici veri fatti in Blender, resa con Forward+ da guardare su PC con GPU.
 
 ## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.

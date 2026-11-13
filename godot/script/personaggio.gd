@@ -8,7 +8,7 @@ const ATTACCHI := {
 	"sword": ["spada_1", "spada_2", "spada_3"], "daggers": ["pugnali"], "bow": ["arco"],
 	"fists": ["pugni", "calcio"], "staff": ["magia"],
 }
-const SPECIE := {"wolf": "lupo", "boar": "cinghiale", "bear": "orso", "tiger": "tigre"}
+const SPECIE := {"wolf": "lupo", "boar": "cinghiale", "bear": "orso", "tiger": "tigre", "horse": "cavallo"}
 
 static var _scene: Dictionary = {}
 static var _librerie: Dictionary = {}
@@ -30,6 +30,7 @@ var _nodo_colpo: AnimationNodeAnimation
 var _nodo_singola: AnimationNodeOneShot
 var _stato := ""
 var _muove := false
+var in_sella := false
 
 const PARTE_ALTA := ["spine", "spine_1", "chest", "neck", "head", "shoulder_L", "upper_arm_L", "forearm_L", "hand_L", "shoulder_R", "upper_arm_R", "forearm_R", "hand_R"]
 
@@ -124,7 +125,7 @@ func _crea_albero(radice: Node3D) -> void:
 	var bt := AnimationNodeBlendTree.new()
 	var tr := AnimationNodeTransition.new()
 	tr.xfade_time = 0.2
-	var stati := ["fermo", "camminata", "corsa", "morte"]
+	var stati := ["fermo", "camminata", "corsa", "morte", "sella"]
 	tr.input_count = stati.size()
 	bt.add_node("base", tr)
 	for i in range(stati.size()):
@@ -202,8 +203,8 @@ static func animale(modello: String, tinta: Color, scala := 1.0) -> Personaggio:
 	for n in p.scheletro.get_children():
 		if n is MeshInstance3D:
 			var m := StandardMaterial3D.new()
-			m.albedo_color = tinta.lightened(0.15)
-			m.vertex_color_use_as_albedo = true
+			m.albedo_color = tinta
+			m.vertex_color_use_as_albedo = false
 			m.roughness = 0.9
 			n.material_override = m
 	var sorgente: AnimationPlayer = radice.find_children("*", "AnimationPlayer", true, false)[0]
@@ -337,6 +338,12 @@ func muovi(velocita: float, dt: float) -> void:
 	if player == null or morto:
 		return
 	_muove = velocita > 0.3
+	if in_sella:
+		if _stato != "sella" and _albero != null:
+			_stato = "sella"
+			_albero.set("parameters/vel_base/scale", 1.0)
+			_albero.set("parameters/base/transition_request", "sella")
+		return
 	if _albero != null:
 		var stato := "fermo"
 		var passo := 1.0
@@ -440,3 +447,53 @@ func rialza() -> void:
 	_blocco = 0.0
 	_base = ""
 	_suona("fermo", 0.2)
+
+
+# ------------------------------------------------------------------ figure dei mostri senza modello
+## Lanterna spettrale che fluttua.
+static func lanterna_spettrale(colore: Color, scala := 1.0) -> Personaggio:
+	var p := Personaggio.new()
+	var corpo := Node3D.new()
+	corpo.position.y = 1.5 * scala
+	p.add_child(corpo)
+	var ferro := Edifici.mat(Color(0.1, 0.08, 0.08), 0.6, 0.5)
+	Edifici.scatola(Vector3(0.5, 0.7, 0.5) * scala, Vector3.ZERO, Edifici.mat(colore.lightened(0.3), 0.5, 0.0, 4.0), corpo)
+	Edifici.cilindro(0.0, 0.45 * scala, 0.3 * scala, Vector3(0, 0.5 * scala, 0), ferro, corpo, 4).rotation.y = PI / 4.0
+	Edifici.scatola(Vector3(0.6, 0.08, 0.6) * scala, Vector3(0, -0.38 * scala, 0), ferro, corpo)
+	for i in range(3):
+		Edifici.scatola(Vector3(0.05, 0.5 - i * 0.1, 0.05) * scala, Vector3((i - 1) * 0.16, -0.7 + i * 0.03, 0) * scala, Edifici.mat(Color(0.7, 0.15, 0.1), 0.8), corpo)
+	var t := p.create_tween().set_loops()
+	t.tween_property(corpo, "position:y", 1.75 * scala, 1.1).set_trans(Tween.TRANS_SINE)
+	t.tween_property(corpo, "position:y", 1.5 * scala, 1.1).set_trans(Tween.TRANS_SINE)
+	p.altezza = 2.3 * scala
+	return p
+
+
+## Ombra: sagoma scura semitrasparente con occhi accesi.
+static func ombra(colore: Color, scala := 1.0) -> Personaggio:
+	var p := Personaggio.sagoma(colore, scala, 1.9)
+	for n in p.get_children():
+		var mi := n as MeshInstance3D
+		if mi != null and mi.mesh is CapsuleMesh:
+			var m := StandardMaterial3D.new()
+			m.albedo_color = Color(colore.r * 0.4, colore.g * 0.4, colore.b * 0.5, 0.72)
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			m.emission_enabled = true
+			m.emission = Color(0.25, 0.1, 0.45)
+			m.emission_energy_multiplier = 0.6
+			mi.material_override = m
+	return p
+
+
+## Obelisco: prisma di pietra con rune accese.
+static func obelisco(colore: Color, scala := 1.0) -> Personaggio:
+	var p := Personaggio.new()
+	var pietra := ShaderMaterial.new()
+	pietra.shader = preload("res://shader/roccia.gdshader")
+	pietra.set_shader_parameter("muschio_forza", 0.3)
+	Edifici.cilindro(0.35 * scala, 0.8 * scala, 4.2 * scala, Vector3(0, 2.1 * scala, 0), pietra, p, 4)
+	Edifici.cilindro(0.0, 0.36 * scala, 0.6 * scala, Vector3(0, 4.5 * scala, 0), pietra, p, 4)
+	for i in range(4):
+		Edifici.scatola(Vector3(0.5, 0.12, 0.5) * scala * (1.0 - i * 0.12), Vector3(0, (0.9 + i * 0.8) * scala, 0), Edifici.mat(colore.lightened(0.2), 0.5, 0.0, 3.5), p).rotation.y = PI / 4.0
+	p.altezza = 5.0 * scala
+	return p

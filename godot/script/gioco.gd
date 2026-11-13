@@ -37,6 +37,12 @@ var lancio: Dictionary = {}
 var stordito_fino := 0.0
 var lento_fino := 0.0
 var _fermo_immagine := 0.0
+var cripta: Cripta = null
+var prova: Dictionary = {}         # ultimo stato della Prova del Sigillo (messaggio `dg`)
+var gruppo: Dictionary = {}        # ultimo messaggio `party`
+var _amb_fuori: Environment = null
+var _amb_cripta: Environment = null
+var _dentro := false
 
 
 func _ready() -> void:
@@ -64,7 +70,7 @@ func _ready() -> void:
 	anello_bersaglio.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	anello_bersaglio.visible = false
 	add_child(anello_bersaglio)
-	for t_msg in ["me", "r", "v", "fx", "cd", "cast", "castend", "pos", "dead", "sys", "chat", "notice", "err", "inv", "st", "gain", "kicked"]:
+	for t_msg in ["me", "r", "v", "fx", "cd", "cast", "castend", "pos", "dead", "sys", "chat", "notice", "err", "inv", "st", "gain", "kicked", "dg_start", "dg", "dg_end", "dg_reward", "party", "pinv"]:
 		Rete.su(t_msg, Callable(self, "_su_" + t_msg))
 
 
@@ -91,6 +97,8 @@ func ora() -> float:
 func nome_zona() -> String:
 	if me == null:
 		return ""
+	if me.x > float(Dati.costanti.DUNGEON_X):
+		return String(Dati.gioco.DUNGEON.name)
 	for kid in Dati.KINGDOMS:
 		var v: Dictionary = Dati.KINGDOMS[kid].village
 		if Vector2(me.x - float(v.x), me.z - float(v.z)).length() < float(Dati.costanti.SAFE_RADIUS):
@@ -114,6 +122,11 @@ func _su_me(m: Dictionary) -> void:
 			me.corpo.muori()
 		elif era and not me.morto:
 			me.corpo.rialza()
+		var grado := 0
+		if int(m.get("mounted", 0)) == 1 and m.get("horse") is Dictionary:
+			var lv := int(m.horse.lvl)
+			grado = 3 if lv >= 20 else (2 if lv >= 10 else 1)
+		me.in_sella(grado)
 		hud.aggiorna_io(io, me.nome)
 
 
@@ -335,6 +348,73 @@ func _su_gain(m: Dictionary) -> void:
 		hud.numero(me.testa() + Vector3(0, 0.6, 0), "+%d esp" % int(m.exp), Color(0.75, 0.6, 1.0), 0.8)
 
 
+func _su_dg_start(m: Dictionary) -> void:
+	if cripta != null:
+		cripta.queue_free()
+	cripta = Cripta.crea(float(m.ox), float(m.oz))
+	add_child(cripta)
+	prova = {"kl": m.get("kl", 2), "affixes": m.get("affixes", [])}
+	bersaglio = null
+	intento = {}
+
+
+func _su_dg(m: Dictionary) -> void:
+	prova = m
+	prova["ricevuto"] = ora()
+
+
+func _su_dg_end(_m: Dictionary) -> void:
+	prova = {}
+	if cripta != null:
+		cripta.queue_free()
+		cripta = null
+
+
+func _su_dg_reward(m: Dictionary) -> void:
+	hud.riga_chat("Ricompense della Prova: " + ", ".join(PackedStringArray(m.get("got", []))), Hud.ORO)
+
+
+func _su_party(m: Dictionary) -> void:
+	gruppo = {} if int(m.get("none", 0)) == 1 else m
+
+
+func _su_pinv(m: Dictionary) -> void:
+	hud.invito(String(m.get("n", "?")))
+
+
+## Dentro la cripta: buio, nebbia scura, niente sole. Fuori: l'ambiente della scena.
+func _ambiente(dentro: bool) -> void:
+	if dentro == _dentro:
+		return
+	_dentro = dentro
+	var radice := get_tree().current_scene
+	var we: WorldEnvironment = radice.get_node_or_null("Ambiente")
+	var sole: DirectionalLight3D = radice.get_node_or_null("Sole")
+	if we == null:
+		return
+	if _amb_fuori == null:
+		_amb_fuori = we.environment
+		_amb_cripta = Environment.new()
+		_amb_cripta.background_mode = Environment.BG_COLOR
+		_amb_cripta.background_color = Color(0.012, 0.012, 0.02)
+		_amb_cripta.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		_amb_cripta.ambient_light_color = Color(0.42, 0.42, 0.6)
+		_amb_cripta.ambient_light_energy = 1.3
+		_amb_cripta.tonemap_mode = Environment.TONE_MAPPER_ACES
+		_amb_cripta.tonemap_white = 6.0
+		_amb_cripta.glow_enabled = true
+		_amb_cripta.glow_intensity = 0.9
+		_amb_cripta.glow_hdr_threshold = 1.0
+		_amb_cripta.fog_enabled = true
+		_amb_cripta.fog_light_color = Color(0.05, 0.04, 0.08)
+		_amb_cripta.fog_density = 0.009
+		_amb_cripta.fog_sky_affect = 1.0
+	we.environment = _amb_cripta if dentro else _amb_fuori
+	if sole != null:
+		sole.visible = not dentro
+	mondo.visible = not dentro
+
+
 func _su_kicked(m: Dictionary) -> void:
 	hud.avvisa(String(m.get("m", "Disconnesso")), true)
 
@@ -386,8 +466,18 @@ func livello_tecnica(sid: String) -> int:
 	return int(io.get("sk", {}).get(sid, 0))
 
 
+## Barra rapida in uso: in sella ci sono le tecniche a cavallo.
+func barra() -> Array:
+	if int(io.get("mounted", 0)) != 1:
+		return io.get("qb", [])
+	var b: Array = []
+	for sid in Dati.gioco.MOUNT_SKILLS:
+		b.append({"k": "s", "id": sid})
+	return b
+
+
 func usa_tasto(i: int) -> void:
-	var qb: Array = io.get("qb", [])
+	var qb: Array = barra()
 	if i >= qb.size() or not (qb[i] is Dictionary):
 		return
 	if qb[i].get("k") == "s":
@@ -412,6 +502,9 @@ func usa_suprema() -> void:
 func usa_tecnica(sid: String) -> void:
 	var sk: Dictionary = Dati.SKILLS.get(sid, {})
 	if sk.is_empty() or me == null or int(io.get("dead", 0)) == 1:
+		return
+	if int(io.get("mounted", 0)) == 1 and not sk.get("mount", false):
+		hud.avvisa("Scendi da cavallo (R) per usare le tecniche della tua classe", true)
 		return
 	var tipo := String(sk.get("type", ""))
 	var id_b = null
@@ -590,10 +683,21 @@ func _process(dt: float) -> void:
 			lancio = {}
 		var nx := me.x + dir.x * vel * dt
 		var nz := me.z + dir.y * vel * dt
-		var u := Dati.risolvi_urti(nx, nz, 0.5)
-		var lim := float(Dati.costanti.PLAY_LIMIT)
-		nx = clampf(u.x, -lim, lim)
-		nz = clampf(u.y, -lim, lim)
+		if me.x > float(Dati.costanti.DUNGEON_X):
+			# nella cripta si cammina solo in stanze e corridoi, scivolando lungo i muri
+			if cripta != null and not cripta.calpestabile(nx, nz):
+				if cripta.calpestabile(nx, me.z):
+					nz = me.z
+				elif cripta.calpestabile(me.x, nz):
+					nx = me.x
+				else:
+					nx = me.x
+					nz = me.z
+		else:
+			var u := Dati.risolvi_urti(nx, nz, 0.5)
+			var lim := float(Dati.costanti.PLAY_LIMIT)
+			nx = clampf(u.x, -lim, lim)
+			nz = clampf(u.y, -lim, lim)
 		me.velocita = Vector2(nx - me.x, nz - me.z).length() / maxf(dt, 1e-4)
 		me.x = nx
 		me.z = nz
@@ -605,6 +709,7 @@ func _process(dt: float) -> void:
 			Rete.manda({"t": "move", "x": snappedf(me.x, 0.01), "z": snappedf(me.z, 0.01), "r": snappedf(me.r, 0.01)})
 			inviata = Vector3(me.x, me.r, me.z)
 		ultimo_invio = t
+	_ambiente(me.x > float(Dati.costanti.DUNGEON_X))
 	_visuale(dt)
 	if bersaglio != null and is_instance_valid(bersaglio):
 		anello_bersaglio.visible = true
@@ -640,8 +745,19 @@ func _distanza_libera(centro: Vector3) -> float:
 
 
 func _visuale(_dt: float) -> void:
-	var centro := Vector3(me.x, Dati.altezza(me.x, me.z) + 1.7, me.z)
+	var centro := Vector3(me.x, Dati.altezza(me.x, me.z) + 1.7 + (1.0 if me.sella > 0 else 0.0), me.z)
 	var libera := _distanza_libera(centro)
+	if _dentro:
+		# nella cripta la visuale non esce dai muri: si accorcia finché resta in una stanza
+		libera = distanza
+		var d := Vector3(sin(yaw) * cos(pitch), 0, cos(yaw) * cos(pitch))
+		var t := 1.0
+		while t < distanza and cripta != null:
+			var q := centro + d * t
+			if not cripta.calpestabile(q.x, q.z, 0.6):
+				libera = maxf(2.0, t - 0.5)
+				break
+			t += 0.5
 	_dist_vista = minf(libera, lerpf(_dist_vista, libera, minf(1.0, _dt * 6.0)))
 	var orizz := cos(pitch) * _dist_vista
 	var p := centro + Vector3(sin(yaw) * orizz, sin(pitch) * _dist_vista, cos(yaw) * orizz)

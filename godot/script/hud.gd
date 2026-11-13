@@ -32,6 +32,13 @@ var morte: PanelContainer
 var targhette: Control
 var finestre: Finestre
 var minimappa: Control
+var riq_gruppo: VBoxContainer
+var riq_prova: PanelContainer
+var txt_prova: Label
+var riq_invito: PanelContainer
+var txt_invito: Label
+var bott_invita: Button
+var _firma_gruppo := ""
 var numeri: Array = []          # numeri di danno che salgono: {p: Vector3, t: String, c: Color, eta: float, g: float}
 var _avviso_t := 0.0
 
@@ -135,6 +142,56 @@ func _ready() -> void:
 	v.add_child(suprema)
 	_scritta_su(suprema).text = "Tecnica Suprema  [V]"
 
+	# --- gruppo (sotto il riquadro del giocatore)
+	riq_gruppo = VBoxContainer.new()
+	riq_gruppo.position = Vector2(16, 170)
+	riq_gruppo.custom_minimum_size = Vector2(210, 0)
+	riq_gruppo.add_theme_constant_override("separation", 4)
+	radice.add_child(riq_gruppo)
+
+	# --- Prova del Sigillo (sotto la minimappa)
+	riq_prova = PanelContainer.new()
+	riq_prova.add_theme_stylebox_override("panel", stile(SFONDO, ORO.darkened(0.4), 6))
+	riq_prova.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	riq_prova.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	riq_prova.position = Vector2(-16, 246)
+	riq_prova.custom_minimum_size = Vector2(250, 0)
+	riq_prova.visible = false
+	radice.add_child(riq_prova)
+	var vp := VBoxContainer.new()
+	riq_prova.add_child(vp)
+	txt_prova = Label.new()
+	txt_prova.add_theme_font_size_override("font_size", 13)
+	vp.add_child(txt_prova)
+	var esci := Button.new()
+	esci.text = "Abbandona la Prova"
+	esci.pressed.connect(func() -> void: Rete.manda({"t": "tleave"}))
+	vp.add_child(esci)
+
+	# --- invito al gruppo
+	riq_invito = PanelContainer.new()
+	riq_invito.add_theme_stylebox_override("panel", stile(SFONDO, ORO, 8, 2))
+	riq_invito.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	riq_invito.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	riq_invito.position.y = 190
+	riq_invito.visible = false
+	radice.add_child(riq_invito)
+	var vi := VBoxContainer.new()
+	riq_invito.add_child(vi)
+	txt_invito = Label.new()
+	vi.add_child(txt_invito)
+	var hi := HBoxContainer.new()
+	vi.add_child(hi)
+	for coppia in [["Accetta", true], ["Rifiuta", false]]:
+		var b := Button.new()
+		b.text = coppia[0]
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var si: bool = coppia[1]
+		b.pressed.connect(func() -> void:
+			Rete.manda({"t": "preply", "ok": si})
+			riq_invito.visible = false)
+		hi.add_child(b)
+
 	# --- riquadro del bersaglio
 	riq_bersaglio = PanelContainer.new()
 	riq_bersaglio.add_theme_stylebox_override("panel", stile(SFONDO, ORO.darkened(0.4), 6))
@@ -154,6 +211,12 @@ func _ready() -> void:
 	postura_b = _barra(Color(0.92, 0.82, 0.45), 8)
 	postura_b.max_value = 100
 	vb.add_child(postura_b)
+	bott_invita = Button.new()
+	bott_invita.text = "Invita nel gruppo"
+	bott_invita.pressed.connect(func() -> void:
+		if gioco.bersaglio != null:
+			Rete.manda({"t": "pinv", "id": gioco.bersaglio.id}))
+	vb.add_child(bott_invita)
 
 	# --- barra rapida
 	var barra := HBoxContainer.new()
@@ -257,6 +320,85 @@ func riga_chat(testo: String, colore := Color(0.9, 0.9, 0.85)) -> void:
 	chat.append_text("[color=#%s]%s[/color]\n" % [colore.to_html(false), testo.replace("[", "[lb]")])
 
 
+func invito(da: String) -> void:
+	txt_invito.text = "%s ti invita nel suo gruppo" % da
+	riq_invito.visible = true
+
+
+func _aggiorna_gruppo() -> void:
+	var g: Dictionary = gioco.gruppo
+	var firma := JSON.stringify(g)
+	if firma == _firma_gruppo:
+		return
+	_firma_gruppo = firma
+	for c in riq_gruppo.get_children():
+		c.queue_free()
+	if g.is_empty():
+		return
+	for m in g.get("members", []):
+		if int(m.id) == gioco.mio_id:
+			continue
+		var p := PanelContainer.new()
+		p.add_theme_stylebox_override("panel", stile(SFONDO, ORO.darkened(0.5), 5))
+		riq_gruppo.add_child(p)
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 2)
+		p.add_child(v)
+		var n := Label.new()
+		n.text = "%s%s  ·  %d" % ["★ " if int(g.get("leader", 0)) == int(m.id) else "", m.n, int(m.lvl)]
+		n.add_theme_font_size_override("font_size", 13)
+		n.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5) if int(m.get("dead", 0)) == 1 else Color(0.9, 0.9, 0.85))
+		v.add_child(n)
+		var bv := _barra(Color(0.72, 0.16, 0.14), 10)
+		bv.max_value = float(m.mhp)
+		bv.value = float(m.hp)
+		v.add_child(bv)
+		var br := _barra(Dati.colore(Dati.RESOURCES.get(String(m.rt), {}).get("color", "#888888")), 6)
+		br.max_value = maxf(1.0, float(m.rmax))
+		br.value = float(m.res)
+		v.add_child(br)
+		var id := int(m.id)
+		p.gui_input.connect(func(ev: InputEvent) -> void:
+			if ev is InputEventMouseButton and ev.pressed and gioco.ents.has(id):
+				gioco.bersaglio = gioco.ents[id])
+	var lascia := Button.new()
+	lascia.text = "Lascia il gruppo"
+	lascia.pressed.connect(func() -> void: Rete.manda({"t": "pleave"}))
+	riq_gruppo.add_child(lascia)
+
+
+func _tempo(ms: float) -> String:
+	var s := int(maxf(0.0, ms) / 1000.0)
+	return "%d:%02d" % [s / 60, s % 60]
+
+
+func _aggiorna_prova() -> void:
+	var p: Dictionary = gioco.prova
+	riq_prova.visible = not p.is_empty()
+	if p.is_empty():
+		return
+	var righe: Array = ["%s +%d" % [Dati.gioco.DUNGEON.trial, int(p.get("kl", 2))]]
+	if p.has("elapsed"):
+		var fatto := int(p.get("done", 0)) == 1
+		var trascorso: float = float(p.elapsed) + float(p.get("penalty", 0)) + (0.0 if fatto else gioco.ora() - float(p.get("ricevuto", gioco.ora())))
+		righe.append("Tempo  %s / %s" % [_tempo(trascorso), _tempo(float(p.limit))])
+		righe.append("Forze nemiche  %d%%" % int(minf(100.0, float(p.forces) / maxf(1.0, float(p.need)) * 100.0)))
+		righe.append("Custode  %s" % ("sconfitto" if int(p.get("bossDead", 0)) == 1 else "%d%%" % int(float(p.boss))))
+		if int(p.get("deaths", 0)) > 0:
+			righe.append("Cadute  %d  (+%d s l'una)" % [int(p.deaths), int(Dati.gioco.DUNGEON.deathPenalty)])
+		if fatto and p.get("result") is Dictionary:
+			var r: Dictionary = p.result
+			righe.append("")
+			righe.append("Prova superata in tempo!" if r.get("inTime", false) else "Tempo scaduto.")
+			righe.append("Sigillo: +%d → +%d" % [int(r.get("oldKl", 0)), int(r.get("newKl", 0))])
+			righe.append("Si esce fra %s" % _tempo(float(p.get("closeIn", 0))))
+	for a in p.get("affixes", []):
+		var d: Dictionary = Dati.gioco.AFFIXES.get(String(a), {})
+		if not d.is_empty():
+			righe.append("%s  %s" % [d.glyph, d.name])
+	txt_prova.text = "\n".join(PackedStringArray(righe))
+
+
 func avvisa(testo: String, errore := false) -> void:
 	avviso.text = testo
 	avviso.add_theme_color_override("font_color", Color(1.0, 0.5, 0.4) if errore else Color(1.0, 0.9, 0.6))
@@ -302,7 +444,7 @@ func aggiorna_io(io: Dictionary, nome: String) -> void:
 	suprema.value = float(io.get("su", 0))
 	suprema.visible = int(io.get("lvl", 1)) >= int(Dati.gioco.SUPREMA.lvl)
 	morte.visible = int(io.get("dead", 0)) == 1
-	var qb: Array = io.get("qb", [])
+	var qb: Array = gioco.barra()
 	for i in range(tasti.size()):
 		(tasti[i] as Tasto).imposta(qb[i] if i < qb.size() else null, io)
 	finestre.aggiorna()
@@ -326,6 +468,9 @@ func _process(dt: float) -> void:
 		postura_b.value = 0 if b.squilibrato else b.postura
 		if b.squilibrato:
 			nome_b.text += "   — SQUILIBRATO —"
+		bott_invita.visible = b.tipo == "p" and String(b.info.get("kd", "")) == gioco.regno
+	_aggiorna_gruppo()
+	_aggiorna_prova()
 	# ricariche
 	var ora := Time.get_ticks_msec()
 	for t in tasti:

@@ -42,4 +42,4 @@ recente si può passare a **Forward+** dal menù in alto a destra dell'editor: a
 ombre migliori (le impostazioni sono già nella scena), ma la luce va ricontrollata a vista.
 
 ## Cosa manca rispetto al client nel browser
-Gruppo, Prove del Sigillo (cripta), scuderia e cavalcature a vista, gemme e pergamene sugli oggetti, suoni. I mostri senza modello (scimmie, spiriti, statue) sono sagome provvisorie.
+Gemme e pergamene sugli oggetti, suoni. I mostri senza modello (scimmie, spiriti, statue) sono sagome provvisorie.

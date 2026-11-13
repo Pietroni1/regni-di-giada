@@ -23,6 +23,30 @@ var corpo: Personaggio = null
 var raggio := 0.5
 var velocita := 0.0
 var ostile_base := false
+var sella := 0            # grado del destriero su cui è in sella (0 = a piedi)
+var cavallo: Personaggio = null
+
+const MANTELLI := [Color(0.54, 0.37, 0.22), Color(0.54, 0.37, 0.22), Color(0.29, 0.18, 0.11), Color(0.12, 0.1, 0.11)]
+
+
+## Sale o scende da cavallo (grado 0 = a piedi).
+func in_sella(grado: int) -> void:
+	if grado == sella or corpo == null:
+		return
+	sella = grado
+	if cavallo != null:
+		cavallo.queue_free()
+		cavallo = null
+	corpo.in_sella = grado > 0
+	corpo.position = Vector3.ZERO
+	if grado > 0:
+		var scala := 1.0 + 0.08 * (grado - 1)
+		cavallo = Personaggio.animale("horse", MANTELLI[clampi(grado, 0, 3)], scala)
+		if cavallo != null:
+			add_child(cavallo)
+			corpo.position = Vector3(0, 0.62 * scala, -0.1)
+	else:
+		corpo._stato = ""
 
 
 static func da_info(i: Dictionary, mio := false) -> Entita:
@@ -74,8 +98,22 @@ func _costruisci() -> void:
 					veste["elmo_drago"] = true
 				corpo = Personaggio.umano("base_uomo", veste, "bow" if modello == "bandit_archer" else "sword", 2, Color(0.62, 0.48, 0.38))
 				corpo.scale = Vector3.ONE * scala
+			elif modello == "terracotta" or modello == "custode":
+				# guerrieri di terracotta: il corpo base tutto color argilla, con corazza ed elmo
+				var argilla := colore.lerp(Color(0.62, 0.36, 0.24), 0.6)
+				var capi := {"veste": argilla.darkened(0.15), "pantaloni": argilla.darkened(0.25), "lamellare": {"stoffa": argilla.darkened(0.3), "piastre": argilla, "bordo": argilla.darkened(0.2)}, "elmo_bronzo": true, "stivali_cuoio": true}
+				if modello == "custode":
+					capi = {"veste": Color(0.12, 0.1, 0.16), "pantaloni": Color(0.08, 0.07, 0.1), "nubi": {"stoffa": Color(0.35, 0.1, 0.45)}, "elmo_drago": true, "stivali_nube": true}
+				corpo = Personaggio.umano("base_uomo", capi, "sword", 4 if modello == "custode" else 2, argilla if modello == "terracotta" else Color(0.3, 0.28, 0.36))
+				corpo.scale = Vector3.ONE * scala
+			elif modello == "lantern":
+				corpo = Personaggio.lanterna_spettrale(colore, scala)
+			elif modello == "shade":
+				corpo = Personaggio.ombra(colore, scala)
+			elif modello == "obelisk":
+				corpo = Personaggio.obelisco(colore, scala)
 			else:
-				corpo = Personaggio.sagoma(colore, scala, 2.4 if modello == "obelisk" else 1.8)
+				corpo = Personaggio.sagoma(colore, scala, 1.8)
 		"n":
 			var k: Dictionary = Dati.KINGDOMS.get(String(info.get("kd", "")), {})
 			var regno := Dati.colore(k.get("hex", 0x888888))
@@ -100,6 +138,10 @@ func _costruisci() -> void:
 		add_child(corpo)
 		if morto:
 			corpo.muori()
+	if tipo == "p":
+		var grado := sella
+		sella = -1
+		in_sella(grado if grado > 0 else int(info.get("mt", 0)))
 
 
 func _giocatore() -> Personaggio:
@@ -167,7 +209,7 @@ func guarda(verso: Entita) -> void:
 
 
 func testa() -> Vector3:
-	return global_position + Vector3(0, (corpo.altezza if corpo != null else 2.0) * scale.y, 0)
+	return global_position + Vector3(0, (corpo.altezza if corpo != null else 2.0) * scale.y + (0.62 if sella > 0 else 0.0), 0)
 
 
 func petto() -> Vector3:
@@ -192,3 +234,5 @@ func _process(dt: float) -> void:
 	_posa()
 	if corpo != null:
 		corpo.muovi(velocita, dt)
+	if cavallo != null:
+		cavallo.muovi(velocita, dt)

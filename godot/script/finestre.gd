@@ -28,6 +28,14 @@ var _testo_fabbro: Label
 var _riga_tasti_inv: HBoxContainer
 var _firma_ab := ""
 var _firma_pg := ""
+var prove: PanelContainer
+var scuderia: PanelContainer
+var prove_png := 0
+var scuderia_png := 0
+var _testo_prove: Label
+var _testo_scuderia: Label
+var _compra_cavallo: Button
+var _addestra: Button
 
 
 func _ready() -> void:
@@ -50,8 +58,13 @@ func _ready() -> void:
 		_titolo_dialogo.text = String(m.get("n", ""))
 		_testo_dialogo.text = String(m.get("m", ""))
 		dialogo.visible = true)
-	Rete.su("stable", func(_m: Dictionary) -> void: gioco.hud.avvisa("La scuderia non è ancora disponibile nel client Godot", true))
-	Rete.su("trial", func(_m: Dictionary) -> void: gioco.hud.avvisa("Le Prove del Sigillo non sono ancora disponibili nel client Godot", true))
+	_crea_prove()
+	_crea_scuderia()
+	Rete.su("stable", func(m: Dictionary) -> void:
+		scuderia_png = int(m.npc)
+		scuderia.visible = true
+		aggiorna())
+	Rete.su("trial", _su_prove)
 	Rete.su("applied", func(m: Dictionary) -> void: gioco.hud.avvisa(String(m.get("m", ""))))
 
 
@@ -113,7 +126,7 @@ func apri_chiudi(quale: String) -> void:
 ## Chiude tutto; restituisce true se c'era qualcosa di aperto.
 func chiudi_tutto() -> bool:
 	var aperta := false
-	for f in [inventario, personaggio, abilita, negozio, fabbro, dialogo]:
+	for f in [inventario, personaggio, abilita, negozio, fabbro, dialogo, prove, scuderia]:
 		if f.visible:
 			aperta = true
 		f.visible = false
@@ -499,6 +512,74 @@ func _crea_dialogo() -> void:
 	_testo_dialogo.custom_minimum_size = Vector2(460, 0)
 
 
+# ------------------------------------------------------------------ Prove del Sigillo e scuderia
+func _crea_prove() -> void:
+	var f := _finestra("Prove del Sigillo", Vector2(560, 180), 440)
+	prove = f[0]
+	_testo_prove = _etichetta(f[1], "")
+	_testo_prove.custom_minimum_size = Vector2(420, 0)
+	var h := HBoxContainer.new()
+	(f[1] as VBoxContainer).add_child(h)
+	_bottone(h, "Ricevi un Sigillo", func() -> void: Rete.manda({"t": "trial", "npc": prove_png, "a": "key"}))
+	_bottone(h, "Apri la Prova", func() -> void:
+		Rete.manda({"t": "trial", "npc": prove_png, "a": "open"})
+		prove.visible = false)
+
+
+func _su_prove(m: Dictionary) -> void:
+	prove_png = int(m.npc)
+	var D: Dictionary = Dati.gioco.DUNGEON
+	var righe: Array = ["%s — una corsa a tempo (%d minuti) da soli o in gruppo fino a 5." % [D.name, int(D.timeLimit) / 60]]
+	righe.append("Livello minimo: %d" % int(m.get("minLevel", D.minLevel)))
+	righe.append("Il tuo Sigillo: %s" % ("+%d" % int(m.key) if m.get("key") != null else "nessuno"))
+	righe.append("Miglior prova superata: %s" % ("+%d" % int(m.best) if int(m.get("best", 0)) > 0 else "—"))
+	righe.append("Gruppo: %d%s" % [int(m.get("party", 1)), "" if m.get("leader", true) else "  (solo il capogruppo può aprire)"])
+	righe.append("")
+	righe.append("Modificatori della settimana (dal +3 il primo, dal +6 entrambi):")
+	for a in m.get("week", []):
+		var d: Dictionary = Dati.gioco.AFFIXES.get(String(a), {})
+		if not d.is_empty():
+			righe.append("%s  %s — %s" % [d.glyph, d.name, d.desc])
+	_testo_prove.text = "\n".join(PackedStringArray(righe))
+	prove.visible = true
+
+
+func _crea_scuderia() -> void:
+	var f := _finestra("Scuderia", Vector2(560, 200), 400)
+	scuderia = f[0]
+	_testo_scuderia = _etichetta(f[1], "")
+	_testo_scuderia.custom_minimum_size = Vector2(380, 0)
+	var h := HBoxContainer.new()
+	(f[1] as VBoxContainer).add_child(h)
+	_compra_cavallo = _bottone(h, "Compra un Puledro", func() -> void: Rete.manda({"t": "stable", "npc": scuderia_png, "a": "buy"}))
+	_addestra = _bottone(h, "Addestra", func() -> void: Rete.manda({"t": "stable", "npc": scuderia_png, "a": "train"}))
+
+
+func _riempi_scuderia() -> void:
+	var H: Dictionary = Dati.gioco.HORSE
+	var c = gioco.io.get("horse")
+	_compra_cavallo.visible = not (c is Dictionary)
+	_addestra.visible = c is Dictionary
+	if not (c is Dictionary):
+		_testo_scuderia.text = "Un Puledro costa %d tael (dal livello %d).\nIn sella ti muovi più in fretta e usi le tecniche a cavallo; il destriero cresce combattendo con te." % [int(H.price), int(H.minLevel)]
+		_compra_cavallo.text = "Compra un Puledro (%d tael)" % int(H.price)
+		return
+	var lv := int(c.lvl)
+	var grado := 3 if lv >= 20 else (2 if lv >= 10 else 1)
+	var righe: Array = ["%s  ·  livello %d" % [H.names[grado], lv]]
+	if lv < int(H.maxLevel):
+		righe.append("Esperienza %d / %d" % [int(c.exp), int(c.need)])
+		_addestra.text = "Addestra (%d tael, +%d%%)" % [int(H.trainCost[lv]), int(H.trainPct)]
+	else:
+		righe.append("Ha raggiunto il livello massimo.")
+		_addestra.visible = false
+	righe.append("Premi R per salire in sella o scendere.")
+	for sid in Dati.gioco.MOUNT_SKILLS:
+		var sk: Dictionary = Dati.SKILLS[sid]
+		righe.append("%s  %s%s" % [sk.glyph, sk.name, "" if lv >= int(sk.hlvl) else "  (dal livello %d)" % int(sk.hlvl)])
+	_testo_scuderia.text = "\n".join(PackedStringArray(righe))
+
+
 # ------------------------------------------------------------------ aggiornamento
 func aggiorna() -> void:
 	if gioco == null or gioco.me == null:
@@ -519,6 +600,8 @@ func aggiorna() -> void:
 		_riempi_personaggio()
 	if abilita.visible:
 		_riempi_abilita()
+	if scuderia.visible:
+		_riempi_scuderia()
 
 
 # ------------------------------------------------------------------ casella di un oggetto
