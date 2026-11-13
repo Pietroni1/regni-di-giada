@@ -93,7 +93,7 @@ export function newCharacter(name, cls, kingdom, sex = 'm') {
 function defaultQuickbar(ch) {
   const c = CLASSES[ch.cls];
   ch.qb = Array(QB_SIZE).fill(null);
-  c.baseSkills.forEach((s, i) => { if (SKILLS[s].lvl <= ch.lvl) ch.qb[i] = { k: 's', id: s }; });
+  c.baseSkills.forEach((s, i) => { if (SKILLS[s] && SKILLS[s].lvl <= ch.lvl) ch.qb[i] = { k: 's', id: s }; });
   ch.qb[QB_SIZE - 2] = { k: 'i', id: 'ginseng_p' };
   ch.qb[QB_SIZE - 1] = { k: 'i', id: c.res === 'mana' ? 'loto_p' : 'pergamena_ritorno' };
 }
