@@ -169,6 +169,10 @@ const PATTERN_FRAG = `
       shade *= 1.0 - 0.35 * smoothstep(0.8, 0.9, row) + 0.12 * smoothstep(0.0, 0.3, row) * (1.0 - step(0.8, row));
       shade *= 1.0 + 0.3 * step(vPuv.y, 0.2) * step(0.2, abs(cl - 0.5));
       diffuseColor.rgb *= shade;
+      #ifdef RILIEVO_EDIFICI
+        // coppo a mezzo tubo e file sovrapposte: altezza in metri per la normale
+        gRilievo += (1.0 - ridge * ridge) * 0.045 + row * 0.02;
+      #endif
     } else {
       float r = fract(vPuv.x * 2.1);
       float raft = step(abs(r - 0.5), 0.27);
@@ -208,6 +212,27 @@ const BRUSH_TEX = (() => {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 })();
+// Rilievo leggero senza texture in più: l'altezza (in metri) scritta in gRilievo dalle pennellate e dai coppi
+// diventa una normale con le derivate sullo schermo, così intonaco, legno e tegole reagiscono al sole.
+// Si accende con la qualità (define RILIEVO_EDIFICI): in Bassa lo shader resta quello di prima.
+const RILIEVO_GLSL = `
+  vec3 rilievoNormale(vec3 pos, vec3 n, float h, float forza) {
+    vec3 sx = dFdx(pos), sy = dFdy(pos);
+    vec3 r1 = cross(sy, n), r2 = cross(n, sx);
+    float det = dot(sx, r1);
+    vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2) * forza;
+    return normalize(abs(det) * n - grad);
+  }`;
+const rilievoMats = new Set();
+let rilievoOn = false;
+function setRilievoEdifici(on) {
+  if (on === rilievoOn) return;
+  rilievoOn = on;
+  for (const m of rilievoMats) {
+    if (on) m.defines = { ...m.defines, RILIEVO_EDIFICI: '' }; else if (m.defines) delete m.defines.RILIEVO_EDIFICI;
+    m.needsUpdate = true;
+  }
+}
 function painted(m) {
   const prev = m.onBeforeCompile;
   m.onBeforeCompile = (sh, r) => {
@@ -215,11 +240,18 @@ function painted(m) {
     sh.uniforms.tBrush = { value: BRUSH_TEX };
     sh.vertexShader = 'varying vec3 vPW;\nvarying vec3 vPN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
       vPW = (modelMatrix * vec4(transformed, 1.0)).xyz; vPN = normalize(mat3(modelMatrix) * objectNormal);`);
-    sh.fragmentShader = 'uniform sampler2D tBrush;\nvarying vec3 vPW;\nvarying vec3 vPN;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    sh.fragmentShader = 'uniform sampler2D tBrush;\nvarying vec3 vPW;\nvarying vec3 vPN;\nfloat gRilievo = 0.0;\n' + RILIEVO_GLSL + '\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
       { vec3 bw = pow(abs(vPN), vec3(3.0)); bw /= (bw.x + bw.y + bw.z);
         float br = texture2D(tBrush, vPW.zy * 0.35).r * bw.x + texture2D(tBrush, vPW.xz * 0.35).r * bw.y + texture2D(tBrush, vPW.xy * 0.35).r * bw.z;
-        diffuseColor.rgb *= 0.72 + br * 0.55; }`);
+        diffuseColor.rgb *= 0.72 + br * 0.55;
+        gRilievo = br * 0.012; }`).replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      #ifdef RILIEVO_EDIFICI
+      { float rf = 1.0 - smoothstep(0.012, 0.05, max(length(dFdx(vPW)), length(dFdy(vPW)))); // sfuma quando i pixel sono troppo grandi
+        if (rf > 0.0) normal = rilievoNormale(-vViewPosition, normal, gRilievo, rf); }
+      #endif`);
   };
+  if (rilievoOn) m.defines = { ...m.defines, RILIEVO_EDIFICI: '' };
+  rilievoMats.add(m);
   return m;
 }
 function patternToon(side) {
@@ -318,6 +350,41 @@ export function curvedRoof(w, d, h, lift = 0.5, seg = 14) {
 
 // ------------------------------------------------------------------ cielo
 const SUN_DIR = new THREE.Vector3(-0.62, 0.42, 0.42).normalize();
+// Bilanciamento della luce all'aperto: sole, cielo (emisferica + ambiente dal cielo) e rimbalzo dal terreno.
+const LUCE = { sun: 3.9, hemi: 0.5, hemiSky: 0xb8ccff, hemiGround: 0x8a6c44, env: 0.8, suolo: [0.2, 0.17, 0.09] };
+// Ombra del sole: metà lato del riquadro (m) e spostamento in avanti rispetto al personaggio.
+// La sfumatura è quella di PCFSoftShadowMap (bilineare, circa 3 texel): PCFShadowMap con un raggio più ampio
+// dà una penombra più larga ma a gradini, provato e scartato.
+const OMBRA = { ext: 60, avanti: 20 };
+// Nebbia atmosferica: sostituisce il ramo FogExp2 di three (usato solo all'aperto; la cripta resta con la nebbia
+// lineare normale). La densità cala con la quota, così le cime emergono dalla foschia delle valli, e il colore
+// si scalda guardando verso il sole. Vale per tutti i materiali con la nebbia, senza uniform in più.
+(() => {
+  const C = THREE.ShaderChunk, d = SUN_DIR;
+  const stock = 'float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );';
+  const mix = 'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );';
+  if (!C.fog_fragment.includes(stock) || !C.fog_fragment.includes(mix) || !C.fog_vertex.includes('vFogDepth = - mvPosition.z;')) {
+    console.warn('Nebbia atmosferica: shader di three diverso dal previsto, resta quella normale');
+    return;
+  }
+  C.fog_pars_vertex = C.fog_pars_vertex.replace('varying float vFogDepth;', 'varying float vFogDepth;\n\t#ifdef FOG_EXP2\n\tvarying vec3 vFogView;\n\t#endif');
+  C.fog_vertex = C.fog_vertex.replace('vFogDepth = - mvPosition.z;', 'vFogDepth = - mvPosition.z;\n\t#ifdef FOG_EXP2\n\tvFogView = mvPosition.xyz;\n\t#endif');
+  C.fog_pars_fragment = C.fog_pars_fragment.replace('uniform float fogDensity;', 'uniform float fogDensity;\n\t\tvarying vec3 vFogView;');
+  C.fog_fragment = C.fog_fragment.replace(stock, `
+		float fogDist = length( vFogView );
+		vec3 fogDir = ( vFogView / max( fogDist, 1e-4 ) ) * mat3( viewMatrix );
+		float fogQuota = cameraPosition.y + fogDir.y * fogDist * 0.5; // quota media del raggio
+		float fogSpessore = fogDensity * fogDist * mix( 0.5, 1.0, exp( - max( fogQuota - 4.0, 0.0 ) / 40.0 ) );
+		float fogFactor = 1.0 - exp( - fogSpessore * fogSpessore );
+		float fogSole = pow( max( dot( fogDir, vec3( ${d.x.toFixed(4)}, ${d.y.toFixed(4)}, ${d.z.toFixed(4)} ) ), 0.0 ), 5.0 );
+		vec3 fogTinta = fogColor * mix( vec3( 0.97, 0.99, 1.03 ), vec3( 1.2, 1.04, 0.82 ), fogSole );
+	`).replace(mix, `
+	#ifdef FOG_EXP2
+		gl_FragColor.rgb = mix( gl_FragColor.rgb, fogTinta, fogFactor );
+	#else
+		gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+	#endif`);
+})();
 function makeSky() {
   const sky = new Sky();
   sky.scale.setScalar(1300);
@@ -971,24 +1038,28 @@ export function buildDungeon(scene, ox, oz) {
 
 export function buildWorld(scene, post) {
   scene.background = new THREE.Color(0xb8cde0);
-  scene.fog = new THREE.Fog(0xc8d4dc, 110, 420);
+  scene.fog = new THREE.FogExp2(0xc8d4dc, 0.0034); // nebbia atmosferica (vedi sopra)
   const sky = makeSky();
   scene.add(sky);
   const cloudGroup = new THREE.Group();
   scene.add(cloudGroup);
   const clouds = makeClouds(cloudGroup);
 
-  const hemi = new THREE.HemisphereLight(0xb8ccff, 0x6a5a40, 0.6);
+  // cielo azzurro dall'alto, rimbalzo caldo del terreno dal basso
+  const hemi = new THREE.HemisphereLight(LUCE.hemiSky, LUCE.hemiGround, LUCE.hemi);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffdcae, 4.2);
+  const sun = new THREE.DirectionalLight(0xffdcae, LUCE.sun);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   const sc = sun.shadow.camera;
-  sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 260;
-  sun.shadow.bias = -0.0008;
-  sun.shadow.normalBias = 0.6;
+  sc.left = -OMBRA.ext; sc.right = OMBRA.ext; sc.top = OMBRA.ext; sc.bottom = -OMBRA.ext; sc.near = 1; sc.far = 270;
+  sun.shadow.bias = -0.00035;
+  sun.shadow.normalBias = OMBRA.ext * 2 / 2048 * 1.6;
   scene.add(sun); scene.add(sun.target);
   const sunDir = SUN_DIR;
+  // assi della camera dell'ombra (gli stessi di lookAt): servono per farla scattare di un texel alla volta
+  const lightX = new THREE.Vector3(0, 1, 0).cross(sunDir).normalize(), lightY = sunDir.clone().cross(lightX);
+  const shadowC = new THREE.Vector3(), camFwd = new THREE.Vector3();
 
   const terrain = makeTerrainPainted();
   scene.add(terrain);
@@ -1000,6 +1071,11 @@ export function buildWorld(scene, post) {
     const size = q.shadows || 512;
     sun.shadow.mapSize.set(size, size);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+    // scostamenti proporzionati al texel: abbastanza da evitare le righe, non tanto da staccare l'ombra dai piedi
+    sun.shadow.normalBias = OMBRA.ext * 2 / size * 1.6;
+    const rilievo = q.relief ?? q.composer; // in Bassa nessun costo in più
+    terrain.userData.setRilievo(rilievo);
+    setRilievoEdifici(rilievo);
     petals.visible = q.petals;
     scene.traverse(o => { if (o.userData.outline && !o.parent?.userData?.ent) o.visible = q.outlines; });
   };
@@ -1020,9 +1096,15 @@ export function buildWorld(scene, post) {
     const pmrem = new THREE.PMREMGenerator(post.renderer);
     const envScene = new THREE.Scene();
     envScene.add(makeSky());
+    // sotto l'orizzonte il terreno illuminato dal sole: le superfici rivolte in giù (gronde, sottotetti) prendono
+    // un rimbalzo caldo invece del chiarore azzurro dell'orizzonte
+    const suolo = new THREE.Mesh(new THREE.SphereGeometry(600, 32, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(...LUCE.suolo), side: THREE.BackSide, fog: false }));
+    envScene.add(suolo);
     scene.environment = pmrem.fromScene(envScene, 0, 1, 3000).texture;
-    scene.environmentIntensity = 0.65;
+    scene.environmentIntensity = LUCE.env;
     pmrem.dispose();
+    suolo.geometry.dispose(); suolo.material.dispose();
   }
   let t = 0, indoor = false;
   const outdoorFog = scene.fog, indoorFog = new THREE.Fog(0x161010, 28, 120);
@@ -1036,10 +1118,11 @@ export function buildWorld(scene, post) {
       scene.fog = on ? indoorFog : outdoorFog;
       scene.background = on ? indoorBg : outdoorBg;
       sky.visible = !on; cloudGroup.visible = !on;
-      hemi.intensity = on ? 1.15 : 0.6;
-      hemi.color.set(on ? 0xffd8b8 : 0xb8ccff);
-      sun.intensity = on ? 0.5 : 4.2;
-      scene.environmentIntensity = on ? 0.15 : 0.65;
+      hemi.intensity = on ? 1.15 : LUCE.hemi;
+      hemi.color.set(on ? 0xffd8b8 : LUCE.hemiSky);
+      hemi.groundColor.set(on ? 0x6a5a40 : LUCE.hemiGround);
+      sun.intensity = on ? 0.5 : LUCE.sun;
+      scene.environmentIntensity = on ? 0.15 : LUCE.env;
       petals.visible = !on && (!post || post.q.petals);
     },
     buildDungeon: (ox, oz) => { const r = buildDungeon(scene, ox, oz); if (post) applyQuality(post.q); return r; },
@@ -1047,8 +1130,18 @@ export function buildWorld(scene, post) {
       t += dt;
       updateCutaway(camera, focus);
       sky.position.copy(focus);
-      sun.position.set(focus.x + sunDir.x * 120, focus.y + sunDir.y * 120, focus.z + sunDir.z * 120);
-      sun.target.position.copy(focus);
+      // Ombra agganciata alla visuale: il riquadro si sposta un po' in avanti rispetto al personaggio (dietro la
+      // camera non serve) e il suo centro scatta di texel in texel, così i bordi non tremolano quando ci si muove.
+      shadowC.copy(focus);
+      if (camera) {
+        camera.getWorldDirection(camFwd); camFwd.y = 0;
+        if (camFwd.lengthSq() > 1e-6) shadowC.addScaledVector(camFwd.normalize(), OMBRA.avanti);
+      }
+      const texel = OMBRA.ext * 2 / sun.shadow.mapSize.x;
+      const lx = Math.round(shadowC.dot(lightX) / texel) * texel, ly = Math.round(shadowC.dot(lightY) / texel) * texel, lz = shadowC.dot(sunDir);
+      shadowC.set(0, 0, 0).addScaledVector(lightX, lx).addScaledVector(lightY, ly).addScaledVector(sunDir, lz);
+      sun.target.position.copy(shadowC);
+      sun.position.copy(shadowC).addScaledVector(sunDir, 120);
       for (const c of clouds) { c.position.x += dt * 2.5; if (c.position.x > 480) c.position.x = -480; }
       for (const fl of animated.flags) fl.rotation.y = Math.sin(t * 1.7 + fl.id) * 0.25;
       for (const l of animated.lights) l.intensity = 5 + Math.sin(t * 9) * 0.8 + Math.sin(t * 23) * 0.5;

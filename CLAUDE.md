@@ -109,7 +109,14 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
 - Da fare dopo: **Postura** di élite e boss, taratura per classe e curva di sblocco per livello.
 
 ## Altri passi grafici in sospeso
-- Luce da HDRI, occlusione ambientale (GTAO), ombre più morbide, correzione colore, normal map.
+- Luce da HDRI, occlusione ambientale (GTAO), correzione colore.
+- Fatto (`world3d.js`, `terrain.js`): ombra del sole agganciata alla visuale con scatto al texel e scostamenti in
+  proporzione al texel (`OMBRA`); bilanciamento sole/cielo/rimbalzo del terreno (`LUCE`, suolo caldo nell'ambiente PMREM);
+  rilievo da derivate sullo schermo (altezza nel canale alfa delle texture del terreno, pennellate e coppi degli edifici;
+  spento in Bassa: `q.relief ?? q.composer`); nebbia atmosferica all'aperto = ramo `FogExp2` di three riscritto
+  (quota + tinta verso il sole), la cripta resta con `Fog` lineare. Sole fisso: l'ambiente si calcola una volta sola.
+- Scartati: ombre a cascata (CSM, troppi shader personalizzati da agganciare) e `PCFShadowMap` con raggio (penombra a gradini).
+  Da verificare su PC con GPU e in gioco: tremolio del rilievo in movimento, resa a 1080p, cripta vera.
 - Edifici più dettagliati (modelli importati o Blender), texture del mondo dipinte da strumenti AI.
 
 ## Verifiche

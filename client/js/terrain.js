@@ -1,6 +1,9 @@
 // Terreno dipinto a mano: texture procedurali ripetibili (erba, terra, roccia, sabbia, selciato, neve,
 // erba secca, sottobosco) miscelate nello shader con pesi per vertice e bordi spezzati dal rumore;
 // la roccia sui pendii usa la proiezione su tre assi per non stirarsi.
+// Rilievo: ogni texture porta nel canale alfa un'altezza ricavata dalla sua stessa pittura (chiaro = alto);
+// lo shader miscela le altezze come i colori e ne ricava la normale con le derivate sullo schermo, così ciottoli,
+// sassi e roccia reagiscono al sole senza texture né letture in più (in qualità Bassa è spento del tutto).
 import * as THREE from 'three';
 import { heightAt, roadDistance, fbm, smoothstep, mulberry32, KINGDOMS, KINGDOM_IDS, CENTER, WALL_RADIUS } from '/shared/world.js';
 
@@ -111,11 +114,27 @@ function paintForest(g) {
   }
 }
 
-function makeTex(paint) {
+// rilievo: quanto la pittura diventa altezza (0.5 nel canale alfa = piano)
+function makeTex(paint, rilievo = 1) {
   const cv = document.createElement('canvas'); cv.width = cv.height = N;
-  paint(cv.getContext('2d'));
-  const t = new THREE.CanvasTexture(cv);
+  const g = cv.getContext('2d');
+  paint(g);
+  const px = new Uint8Array(g.getImageData(0, 0, N, N).data.buffer);
+  // luminosità, ammorbidita due volte (con ripetizione ai bordi) per togliere la grana di un pixel
+  let L = new Float32Array(N * N), T = new Float32Array(N * N), mean = 0;
+  for (let i = 0; i < N * N; i++) { L[i] = (px[i * 4] * 0.3 + px[i * 4 + 1] * 0.59 + px[i * 4 + 2] * 0.11) / 255; mean += L[i] / (N * N); }
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const xm = (x + N - 1) % N, xp = (x + 1) % N, ym = ((y + N - 1) % N) * N, yp = ((y + 1) % N) * N, yc = y * N;
+      T[yc + x] = (L[yc + x] * 4 + (L[yc + xm] + L[yc + xp] + L[ym + x] + L[yp + x]) * 2 + L[ym + xm] + L[ym + xp] + L[yp + xm] + L[yp + xp]) / 16;
+    }
+    [L, T] = [T, L];
+  }
+  for (let i = 0; i < N * N; i++) px[i * 4 + 3] = Math.max(0, Math.min(255, Math.round((0.5 + (L[i] - mean) * rilievo) * 255)));
+  const t = new THREE.DataTexture(px, N, N, THREE.RGBAFormat);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true;
+  t.needsUpdate = true;
   return t;
 }
 
@@ -149,23 +168,31 @@ function weights(x, z, h) {
 const VERT = `attribute vec4 splatA; attribute vec4 splatB; varying vec4 vSA; varying vec4 vSB; varying vec3 vWP; varying vec3 vWN;`;
 const FRAG = `uniform sampler2D tGrass, tDirt, tRock, tSand, tPlaza, tSnow, tDry, tForest;
   varying vec4 vSA; varying vec4 vSB; varying vec3 vWP; varying vec3 vWN;
+  float gRilievo = 0.5;
+  vec3 rilievoNormale(vec3 pos, vec3 n, float h, float forza) {
+    vec3 sx = dFdx(pos), sy = dFdy(pos);
+    vec3 r1 = cross(sy, n), r2 = cross(n, sx);
+    float det = dot(sx, r1);
+    vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2) * forza;
+    return normalize(abs(det) * n - grad);
+  }
   float th(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
   float tn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
     return mix(mix(th(i), th(i + vec2(1, 0)), f.x), mix(th(i + vec2(0, 1)), th(i + vec2(1, 1)), f.x), f.y); }
-  vec3 anti(sampler2D t, vec2 uv, float m) { return mix(texture2D(t, uv).rgb, texture2D(t, uv * 0.43 + vec2(0.31, 0.17)).rgb, m); }`;
+  vec4 anti(sampler2D t, vec2 uv, float m) { return mix(texture2D(t, uv), texture2D(t, uv * 0.43 + vec2(0.31, 0.17)), m); }`;
 const BODY = `
   {
     float big = tn(vWP.xz * 0.05), mid = tn(vWP.xz * 0.23);
     vec2 uv = vWP.xz * 0.16;
-    vec3 grass = anti(tGrass, uv, big) * (0.88 + 0.24 * mid);
-    vec3 dirt = anti(tDirt, uv * 1.2, big);
-    vec3 sand = anti(tSand, uv, big);
-    vec3 plaza = texture2D(tPlaza, vWP.xz * 0.14).rgb;
-    vec3 snow = texture2D(tSnow, uv * 0.6).rgb;
-    vec3 dry = anti(tDry, uv, big);
-    vec3 forest = anti(tForest, uv * 1.1, big);
+    vec4 grass = anti(tGrass, uv, big) * vec4(vec3(0.88 + 0.24 * mid), 1.0);
+    vec4 dirt = anti(tDirt, uv * 1.2, big);
+    vec4 sand = anti(tSand, uv, big);
+    vec4 plaza = texture2D(tPlaza, vWP.xz * 0.14);
+    vec4 snow = texture2D(tSnow, uv * 0.6);
+    vec4 dry = anti(tDry, uv, big);
+    vec4 forest = anti(tForest, uv * 1.1, big);
     vec3 bw = pow(abs(vWN), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
-    vec3 rock = texture2D(tRock, vWP.zy * 0.11).rgb * bw.x + texture2D(tRock, vWP.xz * 0.11).rgb * bw.y + texture2D(tRock, vWP.xy * 0.11).rgb * bw.z;
+    vec4 rock = texture2D(tRock, vWP.zy * 0.11) * bw.x + texture2D(tRock, vWP.xz * 0.11) * bw.y + texture2D(tRock, vWP.xy * 0.11) * bw.z;
     // bordi spezzati: il rumore e la luminosità della texture spostano il confine tra i materiali
     float edge = tn(vWP.xz * 0.9) * 0.6 + tn(vWP.xz * 3.1) * 0.4;
     vec4 a = vSA, b = vSB;
@@ -173,9 +200,20 @@ const BODY = `
     b = max(vec4(0.0), b + (vec4(1.0 - edge, edge, edge, 1.0 - edge) - 0.5) * 0.45 * step(0.02, b));
     a = pow(a, vec4(2.0)); b = pow(b, vec4(2.0));
     float s = a.x + a.y + a.z + a.w + b.x + b.y + b.z + b.w + 1e-4;
-    vec3 col = (grass * a.x + dirt * a.y + rock * a.z + sand * a.w + plaza * b.x + snow * b.y + dry * b.z + forest * b.w) / s;
-    diffuseColor.rgb = col;
+    vec4 col = (grass * a.x + dirt * a.y + rock * a.z + sand * a.w + plaza * b.x + snow * b.y + dry * b.z + forest * b.w) / s;
+    diffuseColor.rgb = col.rgb;
+    gRilievo = col.a;
   }`;
+// dopo le normali: l'altezza miscelata (in alfa) piega la normale; sfuma quando un pixel copre troppi centimetri
+// di terreno (lontano o di taglio), dove le derivate darebbero solo sfarfallio
+const RILIEVO = `
+  #ifdef TERRENO_RILIEVO
+  {
+    float passo = max(length(dFdx(vWP)), length(dFdy(vWP)));
+    float rf = 1.0 - smoothstep(0.02, 0.07, passo);
+    if (rf > 0.0) normal = rilievoNormale(-vViewPosition, normal, gRilievo, 0.085 * rf);
+  }
+  #endif`;
 
 export function makeTerrainPainted() {
   const SEG = 300, SIZE = 600;
@@ -198,18 +236,25 @@ export function makeTerrainPainted() {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3)); // per la minimappa
   geo.computeVertexNormals();
   const tex = {
-    tGrass: makeTex(paintGrass), tDirt: makeTex(paintDirt), tRock: makeTex(paintRock), tSand: makeTex(paintSand),
-    tPlaza: makeTex(paintPlaza), tSnow: makeTex(paintSnow), tDry: makeTex(paintDry), tForest: makeTex(paintForest),
+    tGrass: makeTex(paintGrass, 0.35), tDirt: makeTex(paintDirt, 1), tRock: makeTex(paintRock, 1.2), tSand: makeTex(paintSand, 0.4),
+    tPlaza: makeTex(paintPlaza, 1.3), tSnow: makeTex(paintSnow, 0.3), tDry: makeTex(paintDry, 0.35), tForest: makeTex(paintForest, 0.6),
   };
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 });
   mat.onBeforeCompile = (sh) => {
     for (const [k, t] of Object.entries(tex)) sh.uniforms[k] = { value: t };
     sh.vertexShader = VERT + '\n' + sh.vertexShader.replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
       vSA = splatA; vSB = splatB; vWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);`);
-    sh.fragmentShader = FRAG + '\n' + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n' + BODY);
+    sh.fragmentShader = FRAG + '\n' + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n' + BODY)
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + RILIEVO);
   };
   mat.customProgramCacheKey = () => 'terreno-dipinto';
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
+  // acceso o spento secondo la qualità grafica (ricompila lo shader solo se cambia)
+  mesh.userData.setRilievo = (on) => {
+    if (!!mat.defines?.TERRENO_RILIEVO === !!on) return;
+    if (on) mat.defines = { ...mat.defines, TERRENO_RILIEVO: '' }; else delete mat.defines.TERRENO_RILIEVO;
+    mat.needsUpdate = true;
+  };
   return mesh;
 }
