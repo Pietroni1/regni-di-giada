@@ -311,10 +311,12 @@ export class Game {
           // Impatto: i colpi pesanti (tecniche che consumano, critici, colpi grossi) fermano il tempo per un istante
           if (s && s.self) {
             const sk = SKILLS[m.sk], peso = m.v / Math.max(1, d.mhp || m.v);
-            const forte = (sk && (sk.cost >= 20 || sk.spend)) || peso > 0.12;
+            const potente = !!(sk && sk.ruolo === 'potente');
+            const forte = potente || (sk && (sk.cost >= 20 || sk.spend)) || peso > 0.12;
             if (forte || m.c) {
-              this.hitStop = Math.max(this.hitStop || 0, forte && m.c ? 0.085 : forte ? 0.06 : 0.035);
-              this.shake = Math.max(this.shake, forte && m.c ? 0.32 : forte ? 0.22 : 0.18);
+              // gli scarichi potenti pesano di più: fermo-immagine e scossa più lunghi
+              this.hitStop = Math.max(this.hitStop || 0, potente ? (m.c ? 0.11 : 0.085) : forte && m.c ? 0.085 : forte ? 0.06 : 0.035);
+              this.shake = Math.max(this.shake, potente ? (m.c ? 0.42 : 0.32) : forte && m.c ? 0.32 : forte ? 0.22 : 0.18);
             }
           }
         }

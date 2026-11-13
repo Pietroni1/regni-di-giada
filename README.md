@@ -73,14 +73,24 @@ I dati (account e personaggi) stanno in `data/db.json`. Le password sono salvate
 
 Le abilità condividono un **tempo di ricarica globale** (GCD) di 1 secondo, ridotto dalla Rapidità; alcune sono "fuori dal GCD". Gli incantesimi con **tempo di lancio** si interrompono se ti muovi. Puoi premere il tasto successivo poco prima che finisca il GCD: l'abilità parte appena possibile (coda).
 
+Ogni Via segue lo stesso schema, riconoscibile dalla tacca colorata sotto i tasti della barra rapida:
+
+- **2 accumuli** (verde): non costano nulla, generano risorsa e punti. Uno a bersaglio singolo, uno ad area.
+- **2 scarichi medi** (oro): costo contenuto (30-40), uno singolo e uno ad area.
+- **2 scarichi potenti** (rosso): costo alto (45-60) e, per chi ha i punti, li consumano tutti; uno singolo e uno ad area.
+- 2 tecniche di supporto con ricarica e la **Tecnica Suprema** (tasto V), che si carica spendendo risorsa.
+
 | Classe | Risorsa | Punti | Meccanica |
 |---|---|---|---|
-| Lama | Ira (sale colpendo e subendo colpi, cala fuori dal combattimento) | — | Fulmine: Squarcio critico → Scintilla (Lama del Tuono gratuita +30%); Ferita Aperta da tenere attiva; Colpo di Grazia sotto il 25%. Montagna: difensore con minaccia ×4 e Sfida |
-| Ombra | Energia | Punti combo (5) | Generatori e tecniche finali; Pugnalata più forte alle spalle; veleno; Tiro Mirato reso istantaneo dal Colpo Rapido |
-| Monaco | Chi | Sfere (5) | Sequenza Pugno → Calcio → Palmo (Loto: Palmo → Fiore → Palmo) = Forma Perfetta: +2 Sfere e prossima tecnica finale +40% |
-| Mistico | Mana | Cariche celesti (5) | Tempesta: Marchio del Tuono può rendere istantaneo il Fulmine Celeste; Giudizio consuma le Cariche. Benedizione: guaritore con scudi e cure ad area |
+| Lama | Ira (sale colpendo, cala fuori dal combattimento) | — | Fulmine: Squarcio critico → Scintilla (Lama del Tuono a metà costo, +30%); l'Affondo dell'Ira apre una ferita che potenzia la Lama del Tuono. Montagna: difensore con minaccia ×4, Sfida e stordimenti |
+| Ombra | Energia (si rigenera piano: servono gli accumuli) | Punti combo (5) | Agguato più forte alle spalle. Pugnali: la Danza delle Lame avvelena e potenzia gli scarichi potenti. Arco: il Colpo Rapido può rendere gratuita la Pioggia di Frecce |
+| Monaco | Chi | Sfere (5) | Sequenza Pugno → Calcio → Palmo = Forma Perfetta: +2 Sfere e prossimo scarico potente +40% (Loto: ti cura anche dell'8%) |
+| Mistico | Mana | Cariche celesti (5) | Gli accumuli hanno tempo di lancio, gli scarichi sono istantanei. Tempesta: il Marchio del Tuono può rendere istantaneo il prossimo accumulo. Benedizione: guaritore, le Cariche potenziano Scudo di Giada e Pioggia di Petali |
 
-I **DoT** rinnovati prima della scadenza conservano fino al 30% del tempo rimasto. Le abilità si sbloccano con il livello (Via dal 5, poi ai livelli 7, 9, 12 e 15) e si potenziano con i punti abilità e i Tomi della Tecnica.
+**Slancio**: ogni colpo a segno aggiunge una tacca (fino a 5) che aumenta risorsa generata, rapidità e rigenerazione; cala se smetti di colpire.
+**Postura**: élite e boss hanno una barra sotto la vita che cala con gli scarichi; a zero restano **Squilibrati** (storditi e vulnerabili) per qualche secondo.
+
+I **danni nel tempo** rinnovati prima della scadenza conservano fino al 30% del tempo rimasto. Le abilità si sbloccano con il livello (1 e 3 quelle di base; con la Via ai livelli 5, 7, 9, 12 e 15) e si potenziano con i punti abilità e i Tomi della Tecnica.
 
 Nei villaggi ci sono due **fantocci d'addestramento**: con il **misuratore dei danni** (tasto P) vedi DPS e contributo di ogni abilità, per ottimizzare la rotazione.
 
