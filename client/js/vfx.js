@@ -537,7 +537,7 @@ export class VFX {
         this.decal(s, TEX.rune, 4.5, 0xff7a2a, 1.2, { from: 2, ease: 0.3, spin: 1 });
         return;
       case 'lama_tuono': case 'colpo_grazia': {
-        const red = id === 'colpo_grazia';
+        const red = true;
         this.slashArc(s, C, { radius: 2.0, width: 1.0, tilt: 0.4, roll: -0.4, dur: 0.24, grow: red ? 1.3 : 1 });
         const sky = tp.clone().add(V().set(rnd(-1.5, 1.5), 16, rnd(-1.5, 1.5)));
         this.bolt(sky, this.pos(tgt, 0.2), C, { width: red ? 0.35 : 0.24, dur: 0.38 });
@@ -547,6 +547,42 @@ export class VFX {
         this.burst(this.pos(tgt, 0.3), C, red ? 50 : 30, red ? 9 : 6, 0.16, 0.5, { white: 0.5 });
         this.decal(tgt, TEX.crack, red ? 4 : 3, 0x222222, 2.5, { normal: true, opacity: 0.8 });
         if (red && near(tgt)) this.shake = Math.max(this.shake, 0.25);
+        return;
+      }
+      case 'affondo_ira': {
+        const dir = tp.clone().sub(sp).normalize();
+        this.bolt(sp, tp.clone().add(dir.multiplyScalar(1.6)), C, { width: 0.16, jag: 0.008, branch: 0, dur: 0.2 });
+        this.slashArc(s, C, { radius: 1.8, width: 0.8, tilt: 0.6, roll: 0.3, dur: 0.22, reverse: true });
+        this.flash(tp, C, 1.6, 0.14);
+        this.burst(tp, 0xb01010, 26, 4, 0.13, 0.7, { to: 0x400000, grav: 9, white: 0 });
+        this.smokePuff(tp, 0x801818, 6, 0.5, 0.6, { speed: 1, up: 0.2 });
+        return;
+      }
+      case 'arco_folgore': {
+        const r = sk.radius ?? 5.5;
+        this.slashArc(s, C, { sweep: TAU, radius: r * 0.8, width: 1.3, spin: 5, dur: 0.34, h: 1.0 });
+        this.slashArc(s, 0xffffff, { sweep: TAU, radius: r * 0.6, width: 0.5, spin: 7, dur: 0.28, h: 1.2, tilt: 0.1, reverse: true });
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * TAU + rnd(-0.2, 0.2), q = V().set(s.x + Math.cos(a) * r * 0.85, 0, s.z + Math.sin(a) * r * 0.85);
+          q.y = heightAt(q.x, q.z) + rnd(0.6, 1.4);
+          this.later(i * 0.02, () => { this.bolt(sp, q, C, { width: 0.1, jag: 0.05, branch: 0.3, dur: 0.22 }); this.burst(q, C, 8, 4, 0.12, 0.3, { white: 0.5 }); });
+        }
+        this.shockwave(s, C, r, 0.4);
+        this.light(sp, C, 40, 16, 0.3);
+        return;
+      }
+      case 'tempesta_lame': {
+        const r = sk.radius ?? 7;
+        this.decal(cen, TEX.rune, r * 2, C, 1.2, { from: r * 0.4, ease: 0.2, spin: 3 });
+        for (let w = 0; w < 2; w++) this.later(w * 0.3, () => {
+          for (let k = 0; k < 4; k++) this.slashArc(s, k % 2 ? 0xffffff : C, { sweep: TAU, radius: r * (0.35 + k * 0.2), width: 1.0 - k * 0.12, spin: 6 + k, dur: 0.4, h: 0.5 + k * 0.5, tilt: rnd(-0.22, 0.22), reverse: (k + w) % 2 === 1 });
+          for (let i = 0; i < 5; i++) this.later(i * 0.04, () => saetta(intorno(r), C, 0.2));
+          this.shockwave(cen, C, r, 0.5, 0.2 + w * 0.2);
+          this.smokePuff(cen, 0xc8d0d8, 16, 1.2, 0.8, { speed: r, up: 0.5, spread: 2 });
+          this.burst(sp, C, 50, 10, 0.15, 0.5, { flat: true, white: 0.4 });
+          this.light(V().set(cen.x, cen.y + 3, cen.z), C, 70, 22, 0.3);
+          if (near(s)) this.shake = Math.max(this.shake, 0.3);
+        });
         return;
       }
       case 'ferita_aperta':
@@ -568,14 +604,16 @@ export class VFX {
         for (let i = 0; i < 4; i++) this.later(i * 0.15, () => this.bolt(this.pos(s, rnd(1.5, 2.6)).add(V().set(rnd(-1, 1), 0, rnd(-1, 1))), this.pos(s, rnd(0, 1)).add(V().set(rnd(-1, 1), 0, rnd(-1, 1))), C, { width: 0.07, dur: 0.18 }));
         this.decal(s, TEX.rune, 4, C, 1.4, { from: 1.5, ease: 0.25, spin: 2 });
         return;
-      case 'martello_monte': case 'scossa': case 'zoccoli_tuono': case 'colpo_vuoto': case 'ascesa_drago': {
+      case 'martello_monte': case 'scossa': case 'valanga': case 'zoccoli_tuono': case 'onda_vuoto': case 'ascesa_drago': {
         const at2 = sk.type === 'strike' ? tgt : s;
         const r = sk.radius ?? 3.5;
-        const void_ = id === 'colpo_vuoto', dragon = id === 'ascesa_drago';
+        const void_ = id === 'onda_vuoto', dragon = id === 'ascesa_drago', frana = id === 'valanga' || id === 'martello_monte';
         if (void_) {
           const c = this.pos(at2, 1.1);
           for (let i = 0; i < 40; i++) { const dir = V().randomDirection().multiplyScalar(2.5); this.glow.emit(c.clone().add(dir), dir.multiplyScalar(-3.5), _c.set(0xe0f0ff), _c2.set(0x6080ff), 0.2, 0.05, 0.3, 0, 1); }
-          this.later(0.28, () => { this.flash(c, 0xc0d8ff, 2.6, 0.22); this.shockwave(at2, 0xa0c0ff, r, 0.5); this.burst(c, 0xc0d8ff, 40, 8, 0.15, 0.5); });
+          for (let i = 0; i < 3; i++) this.later(i * 0.08, () => this.shockwave(at2, 0x8098ff, r * (1 - i * 0.25), 0.3, 0.2));
+          this.decal(at2, TEX.rune, r * 2, 0x90a8ff, 1.0, { from: r * 2.6, ease: 0.3, spin: -3 });
+          this.later(0.28, () => { this.flash(c, 0xc0d8ff, 4, 0.25); this.shockwave(at2, 0xffffff, r, 0.5); this.burst(c, 0xc0d8ff, 80, 12, 0.17, 0.6, { white: 0.6 }); this.pillar(at2, 0xa0b8ff, 1.2, 10, 0.6, { taper: 0.3 }); this.light(c, 0xa0c0ff, 70, 20, 0.35); if (near(at2)) this.shake = Math.max(this.shake, 0.3); });
           return;
         }
         this.decal(at2, TEX.crack, r * 1.8, 0x000000, 3.0, { normal: true, opacity: 0.85, from: r * 0.6, ease: 0.15 });
@@ -593,7 +631,19 @@ export class VFX {
           this.swirl(at2, 0xffa040, 0.8, 120, { to: 0xff2a00, radius: 1.4, height: 4, size: 0.25 });
           this.light(this.pos(at2, 2), 0xff7a2a, 50, 18, 0.6);
         }
-        if (near(at2)) this.shake = Math.max(this.shake, dragon ? 0.3 : 0.2);
+        if (frana) {
+          // massi che cadono e colonne di polvere
+          const n = id === 'valanga' ? 12 : 4, rr = id === 'valanga' ? r : 1.6;
+          for (let i = 0; i < n; i++) this.later(rnd(0, 0.3), () => {
+            const a = Math.random() * TAU, d2 = Math.sqrt(Math.random()) * rr, q = { x: at2.x + Math.cos(a) * d2, z: at2.z + Math.sin(a) * d2 };
+            const gy = heightAt(q.x, q.z);
+            this.pillar(q, 0xb8a888, 0.5, 5, 0.5, { taper: 0.2 });
+            this.smokePuff({ x: q.x, y: gy, z: q.z }, 0x8a7a62, 5, 1.1, 0.9, { speed: 2.5, up: 1.2 });
+            this.decal({ x: q.x, y: gy, z: q.z }, TEX.crack, 2.6, 0x000000, 2.5, { normal: true, opacity: 0.8 });
+          });
+          this.light(this.pos(at2, 2), 0xffd8a0, 50, 18, 0.4);
+        }
+        if (near(at2)) this.shake = Math.max(this.shake, dragon || frana ? 0.32 : 0.2);
         return;
       }
       case 'sfida':
@@ -614,12 +664,32 @@ export class VFX {
         if (id === 'meditazione') this.lotusPetals(s, 30);
         return;
       // ---------------- Ombra
-      case 'colpo_rapido': case 'pugnalata':
+      case 'colpo_rapido': case 'agguato':
         this.slashArc(s, C, { radius: 1.4, width: 0.5, tilt: -0.6, roll: 0.6, dur: 0.16, spin: 3.2 });
         this.later(0.08, () => this.slashArc(s, C, { radius: 1.4, width: 0.5, tilt: 0.6, roll: -0.6, dur: 0.16, spin: 3.2, reverse: true }));
         this.burst(tp, C, 14, 4, 0.12, 0.3);
-        if (id === 'pugnalata') this.smokePuff(tp, 0x3a2050, 6, 0.6, 0.6, { speed: 1 });
+        if (id === 'agguato') this.smokePuff(tp, 0x3a2050, 6, 0.6, 0.6, { speed: 1 });
         return;
+      case 'taglio_netto':
+        this.slashArc(s, C, { radius: 2.0, width: 1.0, tilt: 0.1, dur: 0.2, grow: 1.15, spin: 4 });
+        this.slashArc(s, 0xffffff, { radius: 1.7, width: 0.35, tilt: 0.1, dur: 0.16, spin: 5 });
+        this.later(0.06, () => { this.burst(tp, C, 26, 6, 0.14, 0.4, { white: 0.4 }); this.flash(tp, C, 1.6, 0.14); });
+        return;
+      case 'ventaglio_veleno': {
+        const r = sk.radius ?? 6.5;
+        for (let i = 0; i < 7; i++) this.later(i * 0.035, () => {
+          const a = (i / 7) * TAU;
+          this.slashArc({ x: s.x, y: s.y, z: s.z, r: a }, i % 2 ? 0xd8ffb0 : C, { radius: r * 0.75, width: 1.1, tilt: rnd(-0.3, 0.3), dur: 0.26, grow: 1.2 });
+          const q = { x: s.x + Math.sin(a) * r * 0.7, z: s.z + Math.cos(a) * r * 0.7 };
+          this.smokePuff({ x: q.x, y: heightAt(q.x, q.z) + 0.6, z: q.z }, 0x4a9a2a, 6, 1.3, 1.4, { to: 0x1a3a10, speed: 1.6, up: 0.5 });
+          this.burst(V().set(q.x, heightAt(q.x, q.z) + 1, q.z), 0x8aff4a, 12, 4, 0.13, 0.8, { to: 0x2a6a10, grav: 5, white: 0 });
+        });
+        this.shockwave(s, C, r, 0.5);
+        this.decal(s, TEX.rune, r * 1.8, C, 1.3, { from: 2, ease: 0.2, spin: -2 });
+        this.later(0.2, () => { this.flash(sp, C, 3, 0.2); this.light(sp, C, 50, 18, 0.3); });
+        if (near(s)) this.shake = Math.max(this.shake, 0.25);
+        return;
+      }
       case 'taglio_finale':
         this.slashArc(s, C, { radius: 2.0, width: 0.9, tilt: 0.78, dur: 0.24, grow: 1.1 });
         this.slashArc(s, C, { radius: 2.0, width: 0.9, tilt: -0.78, dur: 0.24, grow: 1.1, reverse: true });
@@ -639,7 +709,8 @@ export class VFX {
       case 'danza_lame':
         for (let i = 0; i < 4; i++) this.later(i * 0.08, () => this.slashArc(s, i % 2 ? 0xffffff : C, { sweep: TAU, radius: 2.0 + i * 0.35, width: 0.45, spin: 6, dur: 0.24, h: 0.7 + i * 0.3, tilt: rnd(-0.25, 0.25), reverse: i % 2 === 1 }));
         this.burst(sp, C, 50, 8, 0.12, 0.45, { flat: true, grav: 1 });
-        this.shockwave(s, C, 3.5, 0.4);
+        this.smokePuff({ x: s.x, y: this.ground(s) + 0.5, z: s.z }, 0x4a9a2a, 14, 1.2, 1.2, { to: 0x1a3a10, speed: 4, up: 0.3, spread: 2 });
+        this.shockwave(s, C, sk.radius ?? 5, 0.4);
         return;
       case 'marchio_morte': case 'marchio_tuono': {
         const above = this.pos(tgt, (tgt.rig?.height || 2) + 0.9);
@@ -658,10 +729,22 @@ export class VFX {
         this.burst(sp, C, 10, 2, 0.1, 0.3);
         return;
       }
-      case 'pioggia_frecce': {
-        const r = sk.radius ?? 5, c = at;
+      case 'pioggia_frecce': case 'raffica_esplosiva': {
+        const r = sk.radius ?? 5, c = at, boom = id === 'raffica_esplosiva';
+        if (boom) {
+          this.arrowShot(s, tgt, C, { big: true, dur: 0.16 });
+          for (let i = 0; i < 9; i++) this.later(0.2 + i * 0.07, () => {
+            const q = i === 0 ? cen : intorno(r), g = V().set(q.x, heightAt(q.x, q.z) + 0.4, q.z);
+            this.flash(g, 0xffd080, 2.6, 0.2); this.burst(g, C, 30, 8, 0.17, 0.5, { to: 0xff2a00, white: 0.5, up: 3 });
+            this.smokePuff({ x: g.x, y: g.y, z: g.z }, 0x3a3030, 5, 1.4, 1.0, { speed: 2, up: 1.5 });
+            this.shockwave({ x: g.x, z: g.z }, C, 2.6, 0.35);
+            this.decal({ x: g.x, y: g.y - 0.4, z: g.z }, TEX.crack, 2.6, 0x120a06, 3, { normal: true, opacity: 0.8 });
+            this.light(g, 0xff9a40, 50, 14, 0.25);
+            if (near(tgt)) this.shake = Math.max(this.shake, 0.2);
+          });
+        }
         this.decal(c, TEX.rune, r * 2.2, C, 1.2, { from: r, ease: 0.2, spin: 0.6 });
-        for (let i = 0; i < 26; i++) {
+        for (let i = 0; i < (boom ? 16 : 26); i++) {
           this.later(rnd(0, 0.6), () => {
             const a = Math.random() * TAU, d = Math.sqrt(Math.random()) * r;
             const g = { x: c.x + Math.cos(a) * d, z: c.z + Math.sin(a) * d };
@@ -694,15 +777,33 @@ export class VFX {
         this.swirl(s, 0xfff0d0, 0.4, 40, { radius: 1.6, height: 1, size: 0.14 });
         this.shockwave(s, C, 3, 0.4);
         return;
-      case 'palmo_chi': case 'dardo_luce': case 'onda_chi': case 'fiore_loto': case 'vortice_interiore': {
-        const lotus = id === 'fiore_loto';
-        const big = id === 'onda_chi' || id === 'vortice_interiore';
-        this.projectile(s, tgt, C, { size: big ? 0.8 : 0.55, trail: big ? 10 : 6, trailTo: lotus ? 0xff80c0 : id === 'dardo_luce' ? 0xffffff : 0xff5a10, dur: 0.3, trailPool: lotus ? this.petals : this.glow }, () => {
+      case 'lancia_luce': {
+        const a = this.pos(s, 1.5), b = this.pos(tgt, 1.1), dir = b.clone().sub(a).normalize();
+        this.bolt(a, b.clone().add(dir.clone().multiplyScalar(2.5)), 0xffffff, { width: 0.22, jag: 0.006, branch: 0, dur: 0.22 });
+        this.bolt(a, b, C, { width: 0.4, jag: 0.01, branch: 0, dur: 0.3 });
+        this.flash(b, C, 2.4, 0.18);
+        this.verticalRing(b, C, 1.3, 0.28, dir.clone().negate());
+        this.burst(b, C, 34, 7, 0.15, 0.45, { white: 0.6 });
+        this.light(b, C, 40, 14, 0.25);
+        return;
+      }
+      case 'palmo_chi': case 'dardo_luce': case 'sfera_celeste': case 'onda_chi': case 'mille_petali': case 'vortice_interiore': {
+        const mille = id === 'mille_petali';
+        const lotus = id === 'onda_chi' || mille;
+        const big = id === 'onda_chi' || id === 'vortice_interiore' || id === 'sfera_celeste' || mille;
+        this.projectile(s, tgt, C, { size: big ? 0.8 : 0.55, trail: big ? 10 : 6, trailTo: lotus ? 0xff80c0 : id === 'dardo_luce' || id === 'sfera_celeste' ? 0xffffff : 0xff5a10, dur: 0.3, trailPool: lotus ? this.petals : this.glow }, () => {
           const p = this.pos(at || tgt, 1.1);
           this.flash(p, C, big ? 2.4 : 1.4, 0.18);
           this.burst(p, C, big ? 50 : 24, big ? 7 : 4.5, 0.16, 0.5, { white: 0.4 });
           if (sk.radius) { this.shockwave(at || tgt, C, sk.radius, 0.5); this.decal(at || tgt, TEX.rune, sk.radius * 2, C, 0.9, { from: 1, ease: 0.2 }); }
-          if (lotus) this.lotusPetals(tgt, 26);
+          if (lotus) this.lotusPetals(at || tgt, mille ? 70 : 26);
+          if (mille) {
+            const c2 = at || tgt, r = sk.radius ?? 6;
+            this.pillar(c2, C, 1.8, 12, 0.9, { taper: 0.5, scroll: 3 });
+            for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU; this.later(0.05 + i * 0.03, () => { const q = V().set(c2.x + Math.cos(a) * r * 0.7, heightAt(c2.x + Math.cos(a) * r * 0.7, c2.z + Math.sin(a) * r * 0.7) + 0.8, c2.z + Math.sin(a) * r * 0.7); this.flash(q, 0xffc0e0, 1.8, 0.2); this.burst(q, C, 18, 5, 0.15, 0.6, { white: 0.5, up: 2 }); }); }
+            this.later(0.25, () => this.shockwave(c2, 0xffffff, r, 0.5));
+            if (near(tgt)) this.shake = Math.max(this.shake, 0.28);
+          }
           if (id === 'vortice_interiore') this.swirl(tgt, C, 0.6, 60, { radius: 1.2 });
           this.light(p, C, 25, 10, 0.3);
         });
@@ -728,6 +829,19 @@ export class VFX {
         this.burst(this.pos(tgt, 0.3), C, 50, 8, 0.15, 0.55, { white: 0.5 });
         this.decal(tgt, TEX.crack, 3.5, 0x111111, 3, { normal: true, opacity: 0.8 });
         if (near(tgt)) this.shake = Math.max(this.shake, 0.22);
+        return;
+      }
+      case 'diluvio_folgori': {
+        const r = sk.radius ?? 7;
+        this.smokePuff({ x: cen.x, y: cen.y + 16, z: cen.z }, 0x2a3040, 30, 5, 1.8, { speed: 2, up: 0, grav: 0, spread: 4 });
+        this.decal(cen, TEX.rune, r * 2.2, C, 1.6, { from: r * 2.6, ease: 0.25, spin: -1.6 });
+        this.pillar(cen, C, 1.4, 22, 1.1, { taper: 0.7, scroll: 4 });
+        saetta(cen, 0xffffff, 0.5);
+        for (let i = 0; i < 14; i++) this.later(0.06 + i * 0.05, () => saetta(intorno(r), i % 3 ? C : 0xffffff, 0.26));
+        this.shockwave(cen, C, r, 0.6, 0.2);
+        this.later(0.35, () => this.shockwave(cen, 0xffffff, r, 0.5, 0.3));
+        this.light(V().set(cen.x, cen.y + 4, cen.z), C, 110, 28, 0.8);
+        if (near(tgt)) this.shake = Math.max(this.shake, 0.35);
         return;
       }
       case 'tempesta_saette': {

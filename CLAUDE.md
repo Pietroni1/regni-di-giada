@@ -79,7 +79,7 @@ Obiettivo dell'autore: aspetto alla WoW, cioè corpo base + capi separati che ca
   `buildPlayerModel` (`models.js`) decide `wear`: veste e pantaloni dai colori della classe, armatura dal grado del pezzo
   `body` (fascia nel colore del regno), stivali dal pezzo `feet` (il server ora manda anche `f` nelle info del giocatore).
 - In `indice.json` una classe può avere un elenco di modelli (`["base_uomo", "base_donna"]`): per ora sceglie in base
-  al nome del personaggio. **Da fare**: scelta uomo/donna alla creazione, salvata dal server.
+  al sesso scelto alla creazione (salvato dal server).
 - `base_uomo` / `base_donna` sono i manichini Y Bot / X Bot di Mixamo: **provvisori**, non originali e non nello stile
   del gioco; vanno sostituiti con due corpi base originali (stesso nome di file, stesso scheletro).
 - Da fare: capelli e volti, vesti delle classi con forma propria (hakama, maniche larghe) al posto dei gusci aderenti,
@@ -104,12 +104,22 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   Verificata dai numeri del server solo sulla Lama (4 ondate, barra azzerata, secondo lancio rifiutato).
   **Da verificare**: effetti a vista di tutte e 4, e Ombra/Monaco/Mistico in gioco (personaggi di prova Ombrina,
   Monachino, Mistichino già creati sull'account `admin` del database di prova).
-- **Richiesta dell'autore ancora da fare**: ogni classe con 2 tecniche che accumulano risorsa e 4 che la spendono, di
-  natura diversa (bersaglio singolo e ad area), 2 di media potenza e 2 potenti, col costo che cresce con la potenza.
-- Da fare dopo: **Postura** di élite e boss, taratura per classe e curva di sblocco per livello.
+- Fase 3 fatta: **kit «2 accumuli + 4 scarichi»** per ogni Via (campo `ruolo` in `SKILLS`: `accumulo`, `medio`, `potente`).
+  Di base: 2 accumuli (livello 1, gratuiti, generano risorsa/punti) e lo scarico medio singolo (livello 3). Dalla Via: scarico
+  medio ad area (5), supporto (7), scarico potente singolo (9), scarico potente ad area (12), supporto (15), Suprema (15).
+  Costi: medio 30-40, potente 45-60 (Mana 4-5% e 7-9%); per Ombra, Monaco e Mistico i potenti consumano anche tutti i punti.
+  Energia e Chi rigenerano solo 7/s: senza accumuli non si regge il ritmo. `DATA_VERSION = 4` azzera abilità e barra rapida.
+  Mistico: accumuli con tempo di lancio, scarichi istantanei; la Benedizione ha cure al posto dei danni (`spendBonus`).
+  Motore: i `dot` valgono anche per le tecniche ad area, `waves` anche fuori dalle Supreme, passivo `chainHeal` (Loto).
+  Client: ruolo nel tooltip e nella finestra Abilità, tacca colorata sotto i tasti della barra (verde/oro/rosso).
+- **Postura** di élite e boss: fatta (`shared/postura.js`, `colpisciPostura`/`tickPostura` nel server, barre nel client).
+- Simulazione senza browser (un bot per Via su fantocci, 40 s): circa 190-280 danni al secondo al livello 30 per tutte le Vie;
+  barra Suprema piena in 45-55 s. È un bot ingenuo: la taratura fine va fatta giocando.
+- Da fare: taratura giocando (soprattutto cure e difensore), effetti a vista da ricontrollare su PC con GPU.
 
 ## Altri passi grafici in sospeso
-- Luce da HDRI, occlusione ambientale (GTAO), ombre più morbide, correzione colore, normal map.
+- Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.
+- Luce da HDRI, ombre più morbide, normal map.
 - Edifici più dettagliati (modelli importati o Blender), texture del mondo dipinte da strumenti AI.
 
 ## Verifiche

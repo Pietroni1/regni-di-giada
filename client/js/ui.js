@@ -494,6 +494,7 @@ export class UI {
           html = `<div style="position:absolute;inset:2px;background:conic-gradient(#00000090 ${p * 360}deg, transparent 0)"></div>`;
         }
         state = g.skillState(q.id);
+        if (sk.ruolo) state += ' r-' + sk.ruolo; else if (sk.sup) state += ' r-suprema';
         if (g.queued === q.id) state += ' queued';
       }
       if (cool.dataset.h !== html) { cool.innerHTML = html; cool.dataset.h = html; }
@@ -581,7 +582,7 @@ export class UI {
       const canUp = lvl > 0 && ((lvl < SKILL_MAX_POINTS && me.kp > 0) || (lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX && tomes > 0));
       const meta = [sk.cost ? `${sk.cost}${c.res === 'mana' ? '% Mana' : ' ' + RESOURCES[c.res].name}` : '', sk.cast ? sk.cast + ' s' : '', sk.cd ? 'ric. ' + sk.cd + ' s' : '', sk.offgcd ? 'fuori GCD' : ''].filter(Boolean).join(' · ');
       return `<div class="skill-row ${lvl ? '' : 'locked'}"><div class="slot" ${lvl > 0 ? `data-skill="${sid}"` : ''} data-skill-info="${sid}">${skillIconHtml(sid, lvl <= 0)}</div>
-        <div class="si" data-skill-info="${sid}"><div class="sn">${esc(sk.name)}</div><div class="sl">${lvl ? `Livello ${lvl}/${SKILL_MAX}${lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX ? ' — serve un tomo' : ''}` : `Si sblocca al livello ${sk.lvl}`}</div><div class="meta">${meta}</div></div>
+        <div class="si" data-skill-info="${sid}"><div class="sn">${esc(sk.name)}${sk.ruolo ? ` <small style="font-weight:normal;color:${sk.ruolo === 'accumulo' ? '#7fd07f' : sk.ruolo === 'medio' ? '#ffc860' : '#ff7a4a'}">· ${sk.ruolo === 'accumulo' ? 'accumulo' : 'scarico ' + sk.ruolo}</small>` : ''}</div><div class="sl">${lvl ? `Livello ${lvl}/${SKILL_MAX}${lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX ? ' — serve un tomo' : ''}` : `Si sblocca al livello ${sk.lvl}`}</div><div class="meta">${meta}</div></div>
         <button class="btn plus" data-up="${sid}" ${canUp ? '' : 'disabled'}>+</button></div>`;
     };
     let html = `<div class="pts">Punti abilità: ${me.kp}${tomes ? ` — Tomi della Tecnica: ${tomes}` : ''}</div>`;

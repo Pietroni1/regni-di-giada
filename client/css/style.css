@@ -261,6 +261,11 @@ label input { margin-top: 4px; }
 .slot.qb.unusable .icon { filter: grayscale(0.8) brightness(0.45); }
 .slot.qb.proc { border-color: #ffe08a; box-shadow: 0 0 10px #ffd060, inset 0 0 6px #ffd060; animation: procPulse 0.6s ease-in-out infinite alternate; }
 .slot.qb.queued { border-color: #9ad8ff; }
+/* ruolo della tecnica: una tacca colorata sotto il tasto (verde accumulo, oro scarico medio, rosso scarico potente) */
+.slot.qb.r-accumulo::after, .slot.qb.r-medio::after, .slot.qb.r-potente::after { content: ''; position: absolute; left: 3px; right: 3px; bottom: -5px; height: 3px; border-radius: 2px; pointer-events: none; }
+.slot.qb.r-accumulo::after { background: #7fd07f; }
+.slot.qb.r-medio::after { background: #ffc860; }
+.slot.qb.r-potente::after { background: #ff7a4a; box-shadow: 0 0 6px #ff7a4a; }
 #dps-body { width: 330px; font-size: 15px; }
 #dps-body .head { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; text-align: center; margin-bottom: 8px; }
 #dps-body .head b { display: block; font-size: 20px; color: #ffe08a; }

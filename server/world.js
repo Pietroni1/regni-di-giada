@@ -1306,12 +1306,12 @@ export class World {
         break;
       }
       case 'aoe_self':
-        for (const e of this.hostilesAround(p, p.x, p.z, sk.radius)) { strikeOne(e); control(e); }
+        for (const e of this.hostilesAround(p, p.x, p.z, sk.radius)) { strikeOne(e); control(e); if (sk.dot && this.canAttack(p, e)) this.applyDot(p, e, sk, lvl, n, base, pctFor(e)); }
         fxd.x = r1(p.x); fxd.z = r1(p.z); offensive = true;
         break;
       case 'aoe_target': {
         const cx = target.x, cz = target.z;
-        for (const e of this.hostilesAround(p, cx, cz, sk.radius)) { strikeOne(e); control(e); }
+        for (const e of this.hostilesAround(p, cx, cz, sk.radius)) { strikeOne(e); control(e); if (sk.dot && this.canAttack(p, e)) this.applyDot(p, e, sk, lvl, n, base, pctFor(e)); }
         fxd.d = target.id; fxd.x = r1(cx); fxd.z = r1(cz); offensive = true;
         break;
       }
@@ -1364,12 +1364,15 @@ export class World {
         target.hots.push({ amt: target.maxHp * skillVal(sk.heal, lvl) * (1 + p.healPct / 100), until: t + sk.dur * 1000, next: t + 1000 });
         fxd.d = target.id;
         break;
-      case 'shield':
-        target.shield = Math.round(p.matk * skillVal(sk.shield, lvl) * (1 + p.healPct / 100));
+      case 'shield': {
+        let extra = 0;
+        if (sk.spendBonus && p.pts > 0) { extra = p.pts * sk.spendBonus; p.pts = 0; }
+        target.shield = Math.round(p.matk * skillVal(sk.shield, lvl) * (1 + (p.healPct + extra) / 100));
         target.shieldUntil = t + 15000;
         target.selfDirty = true;
         fxd.d = target.id;
         break;
+      }
     }
     if (sk.waves > 1 && offensive) {
       const cx = sk.type === 'aoe_self' ? p.x : target.x, cz = sk.type === 'aoe_self' ? p.z : target.z;
@@ -1411,6 +1414,8 @@ export class World {
       p.pts = Math.min(PTS_MAX, p.pts + 2);
       const pr = p.ch.via && VIE[p.ch.via].passive.chainRes;
       if (pr) p.res = Math.min(p.rmax, p.res + pr);
+      const ph = p.ch.via && VIE[p.ch.via].passive.chainHeal;
+      if (ph) this.heal(p, p.maxHp * ph / 100);
       this.addBuff(p, c.chainBuff, 1, true);
     }
   }
