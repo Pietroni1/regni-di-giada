@@ -136,6 +136,9 @@ func _costruisci() -> void:
 			var c: Color = [Color(0.9, 0.9, 0.85), Color(0.4, 0.9, 0.4), Color(0.4, 0.6, 1.0), Color(0.8, 0.4, 1.0), Color(1.0, 0.7, 0.2)][clampi(rar, 0, 4)]
 			var cassa := Edifici.scatola(Vector3(0.36, 0.36, 0.36), Vector3(0, 0.3, 0), Edifici.mat(c, 0.5, 0.0, 1.5), corpo)
 			cassa.rotation = Vector3(0.6, 0.8, 0)
+			# colonna di luce del colore della rarità, per vedere il bottino da lontano
+			var raggio := Edifici.cilindro(0.03, 0.06, 3.2 + rar * 0.8, Vector3(0, 1.8 + rar * 0.4, 0), Edifici.mat(c, 0.5, 0.0, 3.0 + rar), corpo, 6)
+			raggio.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			corpo.altezza = 0.8
 	if corpo != null:
 		add_child(corpo)

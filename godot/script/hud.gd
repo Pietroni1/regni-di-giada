@@ -39,6 +39,14 @@ var riq_invito: PanelContainer
 var txt_invito: Label
 var bott_invita: Button
 var _firma_gruppo := ""
+var riq_effetti: HBoxContainer
+var riq_effetti_b: HBoxContainer
+var esperienza: ProgressBar
+var esperienza_txt: Label
+var bott_qui: Button
+var bott_villaggio: Button
+var _firma_effetti := ""
+var _firma_effetti_b := ""
 var numeri: Array = []          # numeri di danno che salgono: {p: Vector3, t: String, c: Color, eta: float, g: float}
 var _avviso_t := 0.0
 
@@ -141,10 +149,14 @@ func _ready() -> void:
 	suprema.max_value = 100
 	v.add_child(suprema)
 	_scritta_su(suprema).text = "Tecnica Suprema  [V]"
+	riq_effetti = HBoxContainer.new()
+	riq_effetti.add_theme_constant_override("separation", 3)
+	riq_effetti.custom_minimum_size = Vector2(0, 30)
+	v.add_child(riq_effetti)
 
 	# --- gruppo (sotto il riquadro del giocatore)
 	riq_gruppo = VBoxContainer.new()
-	riq_gruppo.position = Vector2(16, 170)
+	riq_gruppo.position = Vector2(16, 206)
 	riq_gruppo.custom_minimum_size = Vector2(210, 0)
 	riq_gruppo.add_theme_constant_override("separation", 4)
 	radice.add_child(riq_gruppo)
@@ -211,6 +223,10 @@ func _ready() -> void:
 	postura_b = _barra(Color(0.92, 0.82, 0.45), 8)
 	postura_b.max_value = 100
 	vb.add_child(postura_b)
+	riq_effetti_b = HBoxContainer.new()
+	riq_effetti_b.add_theme_constant_override("separation", 3)
+	riq_effetti_b.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_child(riq_effetti_b)
 	bott_invita = Button.new()
 	bott_invita.text = "Invita nel gruppo"
 	bott_invita.pressed.connect(func() -> void:
@@ -233,11 +249,20 @@ func _ready() -> void:
 		barra.add_child(t)
 		tasti.append(t)
 
+	# --- esperienza (striscia sopra la barra rapida)
+	esperienza = _barra(Color(0.55, 0.4, 0.85), 9)
+	esperienza.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	esperienza.custom_minimum_size = Vector2(634, 9)
+	esperienza.position = Vector2(-317, -92)
+	radice.add_child(esperienza)
+	esperienza_txt = _scritta_su(esperienza)
+	esperienza_txt.add_theme_font_size_override("font_size", 9)
+
 	# --- barra del lancio
 	lancio = _barra(Color(0.55, 0.75, 0.95), 16)
 	lancio.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	lancio.custom_minimum_size = Vector2(280, 16)
-	lancio.position = Vector2(-140, -120)
+	lancio.position = Vector2(-140, -130)
 	lancio.visible = false
 	radice.add_child(lancio)
 	lancio_txt = _scritta_su(lancio)
@@ -295,10 +320,12 @@ func _ready() -> void:
 	lm.text = "Sei caduto in battaglia"
 	lm.add_theme_font_size_override("font_size", 24)
 	vm.add_child(lm)
-	var bm := Button.new()
-	bm.text = "Rinasci al villaggio"
-	bm.pressed.connect(func() -> void: Rete.manda({"t": "respawn", "mode": "town"}))
-	vm.add_child(bm)
+	bott_qui = Button.new()
+	bott_qui.pressed.connect(func() -> void: Rete.manda({"t": "respawn", "mode": "here"}))
+	vm.add_child(bott_qui)
+	bott_villaggio = Button.new()
+	bott_villaggio.pressed.connect(func() -> void: Rete.manda({"t": "respawn", "mode": "town"}))
+	vm.add_child(bott_villaggio)
 
 
 func chat_attiva() -> bool:
@@ -400,7 +427,78 @@ func _aggiorna_prova() -> void:
 	txt_prova.text = "\n".join(PackedStringArray(righe))
 
 
+## Riga di icone degli effetti: voci = [{ id, glifo, nome, desc, fine (ms), colore }]
+func _riempi_effetti(riga: HBoxContainer, voci: Array, firma_vecchia: String) -> String:
+	var firma := ""
+	for v in voci:
+		firma += String(v.id) + ","
+	if firma != firma_vecchia:
+		for c in riga.get_children():
+			c.queue_free()
+		for v in voci:
+			var ic := Icona.new()
+			ic.glifo = String(v.glifo)
+			ic.colore = v.colore
+			ic.tooltip_text = "%s\n%s" % [v.nome, v.desc] if not String(v.desc).is_empty() else String(v.nome)
+			ic.set_meta("id", v.id)
+			riga.add_child(ic)
+	var ora := gioco.ora() as float
+	var i := 0
+	for c in riga.get_children():
+		if c.is_queued_for_deletion():
+			continue
+		if i < voci.size():
+			(c as Icona).secondi = maxf(0.0, (float(voci[i].fine) - ora) / 1000.0)
+			c.queue_redraw()
+		i += 1
+	return firma
+
+
+func _aggiorna_effetti() -> void:
+	var ora := gioco.ora() as float
+	# su di me: potenziamenti comunicati dal server con `me.buffs`
+	var miei: Array = []
+	var base := float(gioco.io.get("_t", ora))
+	for b in gioco.io.get("buffs", []):
+		var d: Dictionary = Dati.BUFFS.get(String(b.b), {})
+		var fine := base + float(b.ms)
+		if d.is_empty() or fine <= ora:
+			continue
+		miei.append({"id": b.b, "glifo": d.get("glyph", "?"), "nome": d.get("name", b.b), "desc": d.get("desc", ""), "fine": fine, "colore": Color(1.0, 0.85, 0.4) if d.get("proc", false) else Color(0.6, 0.9, 1.0)})
+	_firma_effetti = _riempi_effetti(riq_effetti, miei, _firma_effetti)
+	# sul bersaglio: quello che gli ho messo io (ferite, veleni, marchi), più stordimento e Squilibrio
+	var suoi: Array = []
+	if gioco.bersaglio != null and gioco.effetti_bersagli.has(gioco.bersaglio.id):
+		var e: Dictionary = gioco.effetti_bersagli[gioco.bersaglio.id]
+		for nome in e.keys():
+			if float(e[nome]) <= ora:
+				e.erase(nome)
+				continue
+			var voce := {"id": nome, "glifo": "?", "nome": nome, "desc": "", "fine": e[nome], "colore": Color(1.0, 0.5, 0.4)}
+			if nome == "__stordito":
+				voce.glifo = "眩"
+				voce.nome = "Stordito"
+				voce.colore = Color(1.0, 1.0, 0.5)
+			elif nome == "__squilibrato":
+				voce.glifo = "崩"
+				voce.nome = "Squilibrato"
+				voce.desc = "Stordito e subisce più danni da chiunque."
+				voce.colore = Color(1.0, 0.85, 0.3)
+			elif Dati.SKILLS.has(nome):
+				voce.glifo = Dati.SKILLS[nome].get("glyph", "?")
+				voce.nome = Dati.SKILLS[nome].name
+				voce.colore = Dati.colore(Dati.SKILLS[nome].get("color", 0xff8060))
+			elif Dati.BUFFS.has(nome):
+				voce.glifo = Dati.BUFFS[nome].get("glyph", "?")
+				voce.nome = Dati.BUFFS[nome].get("name", nome)
+				voce.desc = Dati.BUFFS[nome].get("desc", "")
+			suoi.append(voce)
+	_firma_effetti_b = _riempi_effetti(riq_effetti_b, suoi, _firma_effetti_b)
+
+
 func avvisa(testo: String, errore := false) -> void:
+	if errore:
+		Suoni.suona("errore", -12.0)
 	avviso.text = testo
 	avviso.add_theme_color_override("font_color", Color(1.0, 0.5, 0.4) if errore else Color(1.0, 0.9, 0.6))
 	avviso.modulate.a = 1.0
@@ -408,6 +506,8 @@ func avvisa(testo: String, errore := false) -> void:
 
 
 func numero(pos: Vector3, testo: String, colore: Color, grande := 1.0) -> void:
+	if not Impostazioni.numeri_danno:
+		return
 	# i numeri recenti sullo stesso punto si scalano di lato, così non si coprono
 	var vicini := 0
 	for n in numeri:
@@ -424,6 +524,11 @@ func aggiorna_io(io: Dictionary, nome: String) -> void:
 	vita.max_value = float(io.get("mhp", 1))
 	vita.value = float(io.get("hp", 0))
 	vita_txt.text = "%d / %d" % [int(io.get("hp", 0)), int(io.get("mhp", 1))]
+	if int(io.get("shield", 0)) > 0:
+		vita_txt.text += "   (scudo %d)" % int(io.shield)
+	esperienza.max_value = maxf(1.0, float(io.get("need", 1)))
+	esperienza.value = float(io.get("exp", 0))
+	esperienza_txt.text = "Esperienza %d%%" % int(float(io.get("exp", 0)) / maxf(1.0, float(io.get("need", 1))) * 100.0)
 	var rt := String(io.get("rt", "ira"))
 	var R: Dictionary = Dati.RESOURCES.get(rt, {})
 	risorsa.max_value = float(io.get("rmax", 100))
@@ -435,6 +540,8 @@ func aggiorna_io(io: Dictionary, nome: String) -> void:
 		var n := int(io.get("pts", 0))
 		var g := String(cls.pts.glyph)
 		punti.text = g.repeat(n)
+		if int(io.get("chain", 0)) > 0:
+			punti.text += "   sequenza %d/3" % int(io.chain)
 		punti.tooltip_text = String(cls.pts.name)
 		punti.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35) if n >= int(Dati.costanti.PTS_MAX) else Color(0.9, 0.9, 0.9))
 	else:
@@ -472,6 +579,13 @@ func _process(dt: float) -> void:
 		bott_invita.visible = b.tipo == "p" and String(b.info.get("kd", "")) == gioco.regno
 	_aggiorna_gruppo()
 	_aggiorna_prova()
+	_aggiorna_effetti()
+	if morte.visible:
+		var da: float = (gioco.ora() - gioco.morto_da) / 1000.0
+		bott_qui.disabled = da < 8.0
+		bott_qui.text = "Rinasci qui con metà vita" if da >= 8.0 else "Rinasci qui (fra %d s)" % int(ceil(8.0 - da))
+		bott_villaggio.disabled = da < 3.0
+		bott_villaggio.text = ("Torna all'ingresso della Prova" if not gioco.prova.is_empty() else "Torna al villaggio") if da >= 3.0 else "Torna al villaggio (fra %d s)" % int(ceil(3.0 - da))
 	# ricariche
 	var ora := Time.get_ticks_msec()
 	for t in tasti:
@@ -651,10 +765,47 @@ class Tasto:
 			secondi = s
 			queue_redraw()
 
+	var _giu := false
+
 	func _gui_input(ev: InputEvent) -> void:
-		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-			premuto.emit(indice)
-			accept_event()
+		if ev is InputEventMouseButton:
+			if ev.button_index == MOUSE_BUTTON_LEFT:
+				# si attiva al rilascio, così tenendo premuto si può trascinare il tasto altrove
+				if ev.pressed:
+					_giu = true
+				elif _giu:
+					_giu = false
+					if Rect2(Vector2.ZERO, size).has_point(ev.position):
+						premuto.emit(indice)
+				accept_event()
+			elif ev.button_index == MOUSE_BUTTON_RIGHT and ev.pressed and voce != null:
+				Rete.manda({"t": "qb", "i": indice, "v": null})
+				accept_event()
+
+	func _get_drag_data(_p: Vector2) -> Variant:
+		_giu = false
+		if not (voce is Dictionary):
+			return null
+		var l := Label.new()
+		l.text = glifo
+		l.add_theme_font_size_override("font_size", 28)
+		set_drag_preview(l)
+		return {"tipo": "tasto", "i": indice, "v": voce}
+
+	func _can_drop_data(_p: Vector2, d: Variant) -> bool:
+		return d is Dictionary and String(d.get("tipo", "")) in ["tasto", "tec", "ogg"]
+
+	func _drop_data(_p: Vector2, d: Variant) -> void:
+		match String(d.tipo):
+			"tec":
+				Rete.manda({"t": "qb", "i": indice, "v": {"k": "s", "id": d.id}})
+			"ogg":
+				Rete.manda({"t": "qb", "i": indice, "v": {"k": "i", "id": d.id}})
+			"tasto":
+				if int(d.i) != indice:
+					Rete.manda({"t": "qb", "i": int(d.i), "v": voce})
+					Rete.manda({"t": "qb", "i": indice, "v": d.v})
+		Suoni.suona("clic", -10.0)
 
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
@@ -674,3 +825,26 @@ class Tasto:
 		draw_string(f, Vector2(5, 14), str((indice + 1) % 10), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.8, 0.8, 0.75))
 		if Hud.RUOLI.has(ruolo):
 			draw_rect(Rect2(8, size.y - 6, size.x - 16, 3), Hud.RUOLI[ruolo])
+
+
+# ------------------------------------------------------------------ icona di un effetto attivo
+class Icona:
+	extends Control
+	var glifo := "?"
+	var colore := Color.WHITE
+	var secondi := 0.0
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(30, 30)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+
+	func _draw() -> void:
+		draw_style_box(Hud.stile(Color(0.05, 0.05, 0.05, 0.9), colore.darkened(0.2), 4, 2), Rect2(Vector2.ZERO, size))
+		var f := ThemeDB.fallback_font
+		var larg := f.get_string_size(glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+		draw_string(f, Vector2((size.x - larg) * 0.5, 19), glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, colore)
+		if secondi > 0.0:
+			var t := str(int(ceil(secondi)))
+			var lt := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
+			draw_string_outline(f, Vector2(size.x - lt - 2, size.y - 2), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, 3, Color.BLACK)
+			draw_string(f, Vector2(size.x - lt - 2, size.y - 2), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.WHITE)

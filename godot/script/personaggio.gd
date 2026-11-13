@@ -364,7 +364,7 @@ func _impugna(osso: String) -> Node3D:
 	var presa := Node3D.new()
 	# le ossa della mano di Mixamo hanno +y lungo le dita: l'arma esce dal palmo, perpendicolare alle dita
 	presa.position = Vector3(0, 0.09, 0.03)
-	presa.rotation = Vector3(PI * 0.5, 0, 0)
+	presa.rotation = Vector3(-PI * 0.5, 0, 0)
 	ba.add_child(presa)
 	return presa
 

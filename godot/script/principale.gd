@@ -19,6 +19,7 @@ var scelta_regno: OptionButton
 var scelta_sesso: OptionButton
 var _registra := false
 var _arg: Dictionary = {}
+var messaggio_iniziale := ""
 
 
 func _ready() -> void:
@@ -30,6 +31,9 @@ func _ready() -> void:
 	Rete.chiusa.connect(_disconnesso)
 	Rete.su("auth_err", func(m: Dictionary) -> void: messaggio.text = String(m.get("m", "")))
 	Rete.su("auth_ok", func(_m: Dictionary) -> void:
+		Impostazioni.server = campo_server.text.strip_edges()
+		Impostazioni.utente = campo_utente.text.strip_edges()
+		Impostazioni.salva()
 		riq_accesso.visible = false
 		riq_scelta.visible = true
 		messaggio.text = "")
@@ -61,6 +65,8 @@ func _interfaccia() -> void:
 	centro.add_child(col)
 	var titolo := Label.new()
 	titolo.text = "Regni di Giada"
+	if _arg.has("errore"):
+		messaggio_iniziale = String(_arg.errore)
 	titolo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	titolo.add_theme_font_size_override("font_size", 44)
 	titolo.add_theme_color_override("font_color", Hud.ORO)
@@ -72,8 +78,8 @@ func _interfaccia() -> void:
 
 	riq_accesso = VBoxContainer.new()
 	col.add_child(riq_accesso)
-	campo_server = _campo(riq_accesso, "Server", "localhost:3000")
-	campo_utente = _campo(riq_accesso, "Account", "")
+	campo_server = _campo(riq_accesso, "Server (chi ospita la partita: localhost:3000 sul suo PC, altrimenti il suo indirizzo)", Impostazioni.server)
+	campo_utente = _campo(riq_accesso, "Account", Impostazioni.utente)
 	campo_pass = _campo(riq_accesso, "Password", "")
 	campo_pass.secret = true
 	campo_pass.text_submitted.connect(func(_t: String) -> void: _accedi(false))
@@ -144,7 +150,7 @@ func _connesso() -> void:
 
 
 func _disconnesso() -> void:
-	messaggio.text = "Connessione al server non riuscita o interrotta."
+	messaggio.text = "Il server %s non risponde. È avviato? (npm.cmd start sul PC di chi ospita)" % campo_server.text
 	if gioco != null:
 		gioco.queue_free()
 		gioco = null

@@ -204,7 +204,7 @@ func _villaggio(kid: String) -> void:
 
 	# stendardi del regno ai lati della piazza
 	for sx in [-1.0, 1.0]:
-		var asta := Edifici.cilindro(0.07, 0.09, 6.0, Vector3(sx * 7.5, 3.0, 31.0), Edifici.mat(Edifici.LEGNO, 0.8), radice, 8)
+		var asta := Edifici.cilindro(0.07, 0.09, 6.0, Vector3(sx * 10.5, 3.0, 36.5), Edifici.mat(Edifici.LEGNO, 0.8), radice, 8)
 		Edifici.scatola(Vector3(0.9, 2.6, 0.04), Vector3(0.52, 1.5, 0), Edifici.mat(accento, 0.85), asta)
 
 

@@ -7,3 +7,4 @@ screenshots/
 *.blend1
 __pycache__/
 .claude/worktrees/
+esporta/

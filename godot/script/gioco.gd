@@ -40,6 +40,12 @@ var _fermo_immagine := 0.0
 var cripta: Cripta = null
 var prova: Dictionary = {}         # ultimo stato della Prova del Sigillo (messaggio `dg`)
 var gruppo: Dictionary = {}        # ultimo messaggio `party`
+var effetti_bersagli: Dictionary = {}   # id → { nome effetto: millisecondi di fine } (ferite, veleni, marchi, stordimenti)
+var coda: Dictionary = {}          # tecnica premuta poco prima che fosse pronta: { sid, quando }
+var morto_da := 0.0
+var _alberi_vicini: Array = []
+var _alberi_t := 0.0
+var _passo_t := 0.0
 var _amb_fuori: Environment = null
 var _amb_cripta: Environment = null
 var _dentro := false
@@ -70,7 +76,7 @@ func _ready() -> void:
 	anello_bersaglio.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	anello_bersaglio.visible = false
 	add_child(anello_bersaglio)
-	for t_msg in ["me", "r", "v", "fx", "cd", "cast", "castend", "pos", "dead", "sys", "chat", "notice", "err", "inv", "st", "gain", "kicked", "dg_start", "dg", "dg_end", "dg_reward", "party", "pinv"]:
+	for t_msg in ["me", "r", "v", "fx", "cd", "cast", "castend", "pos", "dead", "sys", "chat", "notice", "err", "inv", "st", "gain", "kicked", "dg_start", "dg", "dg_end", "dg_reward", "party", "pinv", "dot"]:
 		Rete.su(t_msg, Callable(self, "_su_" + t_msg))
 
 
@@ -112,6 +118,7 @@ func nome_zona() -> String:
 # ------------------------------------------------------------------ messaggi dal server
 func _su_me(m: Dictionary) -> void:
 	io = m
+	io["_t"] = ora()
 	if me != null:
 		me.hp = float(m.hp)
 		me.mhp = float(m.mhp)
@@ -203,7 +210,13 @@ func _su_fx(m: Dictionary) -> void:
 				colore = Color(0.75, 0.9, 0.45) if mio else Color(0.7, 0.7, 0.7)
 			if mio or d == me or v > 0:
 				hud.numero(d.testa(), str(v) + ("!" if critico else ""), colore, 1.35 if critico else (0.8 if int(m.get("dot", 0)) == 1 else 1.0))
+			if d == me and bersaglio == null and ostile(s):
+				bersaglio = s
 			if int(m.get("dot", 0)) != 1:
+				if mio:
+					Suoni.suona("critico" if critico else "colpo", -2.0 if critico else -6.0)
+				elif d == me:
+					Suoni.suona("subito", -5.0)
 				fx.colpo(d, critico)
 				if d.corpo != null and d != me:
 					d.corpo.colpito()
@@ -229,6 +242,7 @@ func _su_fx(m: Dictionary) -> void:
 				else:
 					s.corpo.lancia()
 			fx.tecnica(sk, s, d, m)
+			_suono_tecnica(sk, s == me)
 			if s == me:
 				var forte: bool = String(sk.get("ruolo", "")) == "potente" or sk.get("sup", false)
 				if forte:
@@ -236,6 +250,8 @@ func _su_fx(m: Dictionary) -> void:
 		"heal":
 			if d != null and int(m.get("v", 0)) > 0 and int(m.get("q", 0)) != 1:
 				hud.numero(d.testa(), "+" + str(int(m.v)), Color(0.4, 1.0, 0.5))
+				if d == me:
+					Suoni.suona("cura", -10.0)
 		"die":
 			if d != null and d.corpo != null:
 				d.corpo.muori()
@@ -247,15 +263,20 @@ func _su_fx(m: Dictionary) -> void:
 		"lvl":
 			if s != null:
 				fx.salita_livello(s)
+				if s == me:
+					Suoni.suona("livello")
 		"stun":
 			if d != null:
 				fx.anello(d.global_position, Color(1.0, 1.0, 0.5), 1.5, 0.5)
+				_segna_effetto(d.id, "__stordito", float(m.get("ms", 1000)))
 		"post":
 			if d != null:
 				hud.numero(d.testa() + Vector3(0, 0.5, 0), "SQUILIBRATO", Color(1.0, 0.85, 0.3), 1.5)
 				fx.anello(d.global_position, Color(1.0, 0.85, 0.3), 4.0, 0.6, 0.2)
 				fx.scintille(d.petto(), Color(1.0, 0.85, 0.3), 30, 7.0, 0.6)
 				fx.scuoti(0.5)
+				Suoni.suona("squilibrio")
+				_segna_effetto(d.id, "__squilibrato", float(m.get("ms", 4000)))
 		"cast":
 			if s != null and s != me and s.corpo != null:
 				s.corpo.lancia()
@@ -274,6 +295,7 @@ func _su_fx(m: Dictionary) -> void:
 				var b: Dictionary = Dati.BUFFS.get(String(m.get("b", "")), {})
 				if b.has("name"):
 					hud.avvisa(String(b.name))
+					Suoni.suona("aura", -6.0, 1.4)
 
 
 func _su_cd(m: Dictionary) -> void:
@@ -315,6 +337,10 @@ func _su_pos(m: Dictionary) -> void:
 
 
 func _su_dead(m: Dictionary) -> void:
+	morto_da = ora()
+	coda = {}
+	intento = {}
+	Suoni.suona("morte")
 	hud.riga_chat("Sei stato sconfitto da %s." % m.get("by", "?"), Color(1.0, 0.45, 0.4))
 
 
@@ -346,6 +372,45 @@ func _su_st(m: Dictionary) -> void:
 func _su_gain(m: Dictionary) -> void:
 	if m.has("exp") and me != null:
 		hud.numero(me.testa() + Vector3(0, 0.6, 0), "+%d esp" % int(m.exp), Color(0.75, 0.6, 1.0), 0.8)
+	if m.has("tael"):
+		hud.riga_chat("Hai ottenuto %d tael." % int(m.tael), Color(1.0, 0.85, 0.4))
+		Suoni.suona("moneta", -8.0)
+	if m.has("item"):
+		var rar: Dictionary = Dati.gioco.RARITIES[clampi(int(m.get("r", 0)), 0, 4)]
+		var testo := "Hai raccolto: %s" % m.item
+		if int(m.get("up", 0)) > 0:
+			testo += " +%d" % int(m.up)
+		if int(m.get("n", 1)) > 1:
+			testo += " ×%d" % int(m.n)
+		if int(m.get("r", 0)) > 0:
+			testo += " (%s)" % rar.name
+		hud.riga_chat(testo, Color(String(rar.color)))
+		Suoni.suona("raccolta", -6.0)
+
+
+## Effetti che ho messo io su un bersaglio (il server li comunica con `dot`): servono per i riquadri e le targhette.
+func _su_dot(m: Dictionary) -> void:
+	_segna_effetto(int(m.d), String(m.s), float(m.get("ms", 0)))
+
+
+func _segna_effetto(id: int, nome: String, ms: float) -> void:
+	if not effetti_bersagli.has(id):
+		effetti_bersagli[id] = {}
+	effetti_bersagli[id][nome] = ora() + ms
+
+
+func _suono_tecnica(sk: Dictionary, mia: bool) -> void:
+	var vol := -4.0 if mia else -12.0
+	if sk.get("sup", false):
+		Suoni.suona("suprema", vol + 3.0)
+	match String(sk.get("fx", "")):
+		"spin", "slash", "dash": Suoni.suona("fendente", vol, 0.8 if String(sk.get("ruolo", "")) == "potente" else 1.0)
+		"lightning": Suoni.suona("fulmine", vol)
+		"quake": Suoni.suona("terra", vol)
+		"arrow", "rain": Suoni.suona("freccia", vol)
+		"bolt": Suoni.suona("magia", vol)
+		"heal", "shield": Suoni.suona("cura", vol)
+		_: Suoni.suona("aura", vol)
 
 
 func _su_dg_start(m: Dictionary) -> void:
@@ -506,6 +571,21 @@ func usa_tecnica(sid: String) -> void:
 	if int(io.get("mounted", 0)) == 1 and not sk.get("mount", false):
 		hud.avvisa("Scendi da cavallo (R) per usare le tecniche della tua classe", true)
 		return
+	# coda: se la tecnica sarà pronta fra meno di mezzo secondo, parte da sola appena può
+	var adesso := ora()
+	var libera := 0.0
+	if not sk.get("offgcd", false):
+		libera = maxf(gcd_fine, float(lancio.get("fine", 0.0)))
+	if ricariche.has(sid):
+		libera = maxf(libera, float(ricariche[sid].fine))
+	if libera > adesso + 30.0:
+		if libera - adesso < 500.0:
+			coda = {"sid": sid, "quando": libera - 100.0}
+		elif ricariche.has(sid) and float(ricariche[sid].fine) > adesso + 500.0:
+			hud.avvisa("Tecnica in ricarica", true)
+			Suoni.suona("errore", -10.0)
+		return
+	coda = {}
 	var tipo := String(sk.get("type", ""))
 	var id_b = null
 	if tipo in ["strike", "aoe_target", "debuff", "taunt"]:
@@ -540,8 +620,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 		elif ev.button_index == MOUSE_BUTTON_LEFT and ev.pressed:
 			_clic(ev.position)
 	elif ev is InputEventMouseMotion and _trascina:
-		yaw -= ev.relative.x * 0.006
-		pitch = clampf(pitch + ev.relative.y * 0.005, 0.08, 1.35)
+		yaw -= ev.relative.x * 0.006 * Impostazioni.sensibilita
+		pitch = clampf(pitch + ev.relative.y * 0.005 * Impostazioni.sensibilita, 0.08, 1.35)
 	elif ev is InputEventKey and ev.pressed and not ev.echo:
 		if hud.chat_attiva():
 			return
@@ -557,8 +637,19 @@ func _unhandled_input(ev: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		elif k == KEY_ESCAPE:
 			if not hud.finestre.chiudi_tutto():
-				bersaglio = null
-				intento = {}
+				if bersaglio != null or not intento.is_empty():
+					bersaglio = null
+					intento = {}
+				else:
+					hud.finestre.apri_chiudi("menu")
+		elif k == KEY_H or k == KEY_F1:
+			hud.finestre.apri_chiudi("aiuto")
+		elif k == KEY_O:
+			hud.finestre.apri_chiudi("impostazioni")
+		elif k == KEY_F11:
+			Impostazioni.schermo_intero = not Impostazioni.schermo_intero
+			Impostazioni.applica()
+			Impostazioni.salva()
 		elif k == KEY_I:
 			hud.finestre.apri_chiudi("inventario")
 		elif k == KEY_C:
@@ -588,9 +679,9 @@ func _clic(p: Vector2) -> void:
 		if ostile(meglio):
 			intento = {"tipo": "attacco", "id": meglio.id}
 		elif meglio.tipo == "n":
-			Rete.manda({"t": "npc", "id": meglio.id})
+			intento = {"tipo": "parla", "id": meglio.id}
 		elif meglio.tipo == "d":
-			Rete.manda({"t": "pick", "id": meglio.id})
+			intento = {"tipo": "raccogli", "id": meglio.id}
 		return
 	# altrimenti si cammina verso il punto del terreno
 	var o := cam.project_ray_origin(p)
@@ -605,10 +696,23 @@ func _clic(p: Vector2) -> void:
 		t += 0.5
 
 
+## Z: raccoglie tutto quello che è a portata; se non c'è niente vicino va verso l'oggetto più vicino.
 func _raccogli() -> void:
+	var vicino: Entita = null
+	var md := 25.0
+	var presi := 0
 	for e: Entita in ents.values():
-		if e.tipo == "d" and Vector2(e.x - me.x, e.z - me.z).length() < 4.0:
+		if e.tipo != "d":
+			continue
+		var d := Vector2(e.x - me.x, e.z - me.z).length()
+		if d < 3.5:
 			Rete.manda({"t": "pick", "id": e.id})
+			presi += 1
+		elif d < md:
+			md = d
+			vicino = e
+	if presi == 0 and vicino != null:
+		intento = {"tipo": "raccogli", "id": vicino.id}
 
 
 func _verso(x: float, z: float, ferma: float) -> Vector2:
@@ -627,6 +731,14 @@ func _segui_intento(t: float) -> Vector2:
 			intento = {}
 		return dir
 	var e: Entita = ents.get(int(intento.id))
+	if e != null and intento.tipo in ["parla", "raccogli"]:
+		var dir2 := _verso(e.x, e.z, 3.0)
+		if dir2 == Vector2.ZERO:
+			Rete.manda({"t": "npc" if intento.tipo == "parla" else "pick", "id": e.id})
+			if intento.tipo == "parla":
+				me.guarda(e)
+			intento = {}
+		return dir2
 	if e == null or not ostile(e):
 		intento = {}
 		return Vector2.ZERO
@@ -659,6 +771,15 @@ func _process(dt: float) -> void:
 		_fermo_immagine -= dt / maxf(Engine.time_scale, 0.05)
 		Engine.time_scale = 0.12 if _fermo_immagine > 0.0 else 1.0
 	var t := ora()
+	if not coda.is_empty() and t >= float(coda.quando):
+		var in_coda := String(coda.sid)
+		coda = {}
+		usa_tecnica(in_coda)
+	if me.velocita > 3.0 and not me.morto:
+		_passo_t -= dt
+		if _passo_t <= 0.0:
+			_passo_t = 0.31 if me.sella == 0 else 0.22
+			Suoni.suona("passo", -16.0 if me.sella == 0 else -11.0, 1.0 if me.sella == 0 else 0.7)
 	var dir := Vector2.ZERO
 	var bloccato := int(io.get("dead", 0)) == 1 or stordito_fino > t
 	if not bloccato:
@@ -681,8 +802,9 @@ func _process(dt: float) -> void:
 		if not lancio.is_empty():
 			Rete.manda({"t": "cancel"})
 			lancio = {}
-		var nx := me.x + dir.x * vel * dt
-		var nz := me.z + dir.y * vel * dt
+		var passo := vel * minf(dt, 0.1)        # con pochi fotogrammi al secondo non si scavalca il bersaglio
+		var nx := me.x + dir.x * passo
+		var nz := me.z + dir.y * passo
 		if me.x > float(Dati.costanti.DUNGEON_X):
 			# nella cripta si cammina solo in stanze e corridoi, scivolando lungo i muri
 			if cripta != null and not cripta.calpestabile(nx, nz):
@@ -710,6 +832,7 @@ func _process(dt: float) -> void:
 			inviata = Vector3(me.x, me.r, me.z)
 		ultimo_invio = t
 	_ambiente(me.x > float(Dati.costanti.DUNGEON_X))
+	_aggiorna_alberi(dt)
 	_visuale(dt)
 	if bersaglio != null and is_instance_valid(bersaglio):
 		anello_bersaglio.visible = true
@@ -740,8 +863,27 @@ func _distanza_libera(centro: Vector3) -> float:
 				var lz: float = dx * o.sin + dz * o.cos
 				if absf(lx) < o.hw + 1.6 and absf(lz) < o.hd + 1.6:
 					return maxf(2.5, t - 0.6)
+		# chiome degli alberi vicini: sfere a circa 4,5 m da terra
+		for a in _alberi_vicini:
+			var c := Vector3(a[0], float(a[1]) + 4.6 * float(a[3]), a[2])
+			if q.distance_squared_to(c) < pow(2.9 * float(a[3]), 2.0):
+				return maxf(3.0, t - 0.8)
 		t += 0.5
 	return distanza
+
+
+## Ogni mezzo secondo si aggiorna l'elenco degli alberi abbastanza vicini da poter coprire la visuale.
+func _aggiorna_alberi(dt: float) -> void:
+	_alberi_t -= dt
+	if _alberi_t > 0.0:
+		return
+	_alberi_t = 0.5
+	_alberi_vicini.clear()
+	var veg: Dictionary = Dati.gioco.vegetazione
+	for specie in ["ciliegio", "acero", "pino"]:
+		for a in veg.get(specie, []):
+			if absf(float(a[0]) - me.x) < 34.0 and absf(float(a[2]) - me.z) < 34.0:
+				_alberi_vicini.append(a)
 
 
 func _visuale(_dt: float) -> void:

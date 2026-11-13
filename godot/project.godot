@@ -12,6 +12,8 @@ config/features=PackedStringArray("4.4", "GL Compatibility")
 
 Dati="*res://script/dati.gd"
 Rete="*res://script/rete.gd"
+Impostazioni="*res://script/impostazioni.gd"
+Suoni="*res://script/suoni.gd"
 
 [display]
 

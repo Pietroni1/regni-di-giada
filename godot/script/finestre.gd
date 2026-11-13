@@ -36,6 +36,9 @@ var _testo_prove: Label
 var _testo_scuderia: Label
 var _compra_cavallo: Button
 var _addestra: Button
+var menu: PanelContainer
+var impostazioni: PanelContainer
+var aiuto: PanelContainer
 
 
 func _ready() -> void:
@@ -60,6 +63,9 @@ func _ready() -> void:
 		dialogo.visible = true)
 	_crea_prove()
 	_crea_scuderia()
+	_crea_menu()
+	_crea_impostazioni()
+	_crea_aiuto()
 	Rete.su("stable", func(m: Dictionary) -> void:
 		scuderia_png = int(m.npc)
 		scuderia.visible = true
@@ -118,15 +124,16 @@ func _bottone(genitore: Control, testo: String, azione: Callable) -> Button:
 
 
 func apri_chiudi(quale: String) -> void:
-	var f: PanelContainer = {"inventario": inventario, "personaggio": personaggio, "abilita": abilita}[quale]
+	var f: PanelContainer = {"inventario": inventario, "personaggio": personaggio, "abilita": abilita, "menu": menu, "impostazioni": impostazioni, "aiuto": aiuto}[quale]
 	f.visible = not f.visible
+	Suoni.suona("clic", -12.0)
 	aggiorna()
 
 
 ## Chiude tutto; restituisce true se c'era qualcosa di aperto.
 func chiudi_tutto() -> bool:
 	var aperta := false
-	for f in [inventario, personaggio, abilita, negozio, fabbro, dialogo, prove, scuderia]:
+	for f in [inventario, personaggio, abilita, negozio, fabbro, dialogo, prove, scuderia, menu, impostazioni, aiuto]:
 		if f.visible:
 			aperta = true
 		f.visible = false
@@ -206,12 +213,13 @@ func _crea_inventario() -> void:
 	for i in range(int(Dati.costanti.INV_SIZE)):
 		var c := Casella.new()
 		c.indice = i
+		c.finestre = self
 		c.sinistro.connect(_clic_inventario)
 		c.destro.connect(_destro_inventario)
 		griglia.add_child(c)
 		caselle.append(c)
 	tael = _etichetta(v, "", Color(1.0, 0.85, 0.4))
-	_etichetta(v, "Clic: seleziona, poi clic su un'altra casella per spostare. Clic destro: usa, indossa o vendi (con il negozio aperto).", Color(0.65, 0.63, 0.58), 11)
+	_etichetta(v, "Trascina per spostare, indossare o mettere nella barra. Clic destro: usa, indossa, fondi 3 gemme uguali, o vendi (col negozio aperto). Gemme e pergamene: trascinale su un'arma o un'armatura.", Color(0.65, 0.63, 0.58), 11)
 	_riga_tasti_inv = HBoxContainer.new()
 	v.add_child(_riga_tasti_inv)
 	_etichetta(_riga_tasti_inv, "Nella barra:", Color(0.7, 0.68, 0.62), 12).autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -232,10 +240,46 @@ func _inv() -> Array:
 	return gioco.inv.get("inv", [])
 
 
+func _tipo(s) -> String:
+	if s is Dictionary and Dati.ITEMS.has(s.id):
+		return String(Dati.ITEMS[s.id].get("type", ""))
+	return ""
+
+
+func _e_equip(s) -> bool:
+	return _tipo(s) in ["weapon", "body", "head", "feet"]
+
+
+## Rilascio di un oggetto trascinato su una casella (dell'inventario o dell'equipaggiamento).
+func rilascia(d: Dictionary, su: Casella) -> void:
+	var inv := _inv()
+	var da_eq := String(d.get("eq", ""))
+	var portato = inv[int(d.i)] if da_eq.is_empty() and int(d.i) < inv.size() else null
+	if not da_eq.is_empty():
+		if su.spazio.is_empty():
+			Rete.manda({"t": "mv", "a": {"k": "e", "i": da_eq}, "b": {"k": "i", "i": su.indice}})
+	elif not su.spazio.is_empty():
+		if _tipo(portato) in ["gem", "mod"]:
+			Rete.manda({"t": "apply", "i": int(d.i), "tgt": {"k": "e", "i": su.spazio}})
+		else:
+			Rete.manda({"t": "mv", "a": {"k": "i", "i": int(d.i)}, "b": {"k": "e", "i": su.spazio}})
+	elif int(d.i) != su.indice:
+		var sotto = inv[su.indice] if su.indice < inv.size() else null
+		if _tipo(portato) in ["gem", "mod"] and _e_equip(sotto):
+			Rete.manda({"t": "apply", "i": int(d.i), "tgt": {"k": "i", "i": su.indice}})
+		else:
+			Rete.manda({"t": "mv", "a": {"k": "i", "i": int(d.i)}, "b": {"k": "i", "i": su.indice}})
+	scelta = -1
+	Suoni.suona("clic", -10.0)
+
+
 func _clic_inventario(i: int) -> void:
 	var inv := _inv()
 	if scelta >= 0 and scelta != i:
-		Rete.manda({"t": "mv", "a": {"k": "i", "i": scelta}, "b": {"k": "i", "i": i}})
+		if _tipo(inv[scelta] if scelta < inv.size() else null) in ["gem", "mod"] and _e_equip(inv[i] if i < inv.size() else null):
+			Rete.manda({"t": "apply", "i": scelta, "tgt": {"k": "i", "i": i}})
+		else:
+			Rete.manda({"t": "mv", "a": {"k": "i", "i": scelta}, "b": {"k": "i", "i": i}})
 		scelta = -1
 	elif i < inv.size() and inv[i] != null:
 		scelta = i if scelta != i else -1
@@ -248,6 +292,9 @@ func _destro_inventario(i: int) -> void:
 		return
 	if negozio.visible and negozio_png != 0:
 		Rete.manda({"t": "sell", "npc": negozio_png, "i": i})
+		Suoni.suona("moneta", -8.0)
+	elif _tipo(inv[i]) == "gem":
+		Rete.manda({"t": "combine", "i": i})
 	else:
 		Rete.manda({"t": "use", "i": i})
 	scelta = -1
@@ -265,6 +312,8 @@ func _crea_personaggio() -> void:
 		var col := VBoxContainer.new()
 		riga.add_child(col)
 		var c := Casella.new()
+		c.finestre = self
+		c.spazio = String(spazio)
 		var sp := String(spazio)
 		c.sinistro.connect(func(_i: int) -> void: _togli(sp))
 		c.destro.connect(func(_i: int) -> void: _togli(sp))
@@ -336,7 +385,7 @@ func _crea_abilita() -> void:
 	scorri.add_child(_corpo_ab)
 	var riga := HBoxContainer.new()
 	(f[1] as VBoxContainer).add_child(riga)
-	_etichetta(riga, "Metti la tecnica scelta nel tasto:", Color(0.7, 0.68, 0.62), 12).autowrap_mode = TextServer.AUTOWRAP_OFF
+	_etichetta(riga, "Trascina una tecnica sulla barra, oppure sceglila e premi:", Color(0.7, 0.68, 0.62), 12).autowrap_mode = TextServer.AUTOWRAP_OFF
 	for i in range(10):
 		var n := i
 		_bottone(riga, str((i + 1) % 10), func() -> void:
@@ -411,6 +460,13 @@ func _riempi_abilita() -> void:
 			if punti > 0 and liv < int(Dati.gioco.SKILL_MAX_POINTS):
 				_bottone(h, "+", func() -> void: Rete.manda({"t": "skup", "s": nome})).custom_minimum_size = Vector2(30, 0)
 			riga.tooltip_text = testo_tecnica(sid, liv)
+			var glifo_tr := String(sk.get("glyph", "?"))
+			riga.set_drag_forwarding(func(_p: Vector2) -> Variant:
+				var l := Label.new()
+				l.text = glifo_tr
+				l.add_theme_font_size_override("font_size", 28)
+				riga.set_drag_preview(l)
+				return {"tipo": "tec", "id": nome}, Callable(), Callable())
 			riga.gui_input.connect(func(ev: InputEvent) -> void:
 				if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 					tecnica_scelta = nome
@@ -580,6 +636,108 @@ func _riempi_scuderia() -> void:
 	_testo_scuderia.text = "\n".join(PackedStringArray(righe))
 
 
+# ------------------------------------------------------------------ menu, impostazioni, aiuto
+func _crea_menu() -> void:
+	var f := _finestra("Regni di Giada", Vector2(660, 250), 280)
+	menu = f[0]
+	_bottone(f[1], "Riprendi", func() -> void: menu.visible = false)
+	_bottone(f[1], "Impostazioni  [O]", func() -> void:
+		menu.visible = false
+		impostazioni.visible = true)
+	_bottone(f[1], "Comandi e aiuto  [H]", func() -> void:
+		menu.visible = false
+		aiuto.visible = true)
+	_bottone(f[1], "Cambia personaggio", func() -> void:
+		if Rete.ws != null:
+			Rete.ws.close())
+	_bottone(f[1], "Esci dal gioco", func() -> void: get_tree().quit())
+
+
+func _crea_impostazioni() -> void:
+	var f := _finestra("Impostazioni  [O]", Vector2(620, 220), 380)
+	impostazioni = f[0]
+	var v: VBoxContainer = f[1]
+	var intero := CheckButton.new()
+	intero.text = "Schermo intero  [F11]"
+	intero.button_pressed = Impostazioni.schermo_intero
+	intero.toggled.connect(func(si: bool) -> void:
+		Impostazioni.schermo_intero = si
+		_salva_impostazioni())
+	v.add_child(intero)
+	var riga := HBoxContainer.new()
+	v.add_child(riga)
+	_etichetta(riga, "Qualità grafica").size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var q := OptionButton.new()
+	for nome in ["Bassa", "Media", "Alta"]:
+		q.add_item(nome)
+	q.selected = Impostazioni.qualita
+	q.item_selected.connect(func(i: int) -> void:
+		Impostazioni.qualita = i
+		_salva_impostazioni())
+	riga.add_child(q)
+	_cursore(v, "Volume", 0.0, 1.0, Impostazioni.volume, func(x: float) -> void:
+		Impostazioni.volume = x
+		_salva_impostazioni())
+	_cursore(v, "Sensibilità della visuale", 0.3, 2.5, Impostazioni.sensibilita, func(x: float) -> void:
+		Impostazioni.sensibilita = x
+		_salva_impostazioni())
+	var num := CheckButton.new()
+	num.text = "Numeri di danno"
+	num.button_pressed = Impostazioni.numeri_danno
+	num.toggled.connect(func(si: bool) -> void:
+		Impostazioni.numeri_danno = si
+		_salva_impostazioni())
+	v.add_child(num)
+	_etichetta(v, "Il motore grafico (Compatibilità o Forward+) si cambia dall'editor di Godot, in alto a destra.", Color(0.65, 0.63, 0.58), 11)
+
+
+func _cursore(genitore: Control, testo: String, minimo: float, massimo: float, valore: float, azione: Callable) -> void:
+	var riga := HBoxContainer.new()
+	genitore.add_child(riga)
+	_etichetta(riga, testo).custom_minimum_size = Vector2(190, 0)
+	var s := HSlider.new()
+	s.min_value = minimo
+	s.max_value = massimo
+	s.step = 0.05
+	s.value = valore
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.value_changed.connect(azione)
+	riga.add_child(s)
+
+
+func _salva_impostazioni() -> void:
+	Impostazioni.applica()
+	Impostazioni.salva()
+
+
+func _crea_aiuto() -> void:
+	var f := _finestra("Comandi e aiuto  [H]", Vector2(470, 110), 660)
+	aiuto = f[0]
+	var testo := """MOVIMENTO E VISUALE
+WASD o clic sul terreno: muoversi  ·  tasto destro trascinato, Q / E: girare la visuale  ·  rotellina: zoom
+
+COMBATTIMENTO
+Clic su un nemico o Tab: bersaglio e attacco automatico  ·  1-0: barra rapida  ·  V: Tecnica Suprema (dal livello 15)
+Gli ACCUMULI (tacca verde) sono gratuiti e generano risorsa o punti; gli SCARICHI MEDI (oro) la spendono;
+gli SCARICHI POTENTI (rosso) costano molto e, per Ombra, Monaco e Mistico, consumano tutti i punti: più punti, più danni.
+Ogni colpo a segno dà una tacca di SLANCIO (fino a 5): più risorsa e rapidità finché continui a colpire.
+Élite e boss hanno la POSTURA (barra gialla): gli scarichi la abbassano; a zero il nemico è Squilibrato, stordito e fragile.
+Spendendo risorsa si riempie la barra della TECNICA SUPREMA.
+
+FINESTRE
+I: inventario  ·  C: personaggio e punti statistica  ·  K: abilità e Via (dal livello 5)  ·  O: impostazioni  ·  Esc: chiude / menu
+Trascina tecniche e pozioni sulla barra rapida; tasto destro su un tasto della barra per svuotarlo.
+Z: raccoglie il bottino  ·  R: sale o scende da cavallo  ·  Invio: chat
+
+IN GIRO PER IL MONDO
+Clic su un abitante del villaggio per parlargli: mercanti, fabbro (potenziamenti), maestro delle Vie,
+stalliere (cavalcature dal livello 10), custode (Prove del Sigillo dal livello 20, da soli o in gruppo).
+Per fare gruppo: clic su un giocatore del tuo regno e «Invita nel gruppo», oppure scrivi /invita nome.
+Chat: !testo grida al regno  ·  #testo al gruppo  ·  @nome testo sussurra."""
+	var l := _etichetta(f[1], testo, Color(0.88, 0.86, 0.8), 13)
+	l.custom_minimum_size = Vector2(640, 0)
+
+
 # ------------------------------------------------------------------ aggiornamento
 func aggiorna() -> void:
 	if gioco == null or gioco.me == null:
@@ -613,10 +771,28 @@ class Casella:
 	var indice := 0
 	var voce = null
 	var scelta := false
+	var spazio := ""            # per le caselle dell'equipaggiamento: weapon, head, body, feet
+	var finestre                # Finestre
 
 	func _init() -> void:
 		custom_minimum_size = Vector2(46, 46)
 		mouse_filter = Control.MOUSE_FILTER_STOP
+
+	func _get_drag_data(_p: Vector2) -> Variant:
+		if not (voce is Dictionary) or not Dati.ITEMS.has(voce.id):
+			return null
+		var l := Label.new()
+		l.text = String(Dati.ITEMS[voce.id].get("glyph", "?"))
+		l.add_theme_font_size_override("font_size", 26)
+		set_drag_preview(l)
+		return {"tipo": "ogg", "i": indice, "id": voce.id, "eq": spazio}
+
+	func _can_drop_data(_p: Vector2, d: Variant) -> bool:
+		return d is Dictionary and String(d.get("tipo", "")) == "ogg"
+
+	func _drop_data(_p: Vector2, d: Variant) -> void:
+		if finestre != null:
+			finestre.rilascia(d, self)
 
 	func imposta(v, selezionata: bool) -> void:
 		if v == voce and selezionata == scelta:
