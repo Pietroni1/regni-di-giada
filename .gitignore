@@ -6,3 +6,4 @@ screenshots/
 *.bundle
 *.blend1
 __pycache__/
+.claude/worktrees/
