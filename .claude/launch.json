@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "gioco", "runtimeExecutable": "node", "runtimeArgs": ["server/index.js"], "port": 3000 },
+    { "name": "prova", "runtimeExecutable": "cmd", "runtimeArgs": ["/c", "set PORT=3999&& set DB_FILE=%TEMP%\\regni-prova-db.json&& node server/index.js"], "port": 3999 }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "port": 3000,
+  "rates": {
+    "exp": 1,
+    "drop": 1,
+    "tael": 1
+  },
+  "gmAccounts": [
+    "admin"
+  ],
+  "pvp": true,
+  "pvpMinLevel": 10,
+  "maxCharsPerAccount": 4,
+  "saveIntervalSec": 30
+}

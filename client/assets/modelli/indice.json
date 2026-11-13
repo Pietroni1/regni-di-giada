@@ -1,0 +1,66 @@
+{
+  "modelli": {
+    "base_donna": {
+      "file": "base_donna.glb",
+      "anim": "mixamo_anim.glb",
+      "capi": [
+        "pantaloni",
+        "veste",
+        "tunica",
+        "lamellare",
+        "giada",
+        "nubi",
+        "cappello_paglia",
+        "elmo_bronzo",
+        "elmo_cornuto",
+        "elmo_drago",
+        "sandali",
+        "stivali_cuoio",
+        "stivali_vento",
+        "stivali_nube"
+      ],
+      "spalle": 1.1
+    },
+    "base_uomo": {
+      "file": "base_uomo.glb",
+      "anim": "mixamo_anim.glb",
+      "capi": [
+        "pantaloni",
+        "veste",
+        "tunica",
+        "lamellare",
+        "giada",
+        "nubi",
+        "cappello_paglia",
+        "elmo_bronzo",
+        "elmo_cornuto",
+        "elmo_drago",
+        "sandali",
+        "stivali_cuoio",
+        "stivali_vento",
+        "stivali_nube"
+      ],
+      "spalle": 1.22
+    }
+  },
+  "classi": {
+    "lama": [
+      "base_uomo",
+      "base_donna"
+    ],
+    "ombra": [
+      "base_uomo",
+      "base_donna"
+    ],
+    "monaco": [
+      "base_uomo",
+      "base_donna"
+    ],
+    "mistico": [
+      "base_uomo",
+      "base_donna"
+    ]
+  },
+  "mostri": {},
+  "png": {}
+}
