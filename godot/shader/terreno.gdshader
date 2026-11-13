@@ -48,18 +48,22 @@ void fragment() {
 	vec4 b = texture(pesi_b, uv);
 	vec2 p = pm.xz;
 	float grande = fbm(p * 0.045), medio = fbm(p * 0.21), fine = pennello(p, 1.0), finissimo = pennello(p + 31.0, 2.6);
+	// da lontano le pennellate fini sfarfallano: si spengono verso un valore medio
+	float lontano = smoothstep(35.0, 140.0, length(VERTEX));
+	fine = mix(fine, 0.5, lontano);
+	finissimo = mix(finissimo, 0.5, lontano);
 	float tratto = smoothstep(0.25, 0.75, fine) * 0.6 + finissimo * 0.4;
 
 	// erba: tre toni a chiazze + pennellate
-	vec3 erba = mix(vec3(0.20, 0.36, 0.11), vec3(0.36, 0.50, 0.16), smoothstep(0.3, 0.7, grande));
-	erba = mix(erba, vec3(0.47, 0.56, 0.20), smoothstep(0.55, 0.85, medio) * 0.55);
-	erba *= 0.82 + 0.36 * tratto;
+	vec3 erba = mix(vec3(0.13, 0.23, 0.08), vec3(0.22, 0.31, 0.11), smoothstep(0.3, 0.7, grande));
+	erba = mix(erba, vec3(0.31, 0.36, 0.14), smoothstep(0.55, 0.85, medio) * 0.5);
+	erba *= 0.88 + 0.24 * (fbm(p * 0.9) * 0.6 + tratto * 0.4);
 	vec3 secco = mix(vec3(0.50, 0.46, 0.20), vec3(0.66, 0.58, 0.28), tratto) * (0.85 + 0.3 * medio);
 	vec3 bosco = mix(vec3(0.10, 0.20, 0.08), vec3(0.20, 0.30, 0.11), tratto) * (0.8 + 0.4 * medio);
 	vec3 sabbia = mix(vec3(0.66, 0.58, 0.38), vec3(0.82, 0.74, 0.52), medio) * (0.9 + 0.2 * finissimo);
 	vec3 terra = mix(vec3(0.33, 0.25, 0.16), vec3(0.50, 0.39, 0.25), tratto) * (0.85 + 0.3 * medio);
 	float venatura = fbm(vec2(pm.x + pm.z, pm.y * 3.0) * 0.35);
-	vec3 roccia = mix(vec3(0.27, 0.26, 0.25), vec3(0.52, 0.50, 0.46), venatura) * (0.8 + 0.4 * finissimo);
+	vec3 roccia = mix(vec3(0.24, 0.23, 0.22), vec3(0.46, 0.44, 0.40), venatura) * (0.8 + 0.4 * finissimo);
 	vec3 neve = vec3(0.90, 0.92, 0.95) * (0.92 + 0.08 * medio);
 	vec2 c = ciottoli(p * 1.7);
 	vec3 lastrico = mix(vec3(0.40, 0.37, 0.32), vec3(0.56, 0.52, 0.44), c.y) * (0.92 + 0.16 * medio);

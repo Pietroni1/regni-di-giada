@@ -13,6 +13,7 @@ var mio_id := 0
 var classe := "lama"
 var regno := ""
 var io: Dictionary = {}            # ultimo messaggio `me`
+var inv: Dictionary = {}           # ultimo messaggio `inv`: { inv: [...], eq: {...} }
 var ents: Dictionary = {}          # id → Entita
 var me: Entita = null
 var bersaglio: Entita = null
@@ -23,6 +24,7 @@ var yaw := 0.0
 var pitch := 0.42
 var distanza := 13.0
 var _trascina := false
+var _dist_vista := 13.0
 
 var intento: Dictionary = {}       # { tipo: "muovi" | "attacco" | "tecnica", ... }
 var prossimo_attacco := 0.0
@@ -125,8 +127,10 @@ func _su_r(m: Dictionary) -> void:
 
 
 func _su_inv(m: Dictionary) -> void:
+	inv = m
 	if me == null:
 		return
+	hud.finestre.aggiorna()
 	var eq: Dictionary = m.get("eq", {})
 	var aspetto := {}
 	for coppia in [["w", "weapon"], ["b", "body"], ["h", "head"], ["f", "feet"]]:
@@ -389,9 +393,12 @@ func usa_tasto(i: int) -> void:
 	if qb[i].get("k") == "s":
 		usa_tecnica(String(qb[i].id))
 	elif qb[i].get("k") == "i":
-		var inv_i := int(qb[i].get("i", -1))
-		if inv_i >= 0:
-			Rete.manda({"t": "use", "i": inv_i})
+		var lista: Array = inv.get("inv", [])
+		for j in range(lista.size()):
+			if lista[j] is Dictionary and lista[j].id == qb[i].id:
+				Rete.manda({"t": "use", "i": j})
+				return
+		hud.avvisa("Non ne hai più", true)
 
 
 func usa_suprema() -> void:
@@ -456,8 +463,15 @@ func _unhandled_input(ev: InputEvent) -> void:
 			hud.apri_chat()
 			get_viewport().set_input_as_handled()
 		elif k == KEY_ESCAPE:
-			bersaglio = null
-			intento = {}
+			if not hud.finestre.chiudi_tutto():
+				bersaglio = null
+				intento = {}
+		elif k == KEY_I:
+			hud.finestre.apri_chiudi("inventario")
+		elif k == KEY_C:
+			hud.finestre.apri_chiudi("personaggio")
+		elif k == KEY_K:
+			hud.finestre.apri_chiudi("abilita")
 		elif k == KEY_R:
 			Rete.manda({"t": "mount"})
 		elif k == KEY_Z:
@@ -602,10 +616,35 @@ func _process(dt: float) -> void:
 		anello_bersaglio.visible = false
 
 
+## Quanto può arretrare la visuale prima di entrare in un edificio (gli ostacoli a scatola del villaggio, alti ~8 m).
+func _distanza_libera(centro: Vector3) -> float:
+	var dir := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
+	var base := float(Dati.costanti.VILLAGE_HEIGHT)
+	var t := 1.0
+	while t < distanza:
+		var q := centro + dir * t
+		if q.y < base + 8.5:
+			for o in Dati.gioco.ostacoli:
+				if o.t != "box" or float(o.hd) < 2.0:
+					continue
+				var dx: float = q.x - o.x
+				var dz: float = q.z - o.z
+				if absf(dx) > 12.0 or absf(dz) > 12.0:
+					continue
+				var lx: float = dx * o.cos - dz * o.sin
+				var lz: float = dx * o.sin + dz * o.cos
+				if absf(lx) < o.hw + 1.6 and absf(lz) < o.hd + 1.6:
+					return maxf(2.5, t - 0.6)
+		t += 0.5
+	return distanza
+
+
 func _visuale(_dt: float) -> void:
 	var centro := Vector3(me.x, Dati.altezza(me.x, me.z) + 1.7, me.z)
-	var orizz := cos(pitch) * distanza
-	var p := centro + Vector3(sin(yaw) * orizz, sin(pitch) * distanza, cos(yaw) * orizz)
+	var libera := _distanza_libera(centro)
+	_dist_vista = minf(libera, lerpf(_dist_vista, libera, minf(1.0, _dt * 6.0)))
+	var orizz := cos(pitch) * _dist_vista
+	var p := centro + Vector3(sin(yaw) * orizz, sin(pitch) * _dist_vista, cos(yaw) * orizz)
 	var suolo := Dati.altezza(p.x, p.z) + 0.6
 	if p.y < suolo:
 		p.y = suolo

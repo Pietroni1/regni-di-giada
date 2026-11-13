@@ -214,6 +214,12 @@ func _prova_automatica() -> void:
 			"attendi": await _attendi(float(p[1]))
 			"foto": await _foto(p[1])
 			"tecnica": gioco.usa_tecnica(p[1])
+			"finestra": gioco.hud.finestre.apri_chiudi(p[1])
+			"png":
+				for e: Entita in gioco.ents.values():
+					if e.tipo == "n" and String(e.info.get("role", "")) == p[1]:
+						Rete.manda({"t": "npc", "id": e.id})
+						break
 			"impara": Rete.manda({"t": "skup", "s": p[1]})
 			"cammina": gioco.intento = {"tipo": "muovi", "x": float(p[1]), "z": float(p[2])}
 			"suprema": gioco.usa_suprema()

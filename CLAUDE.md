@@ -164,16 +164,20 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   `natura.glb` (MultiMesh), villaggi costruiti da codice (`edifici.gd`: tetti concavi a coppi, pagoda, mura, porte),
   giocatori/PNG con corpo base + capi + armi + animazioni Mixamo, animali da `animali.glb`, movimento con gli stessi
   urti del server, visuale, bersagli, attacco automatico, barra rapida con ricariche, Slancio/punti/Suprema, chat con
-  comandi GM, targhette e numeri di danno, effetti delle tecniche per tipo `fx` (`effetti.gd`).
+  comandi GM, targhette e numeri di danno, effetti delle tecniche per tipo `fx` (`effetti.gd`); finestre (`finestre.gd`):
+  Inventario (I), Personaggio (C) con punti statistica, Abilità (K) con scelta della Via e assegnazione alla barra, negozio,
+  fabbro, dialoghi; minimappa; visuale che si accorcia davanti agli edifici; albero di animazione per gli umani
+  (`_crea_albero` in `personaggio.gd`: il colpo prende solo la parte alta del corpo se ci si muove).
 - Renderer predefinito: **Compatibilità** (è l'unico verificabile nel container, via `xvfb-run` + `--rendering-driver opengl3`;
   Forward+ richiede Vulkan). Con Forward+ la luce va riguardata a vista.
 - Prove automatiche: `godot --path godot -- --server=localhost:3999 --auto=utente:password:Personaggio --foto=cartella
   "--comandi=/level 30;tecnica lama_tuono;attendi 0.1;foto nome"` (copione in `principale.gd`). Nel container il rendering
   è ~1 fps: usare `--fixed-fps 30` (il tempo di gioco avanza di 1/30 a fotogramma, così gli effetti si fotografano) e
-  `--write-movie file.avi` per i video. Verificato a vista così: villaggio, Lama del Tuono sul fantoccio.
-- Da fare: inventario e finestre (Abilità, Personaggio, negozi, fabbro), gruppo, minimappa, cripta delle Prove,
-  cavalcature, suoni, modelli per i mostri che ora sono sagome, parte alta/bassa del corpo separate nelle animazioni
-  (ora l'attacco è a corpo intero), presa delle armi da rifinire, edifici veri fatti in Blender.
+  `--write-movie file.avi` per i video. Verificato a vista così: villaggio, Lama del Tuono e Tempesta di Lame sul fantoccio, lupi fuori dalle mura.
+- Da fare: gruppo, cripta delle Prove, scuderia e cavalcature, gemme e pergamene sugli oggetti (`apply`), suoni,
+  modelli per i mostri che ora sono sagome, colori degli animali, presa delle armi da rifinire, erba ancora a righe
+  (`pennello` in `terreno.gdshader`), edifici veri fatti in Blender. Delle finestre ho visto a schermo Inventario,
+  Personaggio, Abilità e negozio; fabbro e dialoghi sono scritti ma non provati.
 
 ## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.

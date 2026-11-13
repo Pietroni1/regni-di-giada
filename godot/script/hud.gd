@@ -30,6 +30,8 @@ var avviso: Label
 var zona: Label
 var morte: PanelContainer
 var targhette: Control
+var finestre: Finestre
+var minimappa: Control
 var numeri: Array = []          # numeri di danno che salgono: {p: Vector3, t: String, c: Color, eta: float, g: float}
 var _avviso_t := 0.0
 
@@ -78,6 +80,20 @@ func _ready() -> void:
 	targhette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	targhette.draw.connect(_disegna_targhette)
 	radice.add_child(targhette)
+
+	finestre = Finestre.new()
+	finestre.gioco = gioco
+	radice.add_child(finestre)
+
+	# --- minimappa
+	minimappa = Control.new()
+	minimappa.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	minimappa.position = Vector2(-186, 64)
+	minimappa.custom_minimum_size = Vector2(170, 170)
+	minimappa.size = Vector2(170, 170)
+	minimappa.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	minimappa.draw.connect(_disegna_minimappa)
+	radice.add_child(minimappa)
 
 	# --- riquadro del giocatore
 	var io := PanelContainer.new()
@@ -198,7 +214,7 @@ func _ready() -> void:
 	zona = Label.new()
 	zona.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	zona.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	zona.position = Vector2(-16, 16)
+	zona.position = Vector2(-16, 12)
 	zona.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	zona.add_theme_color_override("font_outline_color", Color.BLACK)
 	zona.add_theme_constant_override("outline_size", 5)
@@ -249,7 +265,12 @@ func avvisa(testo: String, errore := false) -> void:
 
 
 func numero(pos: Vector3, testo: String, colore: Color, grande := 1.0) -> void:
-	numeri.append({"p": pos + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)), "t": testo, "c": colore, "eta": 0.0, "g": grande})
+	# i numeri recenti sullo stesso punto si scalano di lato, così non si coprono
+	var vicini := 0
+	for n in numeri:
+		if n.eta < 0.5 and (n.p as Vector3).distance_to(pos) < 1.5:
+			vicini += 1
+	numeri.append({"p": pos, "t": testo, "c": colore, "eta": 0.0, "g": grande, "lato": (((vicini + 1) / 2) * (1 if vicini % 2 == 0 else -1)) * 46.0})
 
 
 # ------------------------------------------------------------------ aggiornamento
@@ -284,6 +305,7 @@ func aggiorna_io(io: Dictionary, nome: String) -> void:
 	var qb: Array = io.get("qb", [])
 	for i in range(tasti.size()):
 		(tasti[i] as Tasto).imposta(qb[i] if i < qb.size() else null, io)
+	finestre.aggiorna()
 
 
 func _process(dt: float) -> void:
@@ -325,6 +347,44 @@ func _process(dt: float) -> void:
 			numeri.remove_at(i)
 	zona.text = "%s\n%d fps" % [gioco.nome_zona(), Engine.get_frames_per_second()]
 	targhette.queue_redraw()
+	minimappa.queue_redraw()
+
+
+## Minimappa: nord in alto, 60 metri di raggio; edifici, strade, creature e il proprio personaggio.
+func _disegna_minimappa() -> void:
+	if gioco == null or gioco.me == null:
+		return
+	var lato := minimappa.size.x
+	var c := Vector2(lato, lato) * 0.5
+	var scala := lato * 0.5 / 60.0
+	minimappa.draw_circle(c, lato * 0.5, Color(0.08, 0.1, 0.07, 0.78))
+	var io: Entita = gioco.me
+	var su := func(x: float, z: float) -> Vector2: return c + Vector2(x - io.x, z - io.z) * scala
+	for s in Dati.gioco.strade:
+		var a: Vector2 = su.call(float(s[0]), float(s[1]))
+		var b: Vector2 = su.call(float(s[2]), float(s[3]))
+		if a.distance_to(c) < lato * 0.5 and b.distance_to(c) < lato * 0.5:
+			minimappa.draw_line(a, b, Color(0.55, 0.45, 0.3, 0.9), 3.0)
+	for o in Dati.gioco.ostacoli:
+		var p: Vector2 = su.call(float(o.x), float(o.z))
+		if p.distance_to(c) > lato * 0.5 - 3.0:
+			continue
+		if o.t == "box":
+			minimappa.draw_circle(p, maxf(float(o.hw), float(o.hd)) * scala, Color(0.5, 0.25, 0.2, 0.9))
+		else:
+			minimappa.draw_circle(p, 1.6, Color(0.6, 0.58, 0.52, 0.9))
+	for e: Entita in gioco.ents.values():
+		var p: Vector2 = su.call(e.x, e.z)
+		if p.distance_to(c) > lato * 0.5 - 3.0 or e.tipo == "d":
+			continue
+		var col := Color(0.95, 0.35, 0.3) if e.tipo == "m" else (Color(0.5, 0.95, 0.5) if e.tipo == "n" else Color(0.5, 0.75, 1.0))
+		if e.morto:
+			col = Color(0.4, 0.4, 0.4)
+		minimappa.draw_circle(p, 3.2 if e == gioco.bersaglio else 2.2, col)
+	var dir := Vector2(sin(io.r), cos(io.r))
+	var lat := Vector2(dir.y, -dir.x)
+	minimappa.draw_colored_polygon(PackedVector2Array([c + dir * 7.0, c - dir * 4.0 + lat * 4.0, c - dir * 4.0 - lat * 4.0]), Color(1.0, 0.92, 0.6))
+	minimappa.draw_arc(c, lato * 0.5 - 1.0, 0.0, TAU, 48, ORO.darkened(0.3), 2.0)
 
 
 func _disegna_targhette() -> void:
@@ -369,7 +429,7 @@ func _disegna_targhette() -> void:
 		var p3: Vector3 = n.p + Vector3(0, n.eta * 1.6, 0)
 		if cam.is_position_behind(p3):
 			continue
-		var p := cam.unproject_position(p3)
+		var p := cam.unproject_position(p3) + Vector2(float(n.get("lato", 0.0)), 0.0)
 		var misura := int(20.0 * float(n.g) * (1.0 + 0.5 * maxf(0.0, 0.15 - n.eta) / 0.15))
 		var c: Color = n.c
 		c.a = clampf((1.1 - n.eta) / 0.4, 0.0, 1.0)

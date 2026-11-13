@@ -25,6 +25,13 @@ var _blocco := 0.0         # secondi rimasti di un'animazione singola (attacco, 
 var _base := ""
 var _att_i := 0
 var _arma: Node3D = null
+var _albero: AnimationTree = null      # solo umani: movimento sotto, colpi sulla parte alta del corpo
+var _nodo_colpo: AnimationNodeAnimation
+var _nodo_singola: AnimationNodeOneShot
+var _stato := ""
+var _muove := false
+
+const PARTE_ALTA := ["spine", "spine_1", "chest", "neck", "head", "shoulder_L", "upper_arm_L", "forearm_L", "hand_L", "shoulder_R", "upper_arm_R", "forearm_R", "hand_R"]
 
 
 static func _scena(nome: String) -> PackedScene:
@@ -78,7 +85,7 @@ static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado
 	p.player.add_animation_library("", _libreria_umani(modello, p.scheletro))
 	p.attacchi = ATTACCHI.get(tipo_arma, ATTACCHI.sword)
 	p._metti_arma(tipo_arma, grado_arma)
-	p._suona("fermo", 0.0)
+	p._crea_albero(radice)
 	return p
 
 
@@ -109,6 +116,51 @@ static func _libreria_umani(modello: String, sk: Skeleton3D) -> AnimationLibrary
 	sorgente.free()
 	_librerie[modello] = lib
 	return lib
+
+
+## Albero di animazione degli umani: fermo/camminata/corsa/morte sfumati fra loro, e sopra un colpo singolo che,
+## se ci si sta muovendo, prende solo la parte alta del corpo (così si colpisce correndo senza far scivolare i piedi).
+func _crea_albero(radice: Node3D) -> void:
+	var bt := AnimationNodeBlendTree.new()
+	var tr := AnimationNodeTransition.new()
+	tr.xfade_time = 0.2
+	var stati := ["fermo", "camminata", "corsa", "morte"]
+	tr.input_count = stati.size()
+	bt.add_node("base", tr)
+	for i in range(stati.size()):
+		tr.set_input_name(i, stati[i])
+		var an := AnimationNodeAnimation.new()
+		an.animation = stati[i]
+		bt.add_node("a_" + stati[i], an)
+		bt.connect_node("base", i, "a_" + stati[i])
+	bt.add_node("vel_base", AnimationNodeTimeScale.new())
+	bt.connect_node("vel_base", 0, "base")
+	_nodo_colpo = AnimationNodeAnimation.new()
+	_nodo_colpo.animation = attacchi[0] if not attacchi.is_empty() else "colpito"
+	bt.add_node("colpo", _nodo_colpo)
+	bt.add_node("vel_colpo", AnimationNodeTimeScale.new())
+	bt.connect_node("vel_colpo", 0, "colpo")
+	_nodo_singola = AnimationNodeOneShot.new()
+	_nodo_singola.fadein_time = 0.08
+	_nodo_singola.fadeout_time = 0.18
+	var percorso := String(radice.get_path_to(scheletro))
+	for osso in PARTE_ALTA:
+		_nodo_singola.set_filter_path(NodePath("%s:%s" % [percorso, osso]), true)
+	for i in range(scheletro.get_bone_count()):
+		var nome := scheletro.get_bone_name(i)
+		if nome.begins_with("hand_L_") or nome.begins_with("hand_R_"):
+			_nodo_singola.set_filter_path(NodePath("%s:%s" % [percorso, nome]), true)
+	bt.add_node("singola", _nodo_singola)
+	bt.connect_node("singola", 0, "vel_base")
+	bt.connect_node("singola", 1, "vel_colpo")
+	bt.connect_node("output", 0, "singola")
+	_albero = AnimationTree.new()
+	_albero.tree_root = bt
+	radice.add_child(_albero)
+	_albero.anim_player = _albero.get_path_to(player)
+	_albero.active = true
+	_stato = "fermo"
+	_albero.set("parameters/base/transition_request", "fermo")
 
 
 # ------------------------------------------------------------------ animali
@@ -284,6 +336,21 @@ func _suona(n: String, sfuma := 0.18, velocita := 1.0) -> void:
 func muovi(velocita: float, dt: float) -> void:
 	if player == null or morto:
 		return
+	_muove = velocita > 0.3
+	if _albero != null:
+		var stato := "fermo"
+		var passo := 1.0
+		if velocita > 3.6:
+			stato = "corsa"
+			passo = clampf(velocita / 6.5, 0.8, 1.5)
+		elif _muove:
+			stato = "camminata"
+			passo = clampf(velocita / 2.0, 0.7, 1.6)
+		if stato != _stato:
+			_stato = stato
+			_albero.set("parameters/base/transition_request", stato)
+		_albero.set("parameters/vel_base/scale", passo)
+		return
 	if _blocco > 0.0:
 		_blocco -= dt
 		if _blocco > 0.0:
@@ -312,6 +379,12 @@ func _singola(n: String, durata_max := 0.8) -> void:
 		return
 	var lung := player.get_animation(nome).length
 	var vel := maxf(1.0, lung / durata_max)
+	if _albero != null:
+		_nodo_colpo.animation = nome
+		_nodo_singola.filter_enabled = _muove
+		_albero.set("parameters/vel_colpo/scale", vel)
+		_albero.set("parameters/singola/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+		return
 	player.speed_scale = 1.0
 	player.play(nome, 0.08, vel)
 	_blocco = lung / vel
@@ -330,12 +403,23 @@ func lancia() -> void:
 
 
 func colpito() -> void:
+	if _albero != null:
+		if not _albero.get("parameters/singola/active"):
+			_singola("colpito", 0.45)
+		return
 	if _blocco <= 0.0:
 		_singola("colpito", 0.45)
 
 
 func muori() -> void:
 	if morto:
+		return
+	if _albero != null:
+		_albero.set("parameters/singola/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
+		_albero.set("parameters/vel_base/scale", 1.0)
+		_albero.set("parameters/base/transition_request", "morte")
+		_stato = "morte"
+		morto = true
 		return
 	if player != null and player.has_animation(_nome("morte")):
 		player.speed_scale = 1.0
@@ -348,6 +432,10 @@ func muori() -> void:
 
 func rialza() -> void:
 	morto = false
+	if _albero != null:
+		_stato = "fermo"
+		_albero.set("parameters/base/transition_request", "fermo")
+		return
 	rotation.x = 0.0
 	_blocco = 0.0
 	_base = ""

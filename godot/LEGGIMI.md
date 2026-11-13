@@ -15,7 +15,7 @@ Gli amici in rete locale mettono come server `IL-TUO-IP:3000`. Per dare loro un 
 ## Comandi
 WASD o clic sul terreno per muoversi · tasto destro trascinato o Q/E per girare la visuale · rotellina per lo zoom ·
 clic o Tab per il bersaglio · 1-0 per la barra rapida · V Tecnica Suprema · Invio chat (comandi GM compresi) ·
-R cavalcatura · Z raccogli · Esc toglie il bersaglio.
+I inventario · C personaggio · K abilità · R cavalcatura · Z raccogli · Esc chiude le finestre o toglie il bersaglio.
 
 ## Quando cambiano i dati del gioco
 Tecniche, mostri, oggetti e terreno arrivano da `shared/data.js` e `shared/world.js`. Dopo averli modificati
@@ -42,5 +42,4 @@ recente si può passare a **Forward+** dal menù in alto a destra dell'editor: a
 ombre migliori (le impostazioni sono già nella scena), ma la luce va ricontrollata a vista.
 
 ## Cosa manca rispetto al client nel browser
-Inventario, finestre Abilità e Personaggio, negozi, fabbro, gruppo, minimappa, Prove del Sigillo (cripta),
-cavalcature a vista, suoni. I mostri senza modello (scimmie, spiriti, statue) sono sagome provvisorie.
+Gruppo, Prove del Sigillo (cripta), scuderia e cavalcature a vista, gemme e pergamene sugli oggetti, suoni. I mostri senza modello (scimmie, spiriti, statue) sono sagome provvisorie.
