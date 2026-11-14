@@ -43,9 +43,16 @@ static func _scena(nome: String) -> PackedScene:
 	return _scene[nome]
 
 
+static func _dipinto(nome: String, c: Color) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shader/%s.gdshader" % nome)
+	m.set_shader_parameter("colore", c)
+	return m
+
+
 # ------------------------------------------------------------------ umani
 ## wear: quali capi mostrare — { "veste": Color, "lamellare": { "stoffa": Color }, "elmo_bronzo": true }
-static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado_arma := 1, pelle := Color(0.86, 0.66, 0.52)) -> Personaggio:
+static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado_arma := 1, pelle := Color(0.86, 0.66, 0.52), ricamo := Color(0.75, 0.6, 0.3)) -> Personaggio:
 	var p := Personaggio.new()
 	var radice: Node3D = _scena(modello).instantiate()
 	p.add_child(radice)
@@ -56,11 +63,8 @@ static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado
 			continue
 		var nome := String(mi.name)
 		if not nome.begins_with("capo_"):
-			# corpo: manichino provvisorio, gli si dà il colore della pelle
-			var m := StandardMaterial3D.new()
-			m.albedo_color = pelle
-			m.roughness = 0.75
-			mi.material_override = m
+			# corpo: manichino provvisorio, gli si dà la pelle
+			mi.material_override = _dipinto("pelle", pelle)
 			continue
 		var parti := nome.trim_prefix("capo_").split("__")
 		var capo := parti[0]
@@ -74,12 +78,18 @@ static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado
 			c = v
 		elif v is Dictionary and v.has(parte):
 			c = v[parte]
-		if c != null:
-			var mat := StandardMaterial3D.new()
-			mat.albedo_color = c
-			mat.roughness = 0.8
-			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-			mi.material_override = mat
+		# colore e lucentezza di partenza: quelli del modello, se il capo non ne impone uno
+		var orig := mi.mesh.surface_get_material(0) as BaseMaterial3D
+		var colore: Color = c if c != null else (orig.albedo_color if orig != null else Color(0.5, 0.5, 0.5))
+		if parte in ["piastre", "bordo"]:
+			var met := _dipinto("metallo", colore)
+			met.set_shader_parameter("metallico", orig.metallic if orig != null else 0.3)
+			met.set_shader_parameter("ruvido", orig.roughness if orig != null else 0.5)
+			mi.material_override = met
+		else:
+			var st := _dipinto("stoffa", colore)
+			st.set_shader_parameter("ricamo", ricamo)
+			mi.material_override = st
 	var testa := p.scheletro.find_bone("head")
 	if testa >= 0:
 		p.altezza = p.scheletro.get_bone_global_rest(testa).origin.y + 0.28

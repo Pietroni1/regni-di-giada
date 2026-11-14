@@ -37,6 +37,15 @@ vec2 ciottoli(vec2 p) {
 	return vec2(d2 - d1, id);
 }
 
+vec3 rilievo(vec3 n, vec3 pos, float h, float forza) {
+	vec3 dpx = dFdx(pos), dpy = dFdy(pos);
+	float dhx = dFdx(h), dhy = dFdy(h);
+	vec3 r1 = cross(dpy, n), r2 = cross(n, dpx);
+	float det = dot(dpx, r1);
+	vec3 grad = sign(det) * (dhx * r1 + dhy * r2);
+	return normalize(abs(det) * n - forza * grad);
+}
+
 void vertex() {
 	pm = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	nm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
@@ -73,7 +82,19 @@ void fragment() {
 	vec3 col = erba * max(0.0, 1.0 - tot);
 	col += secco * a.r + bosco * a.g + sabbia * a.b + terra * a.a + roccia * b.r + neve * b.g + lastrico * b.b;
 
+	// fiorellini e trifogli sparsi nell'erba (solo da vicino)
+	vec2 gf = p * 2.2, cf = floor(gf);
+	float seme = h21(cf);
+	float fiore = (1.0 - smoothstep(0.05, 0.11, length(fract(gf) - 0.5 - (vec2(h21(cf + 3.0), h21(cf + 8.0)) - 0.5) * 0.6))) * step(0.86, seme) * (1.0 - lontano);
+	vec3 petalo = seme > 0.95 ? vec3(0.95, 0.92, 0.85) : (seme > 0.91 ? vec3(0.95, 0.80, 0.30) : vec3(0.80, 0.55, 0.75));
+	col = mix(col, petalo, fiore * max(0.0, 1.0 - tot) * 0.9);
+	// muschio nelle fughe del lastricato
+	col = mix(col, vec3(0.16, 0.24, 0.10), (1.0 - smoothstep(0.02, 0.07, c.x)) * b.b * smoothstep(0.45, 0.7, grande) * 0.6);
+
 	ALBEDO = col;
+	// rilievo: ciottoli bombati, zolle d'erba, venature della roccia (svanisce in lontananza)
+	float alt = b.b * smoothstep(0.0, 0.14, c.x) * (0.8 + 0.2 * c.y) + (1.0 - b.b) * (tratto * 0.35 + medio * 0.25) + b.r * venatura * 0.8 + a.a * finissimo * 0.5;
+	NORMAL = rilievo(NORMAL, VERTEX, alt, 0.035 * (1.0 - lontano));
 	ROUGHNESS = mix(0.95, 0.75, b.b);
 	SPECULAR = 0.25;
 	// rilievo dei ciottoli: scurisce le fughe e inclina appena la normale

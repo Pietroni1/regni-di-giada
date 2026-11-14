@@ -174,7 +174,7 @@ func _giocatore() -> Personaggio:
 		grado_arma = int(Dati.ITEMS[arma].get("tier", 1))
 	var lista: Array = Dati.indice.get("classi", {}).get(String(info.get("cls", "lama")), ["base_uomo", "base_donna"])
 	var modello: String = lista[mini(1 if String(info.get("sx", "m")) == "f" else 0, lista.size() - 1)]
-	var p := Personaggio.umano(modello, wear, tipo_arma, grado_arma)
+	var p := Personaggio.umano(modello, wear, tipo_arma, grado_arma, Color(0.86, 0.66, 0.52), Dati.colore(look.get("trim", 0xb8a070)))
 	var donna := String(info.get("sx", "m")) == "f"
 	var stile := String(look.get("hairStyle", "short"))
 	if donna and stile in ["topknot", "bald"]:

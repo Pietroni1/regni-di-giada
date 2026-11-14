@@ -5,7 +5,7 @@ render_mode cull_disabled, diffuse_burley;
 uniform vec3 colore : source_color = vec3(0.3, 0.12, 0.1);
 uniform float file = 2.4;   // coppi per metro (le UV sono in metri)
 
-float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+#include "res://shader/comune.gdshaderinc"
 
 void fragment() {
 	vec2 g = vec2(UV.x * file, UV.y * file * 0.55);
@@ -15,7 +15,9 @@ void fragment() {
 	vec3 c = colore * (0.75 + 0.5 * id);
 	c *= mix(1.15, 0.55, smoothstep(0.35, 1.0, colonna));    // canale in ombra
 	c *= mix(0.6, 1.0, smoothstep(0.0, 0.18, riga));         // bordo di ogni tegola
+	c *= 0.85 + 0.3 * rum(g * 3.0);                          // patina irregolare
 	ALBEDO = c;
+	NORMAL = rilievo(NORMAL, VERTEX, (1.0 - colonna * colonna) * 0.8 + smoothstep(0.0, 0.18, riga) * 0.3, 0.05);
 	ROUGHNESS = 0.7;
 	SPECULAR = 0.3;
 	if (!FRONT_FACING) NORMAL = -NORMAL;

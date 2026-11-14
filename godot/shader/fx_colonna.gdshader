@@ -9,6 +9,6 @@ void fragment() {
 	float strisce = 0.55 + 0.45 * step(0.55, h21(vec2(floor(UV.x * 36.0), floor((su - TIME * 1.6) * 5.0))));
 	float a = pow(1.0 - su, 1.6) * strisce;
 	float vita = smoothstep(0.0, 0.15, fase) * (1.0 - smoothstep(0.55, 1.0, fase));
-	ALBEDO = colore.rgb * 1.6;
-	ALPHA = clamp(a * vita, 0.0, 1.0) * colore.a;
+	ALBEDO = colore.rgb * 1.3;
+	ALPHA = clamp(a * vita, 0.0, 1.0) * colore.a * 0.6;
 }

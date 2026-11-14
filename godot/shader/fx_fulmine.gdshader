@@ -22,7 +22,7 @@ void fragment() {
 	float stretta = smoothstep(0.0, 0.25, 1.0 - y);        // in basso converge sul punto colpito
 	float dev = (spezzata(y * 9.0, seme + guizzo * 3.1) * 0.34 + spezzata(y * 27.0, seme + 7.0 + guizzo) * 0.10) * stretta;
 	float dx = abs(UV.x - 0.5 - dev);
-	float nucleo = 0.012 / (dx + 0.004);
+	float nucleo = 0.016 / (dx + 0.004) + 0.02 / (dx * 6.0 + 0.12);       // filo bianco + alone largo
 	// rami secondari
 	float dev2 = dev + (spezzata(y * 6.0, seme + 31.0) * 0.5) * smoothstep(0.35, 0.7, y) * step(y, 0.8);
 	float ramo = 0.004 / (abs(UV.x - 0.5 - dev2) + 0.004) * step(0.3, y);
@@ -30,6 +30,6 @@ void fragment() {
 	float vita = 1.0 - smoothstep(0.45, 1.0, fase);
 	float lamp = 0.65 + 0.35 * step(0.5, fract(fase * 9.0));
 	float a = clamp((nucleo + ramo * 0.6) * calato * vita * lamp, 0.0, 4.0) * smoothstep(0.0, 0.08, UV.x) * smoothstep(1.0, 0.92, UV.x);
-	ALBEDO = mix(colore.rgb, vec3(1.0), clamp(nucleo * 0.25, 0.0, 1.0)) * 2.0;
+	ALBEDO = mix(colore.rgb, vec3(1.0), clamp(nucleo * 0.12, 0.0, 0.85)) * 1.6;
 	ALPHA = clamp(a, 0.0, 1.0) * colore.a;
 }

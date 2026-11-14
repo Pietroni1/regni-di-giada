@@ -28,6 +28,30 @@ static func mat(c: Color, ruvido := 0.85, metallo := 0.0, emissione := 0.0) -> S
 	return m
 
 
+## Materiali dipinti da codice (shader/intonaco, legno, pietra): un materiale per colore, riusato.
+static func _dipinto(nome: String, c: Color) -> ShaderMaterial:
+	var k := nome + c.to_html()
+	if _mat_cache.has(k):
+		return _mat_cache[k]
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shader/%s.gdshader" % nome)
+	m.set_shader_parameter("colore", c)
+	_mat_cache[k] = m
+	return m
+
+
+static func intonaco(c: Color) -> ShaderMaterial:
+	return _dipinto("intonaco", c)
+
+
+static func legno(c: Color) -> ShaderMaterial:
+	return _dipinto("legno", c)
+
+
+static func pietra(c: Color) -> ShaderMaterial:
+	return _dipinto("pietra", c)
+
+
 static func scatola(dim: Vector3, pos: Vector3, m: Material, genitore: Node3D) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var b := BoxMesh.new()
@@ -99,35 +123,35 @@ static func tetto(w: float, d: float, h: float, sporto: float, colore: Color, ri
 ## Casa: muri intonacati con telaio di legno, porta sul lato +z, tetto a coppi.
 static func casa(w: float, d: float, tetto_col: Color, muro_h := 2.8, tetto_h := 2.4) -> Node3D:
 	var g := Node3D.new()
-	var legno := mat(LEGNO, 0.8)
-	scatola(Vector3(w + 0.7, 0.45, d + 0.7), Vector3(0, 0.22, 0), mat(PIETRA, 0.95), g)
-	scatola(Vector3(w, muro_h, d), Vector3(0, 0.45 + muro_h * 0.5, 0), mat(INTONACO, 0.95), g)
+	var travi := legno(LEGNO)
+	scatola(Vector3(w + 0.7, 0.45, d + 0.7), Vector3(0, 0.22, 0), pietra(PIETRA), g)
+	scatola(Vector3(w, muro_h, d), Vector3(0, 0.45 + muro_h * 0.5, 0), intonaco(INTONACO), g)
 	# telaio: montanti agli angoli e a intervalli, travi in alto e a mezza altezza
 	for sx in [-1.0, 1.0]:
 		for sz in [-1.0, 1.0]:
-			scatola(Vector3(0.3, muro_h, 0.3), Vector3(sx * w * 0.5, 0.45 + muro_h * 0.5, sz * d * 0.5), legno, g)
+			scatola(Vector3(0.3, muro_h, 0.3), Vector3(sx * w * 0.5, 0.45 + muro_h * 0.5, sz * d * 0.5), travi, g)
 	var nx := maxi(1, int(w / 2.4))
 	for i in range(1, nx):
 		var x := -w * 0.5 + w * i / nx
 		for sz in [-1.0, 1.0]:
-			scatola(Vector3(0.18, muro_h, 0.08), Vector3(x, 0.45 + muro_h * 0.5, sz * (d * 0.5 + 0.02)), legno, g)
+			scatola(Vector3(0.18, muro_h, 0.08), Vector3(x, 0.45 + muro_h * 0.5, sz * (d * 0.5 + 0.02)), travi, g)
 	var nz := maxi(1, int(d / 2.4))
 	for i in range(1, nz):
 		var z := -d * 0.5 + d * i / nz
 		for sx in [-1.0, 1.0]:
-			scatola(Vector3(0.08, muro_h, 0.18), Vector3(sx * (w * 0.5 + 0.02), 0.45 + muro_h * 0.5, z), legno, g)
+			scatola(Vector3(0.08, muro_h, 0.18), Vector3(sx * (w * 0.5 + 0.02), 0.45 + muro_h * 0.5, z), travi, g)
 	for y in [0.45 + muro_h - 0.12, 0.45 + muro_h * 0.52]:
-		scatola(Vector3(w + 0.12, 0.2, d + 0.12), Vector3(0, y, 0), legno, g)
+		scatola(Vector3(w + 0.12, 0.2, d + 0.12), Vector3(0, y, 0), travi, g)
 	# porta scorrevole e finestre a grata
 	scatola(Vector3(1.5, 2.1, 0.1), Vector3(0, 0.45 + 1.05, d * 0.5 + 0.06), mat(Color(0.30, 0.18, 0.10), 0.7), g)
-	scatola(Vector3(0.06, 2.1, 0.12), Vector3(0, 0.45 + 1.05, d * 0.5 + 0.07), legno, g)
+	scatola(Vector3(0.06, 2.1, 0.12), Vector3(0, 0.45 + 1.05, d * 0.5 + 0.07), travi, g)
 	var carta := mat(Color(0.95, 0.88, 0.66), 0.9, 0.0, 0.35)
 	for sx in [-1.0, 1.0]:
 		if w > 5.0:
 			var fx: float = sx * (w * 0.5 - 1.3)
 			scatola(Vector3(1.1, 0.9, 0.08), Vector3(fx, 0.45 + muro_h * 0.62, d * 0.5 + 0.05), carta, g)
 			for k in range(-1, 2):
-				scatola(Vector3(0.05, 0.9, 0.1), Vector3(fx + k * 0.3, 0.45 + muro_h * 0.62, d * 0.5 + 0.06), legno, g)
+				scatola(Vector3(0.05, 0.9, 0.1), Vector3(fx + k * 0.3, 0.45 + muro_h * 0.62, d * 0.5 + 0.06), travi, g)
 	var t := tetto(w, d, tetto_h, 1.25, tetto_col)
 	t.position.y = 0.45 + muro_h
 	g.add_child(t)
@@ -137,14 +161,14 @@ static func casa(w: float, d: float, tetto_col: Color, muro_h := 2.8, tetto_h :=
 ## Pagoda a tre piani con colonne laccate e pinnacolo dorato.
 static func pagoda(lato: float, tetto_col: Color, accento: Color) -> Node3D:
 	var g := Node3D.new()
-	scatola(Vector3(lato + 2.4, 0.5, lato + 2.4), Vector3(0, 0.25, 0), mat(PIETRA, 0.95), g)
-	scatola(Vector3(lato + 1.2, 0.35, lato + 1.2), Vector3(0, 0.67, 0), mat(PIETRA.lightened(0.1), 0.95), g)
+	scatola(Vector3(lato + 2.4, 0.5, lato + 2.4), Vector3(0, 0.25, 0), pietra(PIETRA), g)
+	scatola(Vector3(lato + 1.2, 0.35, lato + 1.2), Vector3(0, 0.67, 0), pietra(PIETRA.lightened(0.1)), g)
 	var y := 0.85
 	var lacca := mat(accento.darkened(0.15), 0.45)
 	for piano in range(3):
 		var l := lato * (1.0 - 0.24 * piano)
 		var hm := 3.2 - 0.5 * piano
-		scatola(Vector3(l * 0.86, hm, l * 0.86), Vector3(0, y + hm * 0.5, 0), mat(INTONACO, 0.95), g)
+		scatola(Vector3(l * 0.86, hm, l * 0.86), Vector3(0, y + hm * 0.5, 0), intonaco(INTONACO), g)
 		for sx in [-1.0, 1.0]:
 			for sz in [-1.0, 1.0]:
 				cilindro(0.2, 0.22, hm, Vector3(sx * l * 0.47, y + hm * 0.5, sz * l * 0.47), lacca, g, 10)
@@ -166,7 +190,7 @@ static func pagoda(lato: float, tetto_col: Color, accento: Color) -> Node3D:
 ## Fucina: casa bassa con camino e bagliore del fuoco.
 static func fucina(w: float, d: float, tetto_col: Color) -> Node3D:
 	var g := casa(w, d, tetto_col, 2.6, 2.0)
-	scatola(Vector3(1.1, 5.6, 1.1), Vector3(w * 0.5 - 1.0, 2.8, -d * 0.5 + 1.0), mat(PIETRA.darkened(0.2), 0.95), g)
+	scatola(Vector3(1.1, 5.6, 1.1), Vector3(w * 0.5 - 1.0, 2.8, -d * 0.5 + 1.0), pietra(PIETRA.darkened(0.2)), g)
 	scatola(Vector3(1.6, 0.9, 1.0), Vector3(-w * 0.5 + 1.6, 0.9, d * 0.5 + 1.2), mat(Color(0.12, 0.12, 0.13), 0.5, 0.6), g)   # incudine
 	scatola(Vector3(1.2, 0.7, 1.2), Vector3(w * 0.5 - 1.2, 0.8, d * 0.5 + 1.2), mat(Color(1.0, 0.45, 0.1), 0.6, 0.0, 3.0), g)  # braci
 	var l := OmniLight3D.new()
@@ -181,11 +205,11 @@ static func fucina(w: float, d: float, tetto_col: Color) -> Node3D:
 ## Bancarella del mercato: banco, quattro pali e telo colorato.
 static func bancarella(telo: Color) -> Node3D:
 	var g := Node3D.new()
-	var legno := mat(Color(0.36, 0.24, 0.14), 0.85)
-	scatola(Vector3(4.0, 0.95, 1.4), Vector3(0, 0.48, 0), legno, g)
+	var travi := legno(Color(0.36, 0.24, 0.14))
+	scatola(Vector3(4.0, 0.95, 1.4), Vector3(0, 0.48, 0), travi, g)
 	for sx in [-1.0, 1.0]:
 		for sz in [-1.0, 1.0]:
-			scatola(Vector3(0.12, 2.9, 0.12), Vector3(sx * 1.95, 1.45, sz * 0.75), legno, g)
+			scatola(Vector3(0.12, 2.9, 0.12), Vector3(sx * 1.95, 1.45, sz * 0.75), travi, g)
 	var t := scatola(Vector3(4.6, 0.08, 2.4), Vector3(0, 2.95, 0.15), mat(telo, 0.9), g)
 	t.rotation.x = 0.18
 	for i in range(5):
@@ -196,10 +220,10 @@ static func bancarella(telo: Color) -> Node3D:
 
 static func pozzo() -> Node3D:
 	var g := Node3D.new()
-	cilindro(1.25, 1.3, 0.95, Vector3(0, 0.47, 0), mat(PIETRA, 0.95), g, 14)
+	cilindro(1.25, 1.3, 0.95, Vector3(0, 0.47, 0), pietra(PIETRA), g, 14)
 	cilindro(0.95, 0.95, 0.06, Vector3(0, 0.82, 0), mat(Color(0.05, 0.12, 0.16), 0.1), g, 14)
 	for sx in [-1.0, 1.0]:
-		scatola(Vector3(0.16, 2.6, 0.16), Vector3(sx * 1.15, 1.3, 0), mat(LEGNO, 0.8), g)
+		scatola(Vector3(0.16, 2.6, 0.16), Vector3(sx * 1.15, 1.3, 0), legno(LEGNO), g)
 	var t := tetto(2.2, 1.2, 0.7, 0.4, Color(0.25, 0.14, 0.1), 0.2)
 	t.position.y = 2.6
 	g.add_child(t)
@@ -209,7 +233,7 @@ static func pozzo() -> Node3D:
 ## Lanterna di pietra con la fiamma accesa (la luce vera si aggiunge solo ad alcune, per non pesare).
 static func lanterna(con_luce: bool) -> Node3D:
 	var g := Node3D.new()
-	var pietra := mat(PIETRA.lightened(0.08), 0.95)
+	var pietra := pietra(PIETRA.lightened(0.08))
 	scatola(Vector3(0.7, 0.2, 0.7), Vector3(0, 0.1, 0), pietra, g)
 	cilindro(0.14, 0.18, 1.2, Vector3(0, 0.8, 0), pietra, g, 8)
 	scatola(Vector3(0.62, 0.12, 0.62), Vector3(0, 1.46, 0), pietra, g)
@@ -228,8 +252,8 @@ static func lanterna(con_luce: bool) -> Node3D:
 ## Tratto di mura: pietra in basso, intonaco e copertura a coppi.
 static func tratto_mura(larghezza: float, tetto_col: Color) -> Node3D:
 	var g := Node3D.new()
-	scatola(Vector3(larghezza, 1.4, 1.5), Vector3(0, 0.7, 0), mat(PIETRA, 0.95), g)
-	scatola(Vector3(larghezza, 2.6, 1.1), Vector3(0, 2.7, 0), mat(INTONACO.darkened(0.08), 0.95), g)
+	scatola(Vector3(larghezza, 1.4, 1.5), Vector3(0, 0.7, 0), pietra(PIETRA), g)
+	scatola(Vector3(larghezza, 2.6, 1.1), Vector3(0, 2.7, 0), intonaco(INTONACO.darkened(0.08)), g)
 	var t := tetto(larghezza + 0.1, 1.2, 0.6, 0.35, tetto_col, 0.0)
 	t.position.y = 4.0
 	g.add_child(t)
@@ -242,7 +266,7 @@ static func porta(luce: float, tetto_col: Color, accento: Color) -> Node3D:
 	var lacca := mat(accento.darkened(0.1), 0.45)
 	for sx in [-1.0, 1.0]:
 		cilindro(0.45, 0.5, 6.4, Vector3(sx * luce * 0.5, 3.2, 0), lacca, g, 12)
-		scatola(Vector3(1.3, 0.5, 1.3), Vector3(sx * luce * 0.5, 0.25, 0), mat(PIETRA, 0.95), g)
+		scatola(Vector3(1.3, 0.5, 1.3), Vector3(sx * luce * 0.5, 0.25, 0), pietra(PIETRA), g)
 	scatola(Vector3(luce + 2.6, 0.5, 0.6), Vector3(0, 5.6, 0), lacca, g)
 	scatola(Vector3(luce + 1.2, 0.36, 0.5), Vector3(0, 4.7, 0), lacca, g)
 	scatola(Vector3(2.4, 0.8, 0.14), Vector3(0, 5.15, 0), mat(Color(0.1, 0.08, 0.07), 0.6), g)
