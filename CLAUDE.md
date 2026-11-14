@@ -175,6 +175,35 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   su PC con GPU. La Postura (`shared/postura.js`) non è stata tarata: il Mistico squilibra il fantoccio 2-3 volte al minuto,
   le altre classi 5.
 
+## Farming nel mondo aperto: branchi (fatto)
+L'autore vuole il farming «alla Metin»: branchi da falciare con i colpi ad area (la Risonanza si accende con 3+ nemici).
+- **Branchi** (`initSpawns`, `addBranco`, `programmaRinascita`, `tickBranchi`, `chiamaBranco` in `server/world.js`): gruppi di
+  4-7 mostri della stessa famiglia entro ~3,4 m dal centro (`RAGGIO_DISPERSIONE`), vagano di soli 2,5 m (`m.vaga`), branchi
+  ad almeno 22 m l'uno dall'altro (`SEP_BRANCHI`), mai a meno di 58 m dai villaggi. Intorno ai villaggi: lupi, cinghiali,
+  lupi del branco; più lontano: banditi con arcieri, predoni, scimmie; Altopiano: soldati di terracotta (+ spiriti a 3-4).
+  **Solitari élite** (vita ≥ 1000, hanno la Postura): Lupo Anziano (nuovo, vicino al villaggio), Orso Nero, Terracotta,
+  Tigre Spettrale; il Lupo Alfa resta un solitario normale (serve alle ondate dell'obelisco).
+- **Aggro di branco**: il primo colpo (o la prima volta che uno ti nota) chiama i compagni vivi entro `RAGGIO_BRANCO` = 10 m
+  da quel mostro; gli altri branchi non si muovono. **Rinascita**: quando TUTTO il branco è a terra rinasce insieme dopo
+  `respawn` (il massimo dei suoi membri, 24-50 s); un superstite non blocca i morti, che tornano dopo 3 volte il tempo.
+- `MOBS[..].bott` = moltiplicatore del bottino (tabella + `extraDrops`), 0,8-0,9 sui mostri di branco: più uccisioni
+  all'ora, stesso equipaggiamento all'ora. Vita, esperienza e tael dei mostri di branco sono scalati (vita -20%, esperienza
+  -17/-21%): lupo, cinghiale, lupo_branco, bandito, scimmia, arciere_bandito, predone, soldato_terracotta.
+  Attenzione: lupo_alfa, terracotta e spirito_lanterna sono usati anche dalle ondate degli obelischi e dal Generale, perciò
+  NON sono stati toccati; bandito sì (ondate dell'obelisco minore: ora un po' più facili).
+- La radura di `npm run sim` (-228,-228) è tenuta libera da `initSpawns` (nessuno spawner a meno di 50 m).
+- **Misura**: `npm run farming` (`tools/sim/farming.mjs`, istruzioni in testa al file): un bot di livello adatto cammina
+  nella zona, combatte con i kit nuovi e riporta uccisioni/min, esperienza/min, danni subiti, vita minima, morti, ginseng
+  bevuti, oggetti caduti. Zone `bassa` (liv. 5), `media` (12), `alta` (19); `--bonus-livello 5` prova chi è sopra la zona.
+  Il bot ha latenza zero e rotazione perfetta: i numeri assoluti sono ottimistici, contano i rapporti prima/dopo.
+  Dopo ogni ritocco ai mostri del mondo: `npm run farming -- --ripeti 2` e confronto con i numeri qui sotto (5 min, velocità 3,
+  Fulmine / Arco; prima → dopo; esperienza al minuto): bassa 1733 → 2066 / 2023 → 2227, media 4731 → 5644 / 5360 → 6161,
+  alta 10406 → 10714 / 9950 → 11608 (da +3% a +19%); uccisioni al minuto bassa 46/54 → 65/68, media 48/53 → 47/53,
+  alta 40/39 → 44/49. Con +5 livelli sopra la zona l'esperienza cresce solo del 2-19% e sale di 1 livello in 5 min.
+- Da sapere: il bot cammina il 25-75% del tempo (i branchi sono distanziati: è il limite del ritmo, non la vita dei
+  mostri); contro un branco il Fulmine al livello 5 beve ~9 ginseng in 5 min (prima 1) ma non muore; il bottino misurato è
+  molto rumoroso (decine di oggetti in 5 min), la taratura vera è nei valori attesi per uccisione.
+
 ## Client Godot (in corso — direzione scelta dall'autore)
 L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Godot 4.4** (`godot/`). Il server Node,
 `shared/` e la simulazione restano; il client nel browser resta com'è finché quello Godot non lo raggiunge.
