@@ -363,6 +363,8 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 		_arricchisci(sk, da, su, colore, qui, la, raggio, g)
 		return
 	_arricchisci(sk, da, su, colore, qui, la, raggio, g)
+	if int(m.get("ris", 0)) == 1:
+		_risonanza(sk, colore, la)
 	if forte:
 		# gli scarichi potenti si annunciano: rune sotto i piedi e una carica di luce
 		rune(qui, colore, 2.3, 0.9)
@@ -481,6 +483,36 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 			colonna(qui, colore, 1.3, 5.5, 1.0)
 			spirale(qui, colore, 1.1, 2.8, 0.9)
 			bagliore(qui + Vector3(0, 1.3, 0), colore, 3.0, 0.35)
+
+
+## Finale con la Risonanza: lo stesso colpo si apre su tutta la zona attorno al bersaglio.
+func _risonanza(sk: Dictionary, colore: Color, la: Vector3) -> void:
+	var R := float(Dati.gioco.COMBAT.risRaggio)
+	rune(la, colore, R, 1.1)
+	anello(la, colore, R, 0.55, 0.12, 0.6)
+	_dopo(0.12, anello.bind(la, colore.lightened(0.3), R * 1.1, 0.5, 0.07))
+	scuoti(0.5)
+	match String(sk.get("fx", "")):
+		"lightning":
+			for i in range(7):
+				var a := TAU * i / 7.0 + randf() * 0.5
+				var d := R * (0.35 + 0.6 * randf())
+				_dopo(0.05 * i, fulmine.bind(Dati.suolo(la.x + cos(a) * d, la.z + sin(a) * d), colore, 15.0, 4.0, 0.36))
+		"slash":
+			taglio(la + Vector3(0, 1.1, 0), randf() * TAU, colore, R * 0.95, TAU, 0.36)
+			_dopo(0.1, taglio.bind(la + Vector3(0, 1.5, 0), randf() * TAU, colore.lightened(0.35), R * 0.8, TAU, 0.32, 0.3))
+			scintille(la + Vector3(0, 1.0, 0), colore, 36, 9.0, 0.5, -6.0)
+		"quake":
+			crepe(la, colore.lerp(Color(1.0, 0.55, 0.2), 0.5), R, 2.6)
+			polvere(la, R, 34)
+		"heal":
+			colonna(la, colore, R * 0.5, 6.0, 1.0)
+			spirale(la, colore, R * 0.45, 3.0, 0.9)
+		_:
+			_esplosione(la, colore, R)
+			for i in range(5):
+				var a := TAU * i / 5.0
+				_dopo(0.06 * i, bagliore.bind(la + Vector3(cos(a) * R * 0.6, 0.8, sin(a) * R * 0.6), colore, 2.4, 0.25))
 
 
 ## Strati in più per grado di padronanza, sopra l'effetto di base della tecnica.

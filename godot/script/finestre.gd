@@ -3,7 +3,7 @@ extends Control
 ## Finestre di gioco: Inventario (I), Personaggio (C), Abilità (K), negozio, fabbro e dialoghi dei PNG.
 ## Ogni azione è un messaggio al server (`use`, `mv`, `stat`, `skup`, `via`, `qb`, `buy`, `sell`, `up`): qui si mostra soltanto.
 
-const NOMI_RUOLO := {"accumulo": "Accumulo", "medio": "Scarico medio", "potente": "Scarico potente"}
+const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale"}
 
 var gioco
 var inventario: PanelContainer
@@ -183,8 +183,14 @@ func testo_oggetto(s) -> String:
 func testo_tecnica(sid: String, lvl: int) -> String:
 	var sk: Dictionary = Dati.SKILLS[sid]
 	var righe: Array = [String(sk.name) + ("  (livello %d — %s)" % [lvl, Effetti.nome_grado(lvl)] if lvl > 0 else "")]
-	if NOMI_RUOLO.has(String(sk.get("ruolo", ""))):
+	if sk.get("interrupt", false):
+		righe.append("Interruzione")
+	elif NOMI_RUOLO.has(String(sk.get("ruolo", ""))):
 		righe.append(NOMI_RUOLO[String(sk.ruolo)])
+	if sk.get("finale", false):
+		var C: Dictionary = Dati.gioco.COMBAT
+		var cls: Dictionary = Dati.CLASSES.get(gioco.classe, {})
+		righe.append("+%d%% per ogni punto di %s. Con la Risonanza colpisce ad area (%d%% a testa)." % [int(C.concPct), cls.get("pts", {}).get("name", "Concentrazione"), int(C.risPct)])
 	righe.append(String(sk.get("desc", "")))
 	var R: Dictionary = Dati.RESOURCES.get(String(gioco.io.get("rt", "")), {})
 	if sk.has("cost"):
@@ -453,6 +459,8 @@ func _riempi_abilita() -> void:
 		var titolo := String(sk.name)
 		if sk.get("sup", false):
 			titolo += "  ·  Tecnica Suprema"
+		elif sk.get("interrupt", false):
+			titolo += "  ·  Interruzione"
 		elif NOMI_RUOLO.has(ruolo):
 			titolo += "  ·  " + NOMI_RUOLO[ruolo]
 		_etichetta(testo, titolo, Hud.RUOLI.get(ruolo, Color(0.95, 0.93, 0.88)) if imparata else Color(0.5, 0.5, 0.5), 14)
@@ -721,8 +729,11 @@ WASD o clic sul terreno: muoversi  ·  tasto destro trascinato, Q / E: girare la
 
 COMBATTIMENTO
 Clic su un nemico o Tab: bersaglio e attacco automatico  ·  1-0: barra rapida  ·  V: Tecnica Suprema (dal livello 15)
-Gli ACCUMULI (tacca verde) sono gratuiti e generano risorsa o punti; gli SCARICHI MEDI (oro) la spendono;
-gli SCARICHI POTENTI (rosso) costano molto e, per Ombra, Monaco e Mistico, consumano tutti i punti: più punti, più danni.
+Pochi tasti: due COLPI BASE (tacca verde) sempre premibili, un COLPO FINALE (rosso), un'INTERRUZIONE (azzurra) e la mossa di Via.
+Il colpo base singolo dà punti di Concentrazione: il finale fa più danni su un bersaglio per ogni punto.
+Il colpo base ad area, se prende 3 o più nemici, accende la RISONANZA: il prossimo finale colpisce tutti (il tasto lampeggia).
+Quando un nemico lancia (barra arancione) premi l'Interruzione: spezza il lancio e lo stordisce.
+Ogni Via ha una MAESTRIA passiva che premia il suo stile: la trovi nella finestra Abilità.
 Ogni colpo a segno dà una tacca di SLANCIO (fino a 5): più risorsa e rapidità finché continui a colpire.
 Élite e boss hanno la POSTURA (barra gialla): gli scarichi la abbassano; a zero il nemico è Squilibrato, stordito e fragile.
 Spendendo risorsa si riempie la barra della TECNICA SUPREMA.

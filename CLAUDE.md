@@ -106,7 +106,7 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   Verificata dai numeri del server solo sulla Lama (4 ondate, barra azzerata, secondo lancio rifiutato).
   **Da verificare**: effetti a vista di tutte e 4, e Ombra/Monaco/Mistico in gioco (personaggi di prova Ombrina,
   Monachino, Mistichino già creati sull'account `admin` del database di prova).
-- Fase 3 fatta: **kit «2 accumuli + 4 scarichi»** per ogni Via (campo `ruolo` in `SKILLS`: `accumulo`, `medio`, `potente`).
+- Fase 3 (superata dalla fase 4): **kit «2 accumuli + 4 scarichi»** per ogni Via (campo `ruolo` in `SKILLS`: `accumulo`, `medio`, `potente`).
   Di base: 2 accumuli (livello 1, gratuiti, generano risorsa/punti) e lo scarico medio singolo (livello 3). Dalla Via: scarico
   medio ad area (5), supporto (7), scarico potente singolo (9), scarico potente ad area (12), supporto (15), Suprema (15).
   Costi: medio 30-35, potente 45-60 (Mana 4-5% e 10-12%); per Ombra, Monaco e Mistico i potenti consumano anche tutti i punti.
@@ -114,6 +114,28 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   Mistico: accumuli con tempo di lancio, scarichi istantanei; la Benedizione ha cure al posto dei danni (`spendBonus`).
   Motore: i `dot` valgono anche per le tecniche ad area, `waves` anche fuori dalle Supreme, passivo `chainHeal` (Loto).
   Client: ruolo nel tooltip e nella finestra Abilità, tacca colorata sotto i tasti della barra (verde/oro/rosso).
+- **Fase 4 — kit a pochi tasti (richiesta dell'autore, sostituisce i kit della fase 3)**: vuole 4-5 tasti per classe, colpi
+  base «sempre spalmabili», finali epici, **niente sequenze di tasti** ma passive in stile maestria; farming alla Metin,
+  dungeon alla WoW con interruzioni e stordimenti, PvP misto; la Benedizione resta guaritore.
+  Ogni Via: 2 colpi base (`ruolo: 'accumulo'`: uno singolo con `pts: 1`, uno ad area con `risonanza: true`), 1 colpo
+  finale (`finale: true`, `ruolo: 'potente'`), 1 interruzione (`interrupt: true`, fuori dal tempo globale) e, tranne la
+  Lama, 1 mossa di Via; più la Suprema. Prima della Via c'è un finale di base (`finoVia: true`) che quello della Via
+  sostituisce anche nella barra rapida. `DATA_VERSION = 5` azzera abilità e barra dei personaggi esistenti.
+  Regole in `COMBAT` (`shared/data.js`) e `resolveSkill` (`server/world.js`):
+  - **Concentrazione** (i punti di tutte le classi: Impeto, Punti combo, Sfere, Cariche): il finale li consuma, +9% a punto;
+  - **Risonanza** (effetto `risonanza`): il colpo base ad area che prende ≥3 nemici la accende; il finale la consuma e
+    colpisce (o cura) tutti attorno al bersaglio al 60% a testa; l'effetto parte con `ris: 1`;
+  - **Maestrie** (`VIE[via].maestria`): slancio (Fulmine), baluardo (Montagna), veleno (Pugnali), distanza (Arco),
+    ritmo (Ferro), cura (Loto), critPts (Tempesta), grazia (Benedizione: i danni dei colpi base curano il più ferito);
+  - **Lanci dei mostri** (`MOBS[..].cast`: arciere bandito, spirito della lanterna, generale, lanterna e custode della
+    cripta): effetti `mcast` / `mcastend`; stordimento, Squilibrio e interruzione li spezzano (`interrompi`);
+  - **PvP**: stordimenti ripetuti entro 15 s durano la metà, poi un quarto, poi immunità (`stun`).
+  Simulazione aggiornata (`rotazione` in `tools/sim/simula.mjs`). Misura dopo la taratura (40 s, velocità 4, una prova
+  per scenario): Vie da danno entro ±8% fra loro al livello 30 su 1 bersaglio (1087-1264 DPS), su 5 bersagli (2670-3071)
+  e al livello 15 (473-533); Montagna al 58-64%, Benedizione al 57% su un bersaglio e al 39% su cinque (il suo finale cura,
+  non fa danni); barra Suprema ~53 s. Non misurato a velocità reale né con più ripetizioni; cure e tenuta del difensore
+  non sono misurate. Visto a schermo nel client Godot (Lama): Risonanza, finale ad area, lancio di una Lanterna Insonne
+  con la barra, interruzione con la Carica e stordimento.
 - **Postura** di élite e boss: fatta (`shared/postura.js`, `colpisciPostura`/`tickPostura` nel server, barre nel client).
 - **Simulazione senza browser**: `npm run sim` (`tools/sim/simula.mjs`). Avvia da sé un server di prova, crea un personaggio
   per Via (livello, arma, punti statistica e abilità), lo porta davanti ai fantocci e gioca una rotazione sensata (tabella
@@ -226,6 +248,11 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   Perfetta (20) — e `_arricchisci` aggiunge strati (rune, eco del colpo, più saette/proiettili, crepe e onda, sigillo
   d'oro e tinta dorata al 20); le forme principali crescono dell'8% a grado. Il grado compare nella finestra Abilità e nel
   tooltip. Comando GM `/abilita id livello` per provarli. Visto a schermo: Lama del Tuono ai livelli 1, 10 e 20.
+- **Kit a pochi tasti nel client Godot**: finale con Risonanza mostrato ad area (`Effetti._risonanza`), barra di lancio
+  del bersaglio e barretta sulle targhette (`gioco.lanci_nemici`), cerchio a terra per i lanci ad area, scritta
+  «INTERROTTO», il tasto dell'Interruzione lampeggia quando il bersaglio lancia e quello del finale quando c'è la
+  Risonanza; ruoli rinominati (Colpo base, Colpo finale, Interruzione). Il client nel browser non è stato aggiornato ai
+  nuovi kit: funziona ancora ma mostra testi e tacche dei ruoli vecchi.
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 

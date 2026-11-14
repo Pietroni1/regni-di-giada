@@ -3,7 +3,7 @@
 import {
   CLASSES, VIE, SKILLS, BUFFS, RESOURCES, ITEMS, MOBS, UPGRADE, SHOPS, NPC_ROLES, WEAPON_TYPES, GUARD_LINES,
   INV_SIZE, QB_SIZE, STACK_MAX, STAT_MAX, EQUIP_SLOTS, MAX_LEVEL, VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BOOK_CHANCE,
-  PTS_MAX, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, weeklyAffixes, trialScale, keyChange, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
+  PTS_MAX, COMBAT, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, weeklyAffixes, trialScale, keyChange, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
   expToNext, skillVal, upgradedStat, equipSlotOf, SLANCIO, BONUS_RISORSA, SUPREMA,
 } from '../shared/data.js';
 import {
@@ -351,6 +351,7 @@ export class World {
     if (sk && sk.mount) return p.mounted && p.ch.horse && p.ch.horse.lvl >= sk.hlvl ? Math.min(SKILL_MAX, p.ch.horse.lvl) : 0;
     if (!sk || sk.cls !== p.cls || p.lvl < sk.lvl) return 0;
     if (sk.via && sk.via !== p.ch.via) return 0;
+    if (sk.finoVia && p.ch.via) return 0;                    // il finale di base lascia il posto a quello della Via
     return Math.max(1, p.ch.skills[sid] || 0);
   }
 
@@ -629,7 +630,22 @@ export class World {
     }
     if (m.temp && !m.target && t - m.lastActive > 60000) { this.remove(m); return; }
     if (d.explode && m.explodeAt && t >= m.explodeAt) return this.explodeLantern(m);
-    if (m.stunUntil > t) return;
+    if (m.stunUntil > t) {
+      if (m.cast) { m.cast = null; m.nextCast = t + (d.cast ? d.cast.cd * 0.5 : 4000); this.fx(m, { k: 'mcastend', s: m.id, int: 1 }); }   // stordito: il lancio salta
+      return;
+    }
+    if (m.cast) {
+      // sta lanciando: resta fermo; alla fine il colpo parte, a meno che sia stato interrotto
+      if (t < m.cast.until) return;
+      const c = d.cast, bers = this.ents.get(m.cast.tid);
+      m.cast = null; m.nextCast = t + c.cd;
+      this.fx(m, { k: 'mcastend', s: m.id });
+      if (c.raggio) {
+        this.fx(m, { k: 'slam', s: m.id, x: r1(m.x), z: r1(m.z), r: c.raggio });
+        for (const q of this.players) if (this.validMobTarget(q) && dist(q, m) < c.raggio) this.hit(m, q, m.atk * c.mult, {});
+      } else if (this.validMobTarget(bers) && dist(bers, m) < (d.range || 2.2) + 8) this.hit(m, bers, m.atk * c.mult, { auto: 3 });
+      return;
+    }
     const spd = d.speed * (m.slowUntil > t ? 0.5 : 1);
     let tgt = m.target ? this.ents.get(m.target) : null;
     if (m.target && !this.validMobTarget(tgt)) { m.aggro.delete(m.target); m.target = null; tgt = null; }
@@ -661,7 +677,10 @@ export class World {
         else {
           const nr = Math.atan2(tgt.x - m.x, tgt.z - m.z);
           if (Math.abs(nr - m.r) > 0.05) { m.r = nr; this.touch(m); }
-          if (t >= m.nextAttack) { m.nextAttack = t + d.aspd * (m.aspdMul || 1); this.mobAttack(m, tgt); }
+          if (d.cast && t >= (m.nextCast ?? (m.nextCast = t + 2500 + Math.random() * 2500))) {
+            m.cast = { until: t + d.cast.ms, tid: tgt.id };
+            this.fx(m, { k: 'mcast', s: m.id, n: d.cast.name, ms: d.cast.ms, r: d.cast.raggio || 0 });
+          } else if (t >= m.nextAttack) { m.nextAttack = t + d.aspd * (m.aspdMul || 1); this.mobAttack(m, tgt); }
         }
         if (d.dungeonBoss) this.trialBossLogic(m, t);
         else if (d.boss) this.bossLogic(m, t);
@@ -829,6 +848,14 @@ export class World {
   }
 
   stun(e, sec) {
+    if (e.kind === 'player') {
+      // rendimenti decrescenti: entro 15 s il secondo stordimento dura la metà, il terzo un quarto, poi immune
+      const t0 = NOW();
+      e.drN = t0 < (e.drUntil || 0) ? (e.drN || 0) + 1 : 0;
+      e.drUntil = t0 + 15000;
+      sec *= [1, 0.5, 0.25][e.drN] || 0;
+      if (sec <= 0) return;
+    }
     const until = NOW() + sec * 1000;
     if (e.d && (e.d.boss || e.d.stone || e.d.dummy)) return;
     e.stunUntil = Math.max(e.stunUntil || 0, until);
@@ -1161,6 +1188,17 @@ export class World {
     return (target && target.kind === 'player' && target.kingdom === p.kingdom && !target.dead && dist(target, p) <= range + 2) ? target : p;
   }
 
+  // L'alleato del regno con meno vita (in %) entro il raggio, sé compreso: bersaglio delle cure quando si ha un nemico selezionato.
+  piuFerito(p, raggio) {
+    let best = p, bv = p.hp / p.maxHp;
+    for (const q of this.players) {
+      if (q === p || q.kingdom !== p.kingdom || q.dead || dist(q, p) > raggio) continue;
+      const v = q.hp / q.maxHp;
+      if (v < bv) { bv = v; best = q; }
+    }
+    return best;
+  }
+
   // Controlla se l'abilità può partire ora; restituisce { target } oppure { err }.
   checkSkill(p, sk, lvl, tid) {
     const t = NOW();
@@ -1181,8 +1219,10 @@ export class World {
         if (sk.type === 'taunt' && target.kind !== 'mob') return { err: 'Puoi sfidare solo i mostri' };
         return { target };
       }
-      case 'heal_target': case 'hot_target': case 'shield': case 'heal_aoe':
-        return { target: this.friendly(p, target, range || 20) };
+      case 'heal_target': case 'hot_target': case 'shield': case 'heal_aoe': {
+        const amico = target && target.kind === 'player' && target.kingdom === p.kingdom && !target.dead && dist(target, p) <= (range || 20) + 2;
+        return { target: amico ? target : (sk.finale ? this.piuFerito(p, range || 20) : p) };
+      }
       default:
         return { target: null };
     }
@@ -1248,7 +1288,11 @@ export class World {
     const speso = this.costOf(p, sk);
     p.res = Math.max(0, p.res - speso);
     let n = 0;
-    if (sk.spend && sk.type !== 'heal_aoe') { n = p.pts; p.pts = 0; }
+    if ((sk.spend && sk.type !== 'heal_aoe') || sk.finale) { n = p.pts; p.pts = 0; }
+    // Risonanza: il finale diventa ad area (e la consuma)
+    const ris = !!sk.finale && p.buffs.some(b => b.id === 'risonanza');
+    if (ris) p.buffs = p.buffs.filter(b => b.id !== 'risonanza');
+    const mae = (p.ch.via && VIE[p.ch.via].maestria) || {};
     // la barra Suprema si riempie spendendo risorsa e punti; la Suprema stessa la svuota
     if (sk.sup) p.sup = 0;
     else if (p.lvl >= SUPREMA.lvl) p.sup = Math.min(SUPREMA.max, p.sup + (p.rtype === 'mana' ? speso / Math.max(1, p.rmax) * 100 * SUPREMA.perManaPct : speso * SUPREMA.perRes) + n * SUPREMA.perPt);
@@ -1269,9 +1313,17 @@ export class World {
     const pctFor = (tgt) => {
       let pct = p.dmgPct + bonus + (behind ? sk.behind.dmg : 0) + this.vulnFrom(tgt, p);
       if (sk.bonusVs && tgt.dots.some(d => d.src === p.id && d.sid === sk.bonusVs.dot)) pct += sk.bonusVs.dmg;
+      // Maestrie delle Vie
+      if (sk.finale && mae.slancio) pct += mae.slancio * p.slancio;
+      if (sk.finale && mae.veleno && tgt.dots.some(d => d.src === p.id && d.sid === 'veleno')) pct += mae.veleno.bonus;
+      if (mae.distanza && dist(p, tgt) > mae.distanza.m) pct += mae.distanza.pct;
+      if (mae.ritmo && sk.ruolo === 'accumulo' && p.ultimoBase && p.ultimoBase !== sid) pct += mae.ritmo;
       return pct;
     };
-    const dmgFor = (tgt) => base * (sk.mult ? skillVal(sk.mult, lvl) : 0) * (sk.spend ? n : 1) * (1 + pctFor(tgt) / 100);
+    // finale: su un bersaglio vale di più per ogni punto di Concentrazione; con la Risonanza colpisce tutti ma meno forte
+    const fin = sk.finale ? (ris ? COMBAT.risPct / 100 : 1 + n * COMBAT.concPct / 100) : 1;
+    const dmgFor = (tgt) => base * (sk.mult ? skillVal(sk.mult, lvl) : 0) * (sk.spend ? n : 1) * fin * (1 + pctFor(tgt) / 100);
+    let inflitti = 0;
     const opts = { sk: sid, ignoreDef: sk.ignoreDef, threat: sk.threat };
     // Postura: la riducono solo le tecniche che spendono risorsa o punti (costo nominale in % del massimo) e le Supreme
     const costoPct = sk.cost > 0 ? (p.rtype === 'mana' ? sk.cost : sk.cost / Math.max(1, p.rmax) * 100) : 0;
@@ -1282,7 +1334,7 @@ export class World {
       if (!sk.mult || !this.canAttack(p, tgt)) return;
       const r = this.hit(p, tgt, dmgFor(tgt), { ...opts, i, aoe: sk.type === 'aoe_self' || sk.type === 'aoe_target', post: postDi(colpi) });
       if (r.crit) crit = true;
-      if (!r.miss) colpiti.add(tgt.id);
+      if (!r.miss) { colpiti.add(tgt.id); inflitti += r.dmg || 0; }
     };
     const control = (tgt) => {
       if (!this.canAttack(p, tgt)) return;
@@ -1290,6 +1342,7 @@ export class World {
       if (sk.slow) this.slow(tgt, sk.slow.dur);
     };
     const fxd = { k: 'sk', s: p.id, sk: sid, l: lvl };   // l: livello dell'abilità, per l'aspetto dell'effetto nel client
+    if (ris) fxd.ris = 1;                                 // finale ad area: il client lo mostra su tutta la zona
     switch (sk.type) {
       case 'strike': {
         if (sk.dash) {
@@ -1306,6 +1359,8 @@ export class World {
         }
         for (let i = 0; i < (sk.hits || 1); i++) strikeOne(target, i, sk.hits || 1);
         if (sk.splash) for (const e of this.hostilesAround(p, target.x, target.z, sk.splash)) if (e !== target) { strikeOne(e); control(e); }
+        if (ris) { for (const e of this.hostilesAround(p, target.x, target.z, COMBAT.risRaggio)) if (e !== target) { strikeOne(e); control(e); } fxd.x = r1(target.x); fxd.z = r1(target.z); }
+        if (sk.interrupt) this.interrompi(p, target);
         control(target);
         if (sk.dot && this.canAttack(p, target)) this.applyDot(p, target, sk, lvl, n, base, pctFor(target));
         fxd.d = target.id; offensive = true;
@@ -1350,10 +1405,15 @@ export class World {
         }
         break;
       case 'heal_self': this.heal(p, p.maxHp * skillVal(sk.heal, lvl)); break;
-      case 'heal_target':
-        this.heal(target, (p.matk * skillVal(sk.heal, lvl) + 40) * (1 + p.healPct / 100));
+      case 'heal_target': {
+        const cura = (p.matk * skillVal(sk.heal, lvl) + 40) * (1 + p.healPct / 100) * fin;
+        if (ris) {
+          for (const q of this.players) if (q.kingdom === p.kingdom && !q.dead && dist(q, target) <= 10) this.heal(q, cura);
+          fxd.x = r1(target.x); fxd.z = r1(target.z);
+        } else this.heal(target, cura);
         fxd.d = target.id;
         break;
+      }
       case 'heal_aoe': {
         let extra = 0;
         if (sk.spendBonus && p.pts > 0) { extra = p.pts * sk.spendBonus; this.supDaPunti(p, p.pts); p.pts = 0; }
@@ -1394,6 +1454,14 @@ export class World {
       this.gainSlancio(p);
     }
     if (sk.pts) p.pts = Math.min(PTS_MAX, p.pts + sk.pts + (behind ? sk.behind.pts : 0));
+    if (sk.risonanza && colpiti.size >= COMBAT.risMin) this.addBuff(p, 'risonanza', 1);
+    if (sk.ruolo === 'accumulo') {
+      if (mae.veleno) for (const id of colpiti) { const e = this.ents.get(id); if (e && this.canAttack(p, e)) this.applyDot(p, e, { id: 'veleno', dot: mae.veleno }, lvl, 0, base, p.dmgPct); }
+      if (mae.critPts && crit) p.pts = Math.min(PTS_MAX, p.pts + mae.critPts);
+      if (mae.grazia && inflitti > 0) this.heal(this.piuFerito(p, 25), inflitti * mae.grazia / 100 * (1 + p.healPct / 100));
+      p.ultimoBase = sid;
+    }
+    if (sk.finale && mae.cura) this.heal(p, p.maxHp * mae.cura / 100);
     if (sk.buff && sk.type === 'strike') this.addBuff(p, sk.buff, lvl);
     const viaOk = (o) => !o.via || o.via === p.ch.via;
     if (crit && sk.onCrit && viaOk(sk.onCrit)) this.addBuff(p, sk.onCrit.buff, 1);
@@ -1404,6 +1472,22 @@ export class World {
     p.selfDirty = true; this.touch(p);
     this.send(p, { t: 'cd', s: sid, ms: (sk.cd || 0) * 1000, gcd: gcd ?? (sk.offgcd ? 0 : this.gcdMs(p)) });
     this.fx(p, fxd);
+  }
+
+  // Interruzione: spezza il lancio del bersaglio (mostro o giocatore) e rende un po' di risorsa.
+  interrompi(p, target) {
+    if (!target) return;
+    if (target.kind === 'mob' && target.cast) {
+      target.cast = null;
+      target.nextCast = NOW() + (target.d.cast ? target.d.cast.cd : 8000);
+      this.fx(target, { k: 'mcastend', s: target.id, int: 1 });
+      this.giveRes(p, COMBAT.genInterr);
+      p.resDirty = true;
+    } else if (target.kind === 'player' && target.casting) {
+      this.cancelCast(target);
+      this.fx(target, { k: 'mcastend', s: target.id, int: 1 });
+      this.giveRes(p, COMBAT.genInterr);
+    }
   }
 
   // Punti consumati da cure e scudi (`spendBonus`): riempiono la barra Suprema come quelli degli scarichi.
@@ -1439,6 +1523,10 @@ export class World {
   // Mette nella barra rapida le abilità appena sbloccate.
   autoQuickbar(p, announce) {
     const c = CLASSES[p.cls];
+    if (p.ch.via) {
+      const nuovo = Object.values(SKILLS).find(s => s.via === p.ch.via && s.finale);
+      p.ch.qb = p.ch.qb.map(q => (q && q.k === 's' && SKILLS[q.id] && SKILLS[q.id].finoVia) ? (nuovo ? { k: 's', id: nuovo.id } : null) : q);
+    }
     const known = new Set(p.ch.qb.filter(Boolean).filter(q => q.k === 's').map(q => q.id));
     const list = [...c.baseSkills, ...(p.ch.via ? Object.values(SKILLS).filter(s => s.via === p.ch.via).map(s => s.id) : [])];
     for (const sid of list) {

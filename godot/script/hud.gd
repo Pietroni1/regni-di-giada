@@ -4,7 +4,8 @@ extends CanvasLayer
 
 const ORO := Color(0.86, 0.72, 0.40)
 const SFONDO := Color(0.06, 0.05, 0.05, 0.82)
-const RUOLI := {"accumulo": Color(0.35, 0.80, 0.40), "medio": Color(0.90, 0.75, 0.30), "potente": Color(0.90, 0.28, 0.22)}
+const RUOLI := {"accumulo": Color(0.35, 0.80, 0.40), "medio": Color(0.90, 0.75, 0.30), "potente": Color(0.90, 0.28, 0.22), "interr": Color(0.40, 0.70, 1.0)}
+const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale", "interr": "Interruzione"}
 
 var gioco                       # Gioco (non tipizzato per evitare il riferimento circolare)
 var radice: Control
@@ -47,6 +48,8 @@ var bott_qui: Button
 var bott_villaggio: Button
 var _firma_effetti := ""
 var _firma_effetti_b := ""
+var lancio_b: ProgressBar
+var lancio_b_txt: Label
 var numeri: Array = []          # numeri di danno che salgono: {p: Vector3, t: String, c: Color, eta: float, g: float}
 var _avviso_t := 0.0
 
@@ -223,6 +226,10 @@ func _ready() -> void:
 	postura_b = _barra(Color(0.92, 0.82, 0.45), 8)
 	postura_b.max_value = 100
 	vb.add_child(postura_b)
+	lancio_b = _barra(Color(0.95, 0.55, 0.15), 14)
+	lancio_b.visible = false
+	vb.add_child(lancio_b)
+	lancio_b_txt = _scritta_su(lancio_b)
 	riq_effetti_b = HBoxContainer.new()
 	riq_effetti_b.add_theme_constant_override("separation", 3)
 	riq_effetti_b.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -577,6 +584,15 @@ func _process(dt: float) -> void:
 		if b.squilibrato:
 			nome_b.text += "   — SQUILIBRATO —"
 		bott_invita.visible = b.tipo == "p" and String(b.info.get("kd", "")) == gioco.regno
+		# lancio del bersaglio: la barra arancione dice quanto manca; l'Interruzione lo spezza
+		var lb: Dictionary = gioco.lanci_nemici.get(b.id, {})
+		if not lb.is_empty() and float(lb.fine) > gioco.ora():
+			lancio_b.visible = true
+			lancio_b.max_value = float(lb.durata)
+			lancio_b.value = float(lb.durata) - (float(lb.fine) - gioco.ora())
+			lancio_b_txt.text = String(lb.nome)
+		else:
+			lancio_b.visible = false
 	_aggiorna_gruppo()
 	_aggiorna_prova()
 	_aggiorna_effetti()
@@ -586,10 +602,20 @@ func _process(dt: float) -> void:
 		bott_qui.text = "Rinasci qui con metà vita" if da >= 8.0 else "Rinasci qui (fra %d s)" % int(ceil(8.0 - da))
 		bott_villaggio.disabled = da < 3.0
 		bott_villaggio.text = ("Torna all'ingresso della Prova" if not gioco.prova.is_empty() else "Torna al villaggio") if da >= 3.0 else "Torna al villaggio (fra %d s)" % int(ceil(3.0 - da))
-	# ricariche
+	# ricariche; il tasto dell'Interruzione lampeggia se il bersaglio sta lanciando, quello del finale se c'è la Risonanza
 	var ora := Time.get_ticks_msec()
+	var sta_lanciando: bool = b != null and gioco.lanci_nemici.has(b.id) and float(gioco.lanci_nemici[b.id].fine) > ora
+	var risonanza := false
+	for bf in gioco.io.get("buffs", []):
+		if String(bf.b) == "risonanza":
+			risonanza = true
 	for t in tasti:
-		(t as Tasto).tempo(ora, gioco.ricariche, gioco.gcd_fine, gioco.gcd_durata)
+		var tt := t as Tasto
+		tt.tempo(ora, gioco.ricariche, gioco.gcd_fine, gioco.gcd_durata)
+		var acceso := (tt.ruolo == "interr" and sta_lanciando) or (tt.ruolo == "potente" and risonanza)
+		if acceso != tt.acceso or acceso:
+			tt.acceso = acceso
+			tt.queue_redraw()
 	# lancio
 	if not gioco.lancio.is_empty():
 		var l: Dictionary = gioco.lancio
@@ -681,6 +707,11 @@ func _disegna_targhette() -> void:
 			var r := Rect2(p + Vector2(-w * 0.5, 5), Vector2(w, 6))
 			targhette.draw_rect(r.grow(1), Color(0, 0, 0, 0.8))
 			targhette.draw_rect(Rect2(r.position, Vector2(w * clampf(e.hp / e.mhp, 0, 1), 6)), Color(0.8, 0.18, 0.14))
+			var le: Dictionary = gioco.lanci_nemici.get(e.id, {})
+			if not le.is_empty() and float(le.fine) > gioco.ora():
+				var rl := Rect2(p + Vector2(-w * 0.5, -24), Vector2(w, 5))
+				targhette.draw_rect(rl.grow(1), Color(0, 0, 0, 0.85))
+				targhette.draw_rect(Rect2(rl.position, Vector2(w * clampf(1.0 - (float(le.fine) - gioco.ora()) / maxf(1.0, float(le.durata)), 0, 1), 5)), Color(0.95, 0.55, 0.15))
 			if e.postura >= 0:
 				var r2 := Rect2(p + Vector2(-w * 0.5, 13), Vector2(w, 3))
 				targhette.draw_rect(r2.grow(1), Color(0, 0, 0, 0.8))
@@ -710,6 +741,7 @@ class Tasto:
 	var ruolo := ""
 	var colore := Color(0.8, 0.8, 0.8)
 	var spento := false            # risorsa insufficiente o non imparata
+	var acceso := false            # lampeggia: è il momento di premerlo
 	var quota := 0.0               # 0..1 di ricarica rimasta
 	var secondi := 0.0
 
@@ -728,15 +760,14 @@ class Tasto:
 			var sk: Dictionary = Dati.SKILLS[v.id]
 			glifo = String(sk.get("glyph", "?"))
 			nome = String(sk.name)
-			ruolo = String(sk.get("ruolo", ""))
+			ruolo = "interr" if sk.get("interrupt", false) else String(sk.get("ruolo", ""))
 			colore = Dati.colore(sk.get("color", 0xcccccc))
 			var costo := float(sk.get("cost", 0))
 			var ho := float(io.get("res", 0))
 			if String(io.get("rt", "")) == "mana":
 				costo = float(io.get("rmax", 0)) * costo / 100.0
 			spento = costo > ho + 0.5
-			var nomi_ruolo := {"accumulo": "Accumulo", "medio": "Scarico medio", "potente": "Scarico potente"}
-			tooltip_text = "%s%s\n%s%s" % [nome, ("  —  " + nomi_ruolo[ruolo]) if nomi_ruolo.has(ruolo) else "", sk.get("desc", ""), ("\nCosto: %d" % int(sk.cost)) if sk.has("cost") else ""]
+			tooltip_text = "%s%s\n%s%s" % [nome, ("  —  " + Hud.NOMI_RUOLO[ruolo]) if Hud.NOMI_RUOLO.has(ruolo) else "", sk.get("desc", ""), ("\nCosto: %d" % int(sk.cost)) if sk.has("cost") else ""]
 		elif v is Dictionary and v.get("k") == "i" and Dati.ITEMS.has(v.id):
 			var it: Dictionary = Dati.ITEMS[v.id]
 			glifo = String(it.get("glyph", "?"))
@@ -822,6 +853,11 @@ class Tasto:
 				var lt := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
 				draw_string_outline(f, Vector2((size.x - lt) * 0.5, 36), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, 4, Color.BLACK)
 				draw_string(f, Vector2((size.x - lt) * 0.5, 36), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
+		if acceso:
+			var p := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.012)
+			var cb: Color = Hud.RUOLI.get(ruolo, Color.WHITE)
+			draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color(cb.r, cb.g, cb.b, p), false, 3.0)
+			draw_rect(Rect2(3, 3, size.x - 6, size.y - 6), Color(cb.r, cb.g, cb.b, p * 0.18), true)
 		draw_string(f, Vector2(5, 14), str((indice + 1) % 10), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.8, 0.8, 0.75))
 		if Hud.RUOLI.has(ruolo):
 			draw_rect(Rect2(8, size.y - 6, size.x - 16, 3), Hud.RUOLI[ruolo])

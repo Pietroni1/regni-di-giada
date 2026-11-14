@@ -227,6 +227,13 @@ func _prova_automatica() -> void:
 						Rete.manda({"t": "npc", "id": e.id})
 						break
 			"sella": Rete.manda({"t": "mount"})
+			"interrompi":
+				# aspetta che il bersaglio inizi un lancio (fino a 20 s), fotografa la barra e poi usa l'interruzione
+				var scade := Time.get_ticks_msec() + 20000
+				while Time.get_ticks_msec() < scade and not (gioco.bersaglio != null and gioco.lanci_nemici.has(gioco.bersaglio.id)):
+					await get_tree().process_frame
+				await _foto(p[2] + "_lancio")
+				gioco.usa_tecnica(p[1])
 			"accetta": Rete.manda({"t": "preply", "ok": true})
 			"scegli":
 				gioco.hud.finestre.scelta = int(p[1])

@@ -41,6 +41,7 @@ var cripta: Cripta = null
 var prova: Dictionary = {}         # ultimo stato della Prova del Sigillo (messaggio `dg`)
 var gruppo: Dictionary = {}        # ultimo messaggio `party`
 var effetti_bersagli: Dictionary = {}   # id → { nome effetto: millisecondi di fine } (ferite, veleni, marchi, stordimenti)
+var lanci_nemici: Dictionary = {}  # id → { nome, fine, durata }: lanci in corso di mostri e giocatori nemici (da interrompere)
 var coda: Dictionary = {}          # tecnica premuta poco prima che fosse pronta: { sid, quando }
 var morto_da := 0.0
 var _alberi_vicini: Array = []
@@ -176,6 +177,7 @@ func _su_v(m: Dictionary) -> void:
 		if e2 != null:
 			e2.aggiorna(u)
 	for id in m.get("r", []):
+		lanci_nemici.erase(int(id))
 		var e3: Entita = ents.get(int(id))
 		if e3 != null:
 			if bersaglio == e3:
@@ -284,6 +286,23 @@ func _su_fx(m: Dictionary) -> void:
 		"cast":
 			if s != null and s != me and s.corpo != null:
 				s.corpo.lancia()
+		"mcast":
+			if s != null:
+				var ms := float(m.get("ms", 2000))
+				lanci_nemici[s.id] = {"nome": String(m.get("n", "Lancio")), "fine": ora() + ms, "durata": ms}
+				if s.corpo != null:
+					s.corpo.lancia()
+				if float(m.get("r", 0)) > 0.0:
+					# lancio ad area: il cerchio a terra dice da dove togliersi (o chi interrompere)
+					fx.anello(s.global_position, Color(1.0, 0.25, 0.12), float(m.r), ms / 1000.0, 0.05, 1.0)
+				fx.bagliore(s.testa(), Color(1.0, 0.5, 0.2), 1.6, 0.4)
+		"mcastend":
+			if s != null:
+				lanci_nemici.erase(s.id)
+				if int(m.get("int", 0)) == 1:
+					hud.numero(s.testa() + Vector3(0, 0.4, 0), "INTERROTTO", Color(0.5, 0.85, 1.0), 1.3)
+					fx.scintille(s.testa(), Color(0.5, 0.85, 1.0), 16, 5.0, 0.4)
+					Suoni.suona("squilibrio", -6.0, 1.3)
 		"slam":
 			fx.anello(Dati.suolo(float(m.x), float(m.z)), Color(1.0, 0.25, 0.12), float(m.get("r", 5)), 0.6, 0.2, 1.0)
 			fx.scuoti(0.5)
