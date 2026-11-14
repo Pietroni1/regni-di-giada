@@ -202,7 +202,7 @@ func testo_tecnica(sid: String, lvl: int) -> String:
 
 # ------------------------------------------------------------------ inventario
 func _crea_inventario() -> void:
-	var f := _finestra("Inventario  [I]", Vector2(1040, 300), 0)
+	var f := _finestra("Inventario  [I]", Vector2(760, 430), 0)
 	inventario = f[0]
 	var v: VBoxContainer = f[1]
 	var griglia := GridContainer.new()
