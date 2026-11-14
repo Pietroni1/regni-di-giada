@@ -282,6 +282,15 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   «INTERROTTO», il tasto dell'Interruzione lampeggia quando il bersaglio lancia e quello del finale quando c'è la
   Risonanza; ruoli rinominati (Colpo base, Colpo finale, Interruzione). Il client nel browser non è stato aggiornato ai
   nuovi kit: funziona ancora ma mostra testi e tacche dei ruoli vecchi.
+- **Mappa grande, icone e font** (richiesti dall'autore dopo la sua prova): `mappa_grande.gd` (tasto M: mondo dipinto dai
+  dati del terreno, zone con livelli, villaggi, strade, Sentieri Lontani, posizione propria; fasce 1-8 / 8-16 / 16-25
+  ricavate dai livelli dei mostri); `icone.gd` (`Icone.disegna(ci, id, rett, spento)`: icone delle tecniche e degli effetti
+  disegnate da codice al posto dei kanji; gli oggetti tranne le pozioni hanno ancora il glifo); font in `godot/font/`
+  (Tahoma libero di Wine, LGPL: l'autore voleva «il font di Metin 2», cioè Tahoma di Microsoft, non distribuibile),
+  caricato come file da `impostazioni.gd` `_metti_font` (il tema non attraversa CanvasLayer/Node3D: viene dato al primo
+  Control di ogni ramo). Una classe nuova (`class_name`) dà errori al primo avvio senza editor finché la cache delle
+  classi non è rigenerata: rilanciare una volta. Visti a schermo: mappa nel mondo aperto, font, icone in barra e finestra
+  Abilità. Non visti: mappa da dentro le mappe lontane, icone degli effetti attivi, trascinamento.
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 
