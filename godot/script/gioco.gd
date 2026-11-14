@@ -50,6 +50,11 @@ var _passo_t := 0.0
 var _amb_fuori: Environment = null
 var _amb_cripta: Environment = null
 var _dentro := false
+var viaggi: Viaggi = null           # finestra dei viaggi e classifica dell'arena (viaggi.gd)
+var terra: TerraLontana = null      # la mappa lontana in cui si trova il personaggio (terra_lontana.gd)
+var _zona_amb := "-"                # ambiente in uso: "" mondo dei regni, "cripta" o id della mappa
+var _amb_mappe: Dictionary = {}
+var _sole_base: Dictionary = {}
 
 
 func _ready() -> void:
@@ -65,6 +70,9 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.gioco = self
 	add_child(hud)
+	viaggi = Viaggi.new()
+	viaggi.gioco = self
+	hud.radice.add_child(viaggi)
 	anello_bersaglio = MeshInstance3D.new()
 	var t := TorusMesh.new()
 	t.inner_radius = 0.92
@@ -104,6 +112,9 @@ func ora() -> float:
 func nome_zona() -> String:
 	if me == null:
 		return ""
+	var lontana := Mappe.nome_zona(me.x, me.z)
+	if lontana != "":
+		return lontana
 	if me.x > float(Dati.costanti.DUNGEON_X):
 		return String(Dati.gioco.DUNGEON.name)
 	for kid in Dati.KINGDOMS:
@@ -474,10 +485,27 @@ func _su_pinv(m: Dictionary) -> void:
 	hud.invito(String(m.get("n", "?")))
 
 
-## Dentro la cripta: buio, nebbia scura, niente sole. Fuori: l'ambiente della scena.
-func _ambiente(dentro: bool) -> void:
-	if dentro == _dentro:
+## Mondo dei regni, cripta o mappa lontana: costruisce (o libera) la mappa e sceglie l'ambiente.
+func _aggiorna_zona() -> void:
+	var id := Mappe.mappa_a(me.x, me.z)
+	if id != "" and (terra == null or terra.id != id):
+		if terra != null:
+			terra.queue_free()
+		terra = TerraLontana.crea(id)
+		add_child(terra)
+	elif id == "" and terra != null:
+		terra.queue_free()
+		terra = null
+	_ambiente(id if id != "" else ("cripta" if me.x > float(Dati.costanti.DUNGEON_X) else ""))
+
+
+## Dentro la cripta: buio, nebbia scura, niente sole. Nel mondo: l'ambiente della scena.
+## In una mappa lontana: cielo, nebbia e sole del suo tema (shared/mappe.js), e il mondo dei regni nascosto.
+func _ambiente(zona: String) -> void:
+	if zona == _zona_amb:
 		return
+	_zona_amb = zona
+	var dentro := zona == "cripta"
 	_dentro = dentro
 	var radice := get_tree().current_scene
 	var we: WorldEnvironment = radice.get_node_or_null("Ambiente")
@@ -501,10 +529,41 @@ func _ambiente(dentro: bool) -> void:
 		_amb_cripta.fog_light_color = Color(0.05, 0.04, 0.08)
 		_amb_cripta.fog_density = 0.009
 		_amb_cripta.fog_sky_affect = 1.0
-	we.environment = _amb_cripta if dentro else _amb_fuori
+	if sole != null and _sole_base.is_empty():
+		_sole_base = {"colore": sole.light_color, "energia": sole.light_energy}
+	if dentro:
+		we.environment = _amb_cripta
+	elif zona != "":
+		we.environment = _ambiente_mappa(zona)
+	else:
+		we.environment = _amb_fuori
 	if sole != null:
 		sole.visible = not dentro
-	mondo.visible = not dentro
+		var tema: Dictionary = Mappe.definizioni().get(zona, {}).get("tema", {})
+		sole.light_color = Color(String(tema.sole)) if tema.has("sole") else _sole_base.colore
+		sole.light_energy = float(tema.luce) if tema.has("luce") else float(_sole_base.energia)
+	mondo.visible = zona == ""
+
+
+## Ambiente di una mappa lontana: copia di quello della scena con cielo e nebbia del tema.
+func _ambiente_mappa(id: String) -> Environment:
+	if _amb_mappe.has(id):
+		return _amb_mappe[id]
+	var tema: Dictionary = Mappe.definizioni()[id].tema
+	var env := _amb_fuori.duplicate() as Environment
+	if env.sky != null and env.sky.sky_material is ProceduralSkyMaterial:
+		env.sky = env.sky.duplicate() as Sky
+		var cielo := env.sky.sky_material.duplicate() as ProceduralSkyMaterial
+		cielo.sky_top_color = Color(String(tema.cielo))
+		cielo.sky_horizon_color = Color(String(tema.orizzonte))
+		cielo.ground_horizon_color = Color(String(tema.orizzonte))
+		cielo.ground_bottom_color = Color(String(tema.suolo[0]))
+		env.sky.sky_material = cielo
+	env.fog_enabled = true
+	env.fog_light_color = Color(String(tema.nebbia))
+	env.fog_density = float(tema.densita)
+	_amb_mappe[id] = env
+	return env
 
 
 func _su_kicked(m: Dictionary) -> void:
@@ -518,7 +577,19 @@ func ostile(e: Entita) -> bool:
 	if e.tipo == "m":
 		return e.hp > 0 and not e.morto
 	if e.tipo == "p":
+		if Mappe.in_arena(me.x, me.z) or Mappe.in_arena(e.x, e.z):
+			# arena: tutti contro tutti tranne i compagni di gruppo, fuori dalle porte (zone sicure)
+			return Mappe.in_arena(me.x, me.z) and Mappe.in_arena(e.x, e.z) and e.hp > 0 and not e.morto and not compagno(e) \
+				and not Mappe.sicuro(me.x, me.z) and not Mappe.sicuro(e.x, e.z)
 		return pvp and String(e.info.get("kd", "")) != regno and e.hp > 0 and int(io.get("lvl", 1)) >= pvp_min and e.lvl >= pvp_min
+	return false
+
+
+## È nel mio gruppo? (messaggio `party`: members = [{ id, ... }])
+func compagno(e: Entita) -> bool:
+	for q in gruppo.get("members", []):
+		if int(q.get("id", 0)) == e.id:
+			return true
 	return false
 
 
@@ -832,7 +903,13 @@ func _process(dt: float) -> void:
 		var passo := vel * minf(dt, 0.1)        # con pochi fotogrammi al secondo non si scavalca il bersaglio
 		var nx := me.x + dir.x * passo
 		var nz := me.z + dir.y * passo
-		if me.x > float(Dati.costanti.DUNGEON_X):
+		var lontana := Mappe.mappa_a(me.x, me.z)
+		if lontana != "":
+			# mappe lontane: si resta nel cerchio percorribile (nell'arena: pavimento, corridoi e nicchie)
+			var lim := Mappe.limita(lontana, nx, nz)
+			nx = lim.x
+			nz = lim.y
+		elif me.x > float(Dati.costanti.DUNGEON_X):
 			# nella cripta si cammina solo in stanze e corridoi, scivolando lungo i muri
 			if cripta != null and not cripta.calpestabile(me.x, me.z):
 				# finito dentro un muro (scatto, spinta, ritardo di rete): si esce verso il punto libero più vicino
@@ -863,7 +940,7 @@ func _process(dt: float) -> void:
 			Rete.manda({"t": "move", "x": snappedf(me.x, 0.01), "z": snappedf(me.z, 0.01), "r": snappedf(me.r, 0.01)})
 			inviata = Vector3(me.x, me.r, me.z)
 		ultimo_invio = t
-	_ambiente(me.x > float(Dati.costanti.DUNGEON_X))
+	_aggiorna_zona()
 	_aggiorna_alberi(dt)
 	_visuale(dt)
 	if bersaglio != null and is_instance_valid(bersaglio):
