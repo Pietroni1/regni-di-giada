@@ -234,6 +234,10 @@ func _su_fx(m: Dictionary) -> void:
 		"auto":
 			if s != null and s != me and s.corpo != null:
 				s.corpo.attacca()
+		"wave":
+			# un obelisco evoca un'ondata di nemici
+			if s != null and s.corpo != null and s.corpo.has_method("ondata"):
+				s.corpo.call("ondata")
 		"sk":
 			if s == null:
 				return

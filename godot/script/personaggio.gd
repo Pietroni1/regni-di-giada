@@ -526,15 +526,7 @@ static func ombra(colore: Color, scala := 1.0) -> Personaggio:
 	return p
 
 
-## Obelisco: prisma di pietra con rune accese.
+## Obelisco: monolite con rune, schegge in orbita e frantumazione (vedi `obelischi.gd`).
 static func obelisco(colore: Color, scala := 1.0) -> Personaggio:
-	var p := Personaggio.new()
-	var pietra := ShaderMaterial.new()
-	pietra.shader = preload("res://shader/roccia.gdshader")
-	pietra.set_shader_parameter("muschio_forza", 0.3)
-	Edifici.cilindro(0.35 * scala, 0.8 * scala, 4.2 * scala, Vector3(0, 2.1 * scala, 0), pietra, p, 4)
-	Edifici.cilindro(0.0, 0.36 * scala, 0.6 * scala, Vector3(0, 4.5 * scala, 0), pietra, p, 4)
-	for i in range(4):
-		Edifici.scatola(Vector3(0.5, 0.12, 0.5) * scala * (1.0 - i * 0.12), Vector3(0, (0.9 + i * 0.8) * scala, 0), Edifici.mat(colore.lightened(0.2), 0.5, 0.0, 3.5), p).rotation.y = PI / 4.0
-	p.altezza = 5.0 * scala
-	return p
+	var o: Personaggio = load("res://script/obelischi.gd").crea(colore, scala)
+	return o
