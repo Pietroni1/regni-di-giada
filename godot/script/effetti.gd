@@ -11,6 +11,10 @@ const SH_COLONNA := preload("res://shader/fx_colonna.gdshader")
 const SH_SCIA := preload("res://shader/fx_scia.gdshader")
 const SH_CREPE := preload("res://shader/fx_crepe.gdshader")
 
+## Gradi di padronanza di una tecnica in base al suo livello: l'effetto a vista cresce a ogni grado.
+const GRADI := [[20, "Perfetta"], [15, "Maestra"], [10, "Esperta"], [5, "Affinata"], [1, "Appresa"]]
+const ORO_PERFETTO := Color(1.0, 0.82, 0.32)
+
 var tremore := 0.0          # letto dalla visuale (Gioco)
 var _proiettili: Array = []
 
@@ -317,6 +321,18 @@ func scuoti(forza: float) -> void:
 	tremore = maxf(tremore, forza)
 
 
+## Grado (0-4) per un livello di abilità: 1-4 Appresa, 5 Affinata, 10 Esperta, 15 Maestra, 20 Perfetta.
+static func grado(livello: int) -> int:
+	return 4 if livello >= 20 else (3 if livello >= 15 else (2 if livello >= 10 else (1 if livello >= 5 else 0)))
+
+
+static func nome_grado(livello: int) -> String:
+	for g in GRADI:
+		if livello >= int(g[0]):
+			return String(g[1])
+	return "Appresa"
+
+
 ## Rende più saturo il colore di una tecnica: molti sono pastello e, sommati alla luce, diventerebbero bianchi.
 func vivo(c: Color) -> Color:
 	return Color.from_hsv(c.h, clampf(c.s * 1.7 + 0.2, 0.0, 0.95), c.v)
@@ -337,9 +353,16 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 	var area := tipo.begins_with("aoe")
 	var mano := qui + Vector3(0, 1.5, 0)
 
+	# grado di padronanza: dal livello dell'abilità mandato dal server con l'effetto (`l`)
+	var g := grado(int(m.get("l", 1)))
+	var k := 1.0 + 0.08 * g                     # le forme crescono un poco a ogni grado
+	if g == 4:
+		colore = colore.lerp(ORO_PERFETTO, 0.55)   # una tecnica Perfetta vira verso l'oro
 	if sk.get("sup", false):
 		_suprema(sk, da, su, colore, qui, la, raggio)
+		_arricchisci(sk, da, su, colore, qui, la, raggio, g)
 		return
+	_arricchisci(sk, da, su, colore, qui, la, raggio, g)
 	if forte:
 		# gli scarichi potenti si annunciano: rune sotto i piedi e una carica di luce
 		rune(qui, colore, 2.3, 0.9)
@@ -360,7 +383,7 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 				scintille(qui + Vector3(0, 1.0, 0), colore, 40, 10.0, 0.6, -6.0)
 				scuoti(0.45)
 		"slash":
-			fendente(da, colore, 3.4 if forte else 2.6, 2.9 if forte else 2.4, 0.3, randf_range(-0.5, 0.5))
+			fendente(da, colore, (3.4 if forte else 2.6) * k, 2.9 if forte else 2.4, 0.3, randf_range(-0.5, 0.5))
 			if su != null:
 				scintille(su.petto(), colore, 26 if forte else 12, 6.5, 0.4)
 				bagliore(su.petto(), colore.lightened(0.4), 3.2 if forte else 1.8, 0.2)
@@ -381,7 +404,7 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 				anello(la, colore, 2.4, 0.35)
 		"lightning":
 			if area:
-				var quante := 9 if forte else 5
+				var quante := (9 if forte else 5) + g * 2
 				rune(la, colore, raggio, 1.2)
 				for i in range(quante):
 					var a := randf() * TAU
@@ -389,7 +412,7 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 					_dopo(0.07 * i, fulmine.bind(Dati.suolo(la.x + cos(a) * d, la.z + sin(a) * d), colore, 16.0, 4.5, 0.4))
 				anello(la, colore, raggio, 0.7, 0.1, 1.0)
 			else:
-				fulmine(la, colore, 20.0 if forte else 15.0, 7.0 if forte else 4.5, 0.5 if forte else 0.38)
+				fulmine(la, colore, (20.0 if forte else 15.0) * k, (7.0 if forte else 4.5) * k, 0.5 if forte else 0.38)
 				if su != null:
 					scintille(su.petto(), colore, 28 if forte else 12, 8.0, 0.5)
 			if forte:
@@ -418,7 +441,7 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 			if area:
 				proiettile(mano, la + Vector3(0, 0.6, 0), colore, 26.0, 0.3, _esplosione.bind(la, colore, raggio))
 			elif su != null:
-				proiettile(mano, su, colore, 30.0, 0.34 if forte else 0.22, anello.bind(la, colore, 2.8 if forte else 1.5, 0.35))
+				proiettile(mano, su, colore, 30.0, (0.34 if forte else 0.22) * k, anello.bind(la, colore, (2.8 if forte else 1.5) * k, 0.35))
 				if forte:
 					for i in range(2):
 						_dopo(0.08 * (i + 1), proiettile.bind(mano + Vector3(randf_range(-0.6, 0.6), 0.4, 0), su, colore.lightened(0.3), 26.0, 0.16))
@@ -433,7 +456,7 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 		"rain":
 			rune(la, colore, raggio, 1.3)
 			anello(la, colore, raggio, 0.9, 0.08, 1.0)
-			for i in range(16 if forte else 10):
+			for i in range((16 if forte else 10) + g * 3):
 				var a := randf() * TAU
 				var d := raggio * sqrt(randf())
 				_dopo(0.05 * i, _freccia_dal_cielo.bind(Dati.suolo(la.x + cos(a) * d, la.z + sin(a) * d), colore, forte))
@@ -458,6 +481,45 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 			colonna(qui, colore, 1.3, 5.5, 1.0)
 			spirale(qui, colore, 1.1, 2.8, 0.9)
 			bagliore(qui + Vector3(0, 1.3, 0), colore, 3.0, 0.35)
+
+
+## Strati in più per grado di padronanza, sopra l'effetto di base della tecnica.
+func _arricchisci(sk: Dictionary, da: Entita, su: Entita, colore: Color, qui: Vector3, la: Vector3, raggio: float, g: int) -> void:
+	if g <= 0:
+		return
+	var fx := String(sk.get("fx", ""))
+	var tipo := String(sk.get("type", ""))
+	var area := tipo.begins_with("aoe")
+	var sul_bersaglio := la if (su != null or area) else qui
+	var mischia := fx in ["slash", "spin", "dash", "quake"]
+	# Affinata (5): un cerchio di rune sotto chi la usa
+	rune(qui, colore, 1.5 + 0.35 * g, 0.7)
+	if g >= 2:
+		# Esperta (10): l'effetto ha un'eco
+		if mischia:
+			_dopo(0.1, taglio.bind(qui + Vector3(0, 1.25, 0), da.r + randf_range(-0.4, 0.4), colore.lightened(0.35), (raggio * 0.9 if fx == "spin" else 3.0) + 0.3 * g, TAU if fx == "spin" else 2.6, 0.3, randf_range(-0.9, 0.9)))
+		elif fx == "lightning":
+			for i in range(g):
+				var a := TAU * i / g + randf()
+				_dopo(0.1 + 0.05 * i, fulmine.bind(Dati.suolo(sul_bersaglio.x + cos(a) * 2.8, sul_bersaglio.z + sin(a) * 2.8), colore.lightened(0.2), 12.0, 3.0, 0.3))
+		elif fx in ["bolt", "arrow"] and su != null:
+			for i in range(g - 1):
+				_dopo(0.07 * (i + 1), proiettile.bind(qui + Vector3(randf_range(-0.7, 0.7), 1.9, 0), su, colore.lightened(0.3), 34.0, 0.13))
+		else:
+			spirale(sul_bersaglio, colore, 0.9, 2.6, 0.8)
+	if g >= 3:
+		# Maestra (15): l'impatto lascia il segno
+		_dopo(0.12, crepe.bind(sul_bersaglio, colore, (raggio if area else 2.2) * 0.8, 2.0))
+		_dopo(0.12, anello.bind(sul_bersaglio, colore.lightened(0.3), (raggio if area else 2.6) * 1.15, 0.5, 0.08))
+		bagliore(sul_bersaglio + Vector3(0, 1.0, 0), colore, 3.0, 0.25)
+		scintille(sul_bersaglio + Vector3(0, 0.8, 0), colore, 24, 7.0, 0.5, -6.0)
+		scuoti(0.3)
+	if g >= 4:
+		# Perfetta (20): sigillo d'oro, spirale e colonna
+		rune(sul_bersaglio, ORO_PERFETTO, (raggio if area else 2.6) * 1.1, 1.4)
+		spirale(qui, ORO_PERFETTO, 1.0, 3.2, 0.9, 3.0)
+		_dopo(0.18, colonna.bind(sul_bersaglio, ORO_PERFETTO, 0.9, 9.0, 0.7))
+		scintille(qui + Vector3(0, 1.2, 0), ORO_PERFETTO, 30, 4.0, 0.9, 2.0)
 
 
 func _esplosione(pos: Vector3, colore: Color, raggio: float) -> void:

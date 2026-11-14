@@ -33,7 +33,7 @@ Il client ricorda l'ultimo server e l'ultimo account usati.
 - **Oggetti**: trascina per spostare e indossare; gemme e pergamene si trascinano su un'arma o un'armatura; clic destro usa,
   fonde tre gemme uguali o vende (col negozio aperto).
 - **Altro**: Z raccoglie · R cavalcatura · Invio chat (comandi GM compresi) · F11 schermo intero.
-- **Comandi GM utili per provare**: `/level 30`, `/via fulmine`, `/risorsa`, `/punti`, `/suprema`, `/spawn fantoccio 3`, `/tael 50000`.
+- **Comandi GM utili per provare**: `/level 30`, `/via fulmine`, `/risorsa`, `/punti`, `/suprema`, `/abilita lama_tuono 20`, `/spawn fantoccio 3`, `/tael 50000`.
 
 ## Quando cambiano i dati del gioco
 Tecniche, mostri, oggetti e terreno arrivano da `shared/data.js` e `shared/world.js`. Dopo averli modificati

@@ -182,7 +182,7 @@ func testo_oggetto(s) -> String:
 
 func testo_tecnica(sid: String, lvl: int) -> String:
 	var sk: Dictionary = Dati.SKILLS[sid]
-	var righe: Array = [String(sk.name) + ("  (livello %d)" % lvl if lvl > 0 else "")]
+	var righe: Array = [String(sk.name) + ("  (livello %d — %s)" % [lvl, Effetti.nome_grado(lvl)] if lvl > 0 else "")]
 	if NOMI_RUOLO.has(String(sk.get("ruolo", ""))):
 		righe.append(NOMI_RUOLO[String(sk.ruolo)])
 	righe.append(String(sk.get("desc", "")))
@@ -195,6 +195,9 @@ func testo_tecnica(sid: String, lvl: int) -> String:
 		righe.append("Ricarica: %s s" % str(sk.cd))
 	if float(sk.get("cast", 0)) > 0.0:
 		righe.append("Tempo di lancio: %s s" % str(sk.cast))
+	if lvl > 0 and lvl < 20:
+		var prossimo := 5 if lvl < 5 else (10 if lvl < 10 else (15 if lvl < 15 else 20))
+		righe.append("Al livello %d diventa %s: l'effetto si arricchisce." % [prossimo, Effetti.nome_grado(prossimo)])
 	if sk.has("mult"):
 		righe.append("Danni: %d%% dell'attacco" % int(round(Dati.valore(sk.mult, maxi(lvl, 1)) * 100.0)))
 	return "\n".join(righe)
@@ -455,7 +458,7 @@ func _riempi_abilita() -> void:
 		_etichetta(testo, titolo, Hud.RUOLI.get(ruolo, Color(0.95, 0.93, 0.88)) if imparata else Color(0.5, 0.5, 0.5), 14)
 		_etichetta(testo, String(sk.get("desc", "")) if imparata else "Si sblocca al livello %d" % int(sk.get("lvl", 1)), Color(0.72, 0.7, 0.65), 11)
 		if imparata:
-			_etichetta(h, "liv. %d" % liv, Color(0.8, 0.8, 0.75), 12).autowrap_mode = TextServer.AUTOWRAP_OFF
+			_etichetta(h, "liv. %d\n%s" % [liv, Effetti.nome_grado(liv)], Effetti.ORO_PERFETTO if liv >= 20 else Color(0.8, 0.8, 0.75), 11).autowrap_mode = TextServer.AUTOWRAP_OFF
 			var nome := String(sid)
 			if punti > 0 and liv < int(Dati.gioco.SKILL_MAX_POINTS):
 				_bottone(h, "+", func() -> void: Rete.manda({"t": "skup", "s": nome})).custom_minimum_size = Vector2(30, 0)

@@ -16,7 +16,7 @@ Gameplay alla WoW, grind coreano, dungeon a tempo (Prove del Sigillo), cavalcatu
 npm install
 npm start          # http://localhost:3000 — account GM: "admin" (server/config.json)
 ```
-Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n [raggio]`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/risorsa`, `/punti`, `/suprema`, `/aiuto`.
+Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n [raggio]`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/risorsa`, `/punti`, `/suprema`, `/abilita id livello`, `/aiuto`.
 
 ## Struttura
 - `server/` — Node.js (HTTP + WebSocket), logica autoritativa (`world.js`), database JSON (`db.js`).
@@ -221,6 +221,11 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   Collera del Cielo, Drago Celeste (rifatto: era un disco bianco) e il cerchio di rune dell'armatura +15 Leggendaria.
   Non visti: le scintille dell'aura dell'armatura (dal +9), l'arco nel momento del tiro. Il ricamo a fasce della stoffa è
   stato tolto (sui capi aderenti faceva anelli): ora sono punti radi.
+- **Aspetto delle tecniche per livello dell'abilità** (richiesto dall'autore): il server manda il livello nell'effetto
+  (`fx` `sk` con campo `l`); `Effetti.grado()` lo traduce in 5 gradi — Appresa (1), Affinata (5), Esperta (10), Maestra (15),
+  Perfetta (20) — e `_arricchisci` aggiunge strati (rune, eco del colpo, più saette/proiettili, crepe e onda, sigillo
+  d'oro e tinta dorata al 20); le forme principali crescono dell'8% a grado. Il grado compare nella finestra Abilità e nel
+  tooltip. Comando GM `/abilita id livello` per provarli. Visto a schermo: Lama del Tuono ai livelli 1, 10 e 20.
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 
