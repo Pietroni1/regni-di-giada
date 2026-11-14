@@ -96,7 +96,11 @@ const metodi = {
   alleato(p, q) {
     if (!q || q.kind !== 'player') return false;
     if (q === p) return true;
-    if (this.inArena(p) || this.inArena(q)) return !!p.party && p.party === q.party;
+    if (this.inArena(p) || this.inArena(q)) {
+      if (!p.party || p.party !== q.party) return false;
+      // dalla nicchia sicura non si sostiene chi combatte sul pavimento (e viceversa)
+      return !zonaSicuraMappa(p.x, p.z) === !zonaSicuraMappa(q.x, q.z);
+    }
     return q.kingdom === p.kingdom;
   },
 
@@ -169,8 +173,9 @@ const metodi = {
       return this.send(p, { t: 'notice', m: `Sei tornato a ${KINGDOMS[p.kingdom].villageName}.` });
     }
     if (msg.a !== 'vai') return;
-    const id = String(msg.m || ''), m = MAPPE[id];
-    if (!m) return;
+    const id = String(msg.m || '');
+    if (!Object.hasOwn(MAPPE, id)) return;   // niente chiavi del prototipo («constructor»...)
+    const m = MAPPE[id];
     if (mappaAt(p.x, p.z) === id) return this.err(p, 'Sei già qui');
     if (p.lvl < m.minLvl) return this.err(p, `Serve il livello ${m.minLvl}`);
     if (p.ch.tael < m.prezzo) return this.err(p, `Il viaggio costa ${m.prezzo} tael`);
@@ -189,6 +194,7 @@ const metodi = {
     if (p.mountUntil) { p.mountUntil = 0; this.send(p, { t: 'castend', ok: 0 }); }
     this.fx(p, { k: 'tp', s: p.id });
     p.target = null;
+    p.dots = []; p.waves = [];   // veleni e ondate non seguono il viaggiatore
     this.teleport(p, x, z);
     p.lastCombat = 0;
     this.fx(p, { k: 'tp', s: p.id });

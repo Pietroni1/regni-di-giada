@@ -310,6 +310,7 @@ export class World {
     this.add(p);
     this.players.add(p);
     this.recalc(p);
+    this.autoQuickbar(p, false);   // chi ha già una Via trova subito il suo finale nella barra
     const R = RESOURCES[p.rtype];
     p.res = p.rtype === 'mana' ? (ch.mp >= 0 ? Math.min(ch.mp, p.rmax) : p.rmax) : Math.round(R.start * p.rmax);
     if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || p.hp === 0 || (p.x > DUNGEON_X && !this.rientraInMappa(p))) {
@@ -1018,7 +1019,7 @@ export class World {
 
   playerDie(p, killer) {
     p.dead = true; p.hp = 0; p.deadAt = NOW();
-    p.buffs = []; p.hots = []; p.dots = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0;
+    p.buffs = []; p.hots = []; p.dots = []; p.waves = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0;
     p.mounted = false; p.mountUntil = 0; p.vis++;
     this.recalc(p);
     this.touch(p); p.selfDirty = true;
@@ -1431,7 +1432,7 @@ export class World {
         let extra = 0;
         if (sk.spendBonus && p.pts > 0) { extra = p.pts * sk.spendBonus; this.supDaPunti(p, p.pts); p.pts = 0; }
         for (const q of this.players) {
-          if (q.kingdom !== p.kingdom || q.dead || dist(q, target) > sk.radius) continue;
+          if (!this.alleato(p, q) || q.dead || dist(q, target) > sk.radius) continue;
           const amt = sk.healPct ? q.maxHp * skillVal(sk.heal, lvl) : p.matk * skillVal(sk.heal, lvl) + 40;
           this.heal(q, amt * (1 + (p.healPct + extra) / 100));
         }
@@ -1503,7 +1504,7 @@ export class World {
 
   // Interruzione: spezza il lancio del bersaglio (mostro o giocatore) e rende un po' di risorsa.
   interrompi(p, target) {
-    if (!target) return;
+    if (!target || !this.canAttack(p, target)) return;
     if (target.kind === 'mob' && target.cast) {
       target.cast = null;
       target.nextCast = NOW() + (target.d.cast ? target.d.cast.cd : 8000);
@@ -1999,8 +2000,8 @@ export class World {
       case 'tael': p.ch.tael = Math.max(0, p.ch.tael + (parseInt(a[0], 10) || 0)); p.selfDirty = true; return;
       case 'tp': {
         if (a.length >= 2 && !isNaN(+a[0]) && !isNaN(+a[1])) return this.teleport(p, +a[0], +a[1]);
-        if (KINGDOMS[a[0]]) { const s = villageSpawn(a[0]); return this.teleport(p, s.x, s.z); }
-        if (MAPPE[a[0]]) { const s = arrivoMappa(a[0]); return this.teleport(p, s.x, s.z); }   // /tp selva | distesa | arena
+        if (Object.hasOwn(KINGDOMS, a[0])) { const s = villageSpawn(a[0]); return this.teleport(p, s.x, s.z); }
+        if (Object.hasOwn(MAPPE, a[0] || '')) { const s = arrivoMappa(a[0]); return this.teleport(p, s.x, s.z); }   // /tp selva | distesa | arena
         const q = [...this.players].find(x => x.name.toLowerCase() === String(a[0]).toLowerCase());
         if (!q) return sys('Destinazione non trovata.');
         return this.teleport(p, q.x + 1.5, q.z);

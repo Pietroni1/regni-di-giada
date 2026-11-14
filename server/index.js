@@ -89,7 +89,7 @@ wss.on('connection', (ws) => {
     try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || typeof msg.t !== 'string') return;
 
-    if (sess.player) { world.handle(sess.player, msg); return; }
+    if (sess.player) { try { world.handle(sess.player, msg); } catch (e) { console.error('Errore nel messaggio', msg.t, e); } return; }
 
     if (!sess.user) {
       const user = String(msg.user || '').trim(), pass = String(msg.pass || '');
