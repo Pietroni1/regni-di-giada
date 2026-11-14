@@ -217,8 +217,10 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
     `pietra`, `stoffa` (trama + orlo ricamato nel colore `trim` della classe), `metallo`, `pelle`; rilievo anche su tetti
     e terreno, fiorellini nell'erba.
   Visto a schermo: presa della spada da fermo e in corsa, spada +15 Leggendaria, scia, Lama del Tuono, Tempesta di Lame,
-  Giudizio dei Tuoni, edifici e personaggio con le texture nuove. Non visti: le altre tre Supreme con la regia nuova,
-  pugnali, arco e bastone in mano, i livelli +7/+9/+12, l'aura dell'armatura da vicino.
+  Giudizio dei Tuoni, edifici e personaggio con le texture nuove; poi pugnali +9, arco +12 e bastone +7 in mano, Mille Ombre,
+  Collera del Cielo, Drago Celeste (rifatto: era un disco bianco) e il cerchio di rune dell'armatura +15 Leggendaria.
+  Non visti: le scintille dell'aura dell'armatura (dal +9), l'arco nel momento del tiro. Il ricamo a fasce della stoffa è
+  stato tolto (sui capi aderenti faceva anelli): ora sono punti radi.
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 

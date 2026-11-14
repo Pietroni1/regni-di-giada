@@ -523,14 +523,14 @@ func _suprema(sk: Dictionary, da: Entita, su: Entita, colore: Color, qui: Vector
 			# Drago Celeste: spirali d'oro che salgono, onde concentriche a ogni ondata, la terra che si spacca
 			spirale(qui, colore, 2.2, 9.0, 0.5 + ondate * passo, 4.0)
 			spirale(qui + Vector3(0, 0.5, 0), colore.lightened(0.4), 1.2, 8.0, 0.4 + ondate * passo, 5.0)
-			crepe(qui, colore, r, 3.5)
+			crepe(qui, Color(colore.r, colore.g * 0.8, colore.b * 0.5, 0.7), r * 0.85, 3.5)
 			for i in range(maxi(ondate, 3)):
 				_dopo(passo * i, func() -> void:
-					anello(qui, colore, r * (0.7 + 0.25 * i), 0.7, 0.14, 1.0)
+					anello(qui, colore, r * (0.7 + 0.25 * i), 0.7, 0.14, 0.25)
 					polvere(qui, r * 0.8, 20)
-					taglio(qui + Vector3(0, 1.0 + 0.5 * i, 0), randf() * TAU, colore.lightened(0.3), r * 0.8, TAU, 0.4, 0.2)
+					taglio(qui + Vector3(0, 1.0 + 0.5 * i, 0), randf() * TAU, colore, r * 0.7, TAU, 0.4, 0.2)
 					scuoti(0.7))
-			_dopo(passo * maxi(ondate, 3), colonna.bind(qui, colore.lightened(0.4), 3.2, 22.0, 1.2))
+			_dopo(passo * maxi(ondate, 3), colonna.bind(qui, colore, 2.6, 20.0, 1.1))
 		_:
 			# Collera del Cielo: il cerchio si accende sull'area e piovono saette fitte per tutta la durata
 			rune(la, colore, r, 1.0 + ondate * passo)

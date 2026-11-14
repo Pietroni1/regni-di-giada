@@ -24,8 +24,8 @@ void fragment() {
 	float fronte = smoothstep(0.0, 0.18, fase) ;                       // le crepe corrono verso l'esterno
 	float raggiunto = 1.0 - smoothstep(fronte * 1.2 - 0.25, fronte * 1.2, d);
 	float vita = 1.0 - smoothstep(0.35, 1.0, fase);
-	float centro = (1.0 - smoothstep(0.0, 0.55, d)) * 0.5 * (1.0 - smoothstep(0.0, 0.5, fase));
+	float centro = (1.0 - smoothstep(0.0, 0.45, d)) * 0.2 * (1.0 - smoothstep(0.0, 0.4, fase));
 	float a = (crepa * raggiunto * (1.0 - smoothstep(0.75, 1.0, d)) + centro) * vita;
-	ALBEDO = mix(colore.rgb, vec3(1.0), crepa * (1.0 - d) * 0.6 * vita) * 2.0;
+	ALBEDO = mix(colore.rgb, vec3(1.0), crepa * (1.0 - d) * 0.35 * vita) * 1.4;
 	ALPHA = clamp(a, 0.0, 1.0) * colore.a;
 }

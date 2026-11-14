@@ -47,7 +47,7 @@ void fragment() {
 		}
 	}
 	float vita = mix(smoothstep(0.0, 0.15, fase) * (1.0 - smoothstep(0.6, 1.0, fase)), 0.75 + 0.25 * sin(TIME * 2.4), fisso);
-	float alone = (1.0 - smoothstep(0.0, 1.0, d)) * 0.12;
-	ALBEDO = colore.rgb * 1.7;
+	float alone = (1.0 - smoothstep(0.0, 1.0, d)) * 0.05;
+	ALBEDO = colore.rgb * 1.25;
 	ALPHA = clamp((v + alone) * vita, 0.0, 1.0) * colore.a * step(d, 1.0);
 }
