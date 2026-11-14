@@ -1,5 +1,6 @@
 // Dati di gioco condivisi tra server e client.
 // Modifica questo file per bilanciare classi, abilità, oggetti e mostri.
+import { MOBS_MAPPE, NPC_MAPPE } from './mappe.js';
 
 export const MAX_LEVEL = 99;
 export const INV_SIZE = 45;
@@ -542,3 +543,7 @@ export function dungeonWalkable(lx, lz, margin = 0.5) {
   }
   return false;
 }
+
+// Mostri e PNG delle mappe da esperienza e dell'Arena (definiti in shared/mappe.js).
+Object.assign(MOBS, MOBS_MAPPE);
+Object.assign(NPC_ROLES, NPC_MAPPE);

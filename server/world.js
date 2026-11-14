@@ -11,6 +11,7 @@ import {
   PLAY_LIMIT, mulberry32, DUNGEON_X,
 } from '../shared/world.js';
 import { POSTURA, posturaBase, posturaColpo } from '../shared/postura.js';
+import { installaMappe, MAPPE, arrivoMappa } from './mappe.js';
 
 const VIEW = 105;
 const NOW = () => Date.now();
@@ -126,6 +127,7 @@ export class World {
     this.regenAcc = 0;
     this.initNpcs();
     this.initSpawns();
+    this.initMappe();   // mappe da esperienza e arena (server/mappe.js)
   }
 
   start() {
@@ -310,7 +312,7 @@ export class World {
     this.recalc(p);
     const R = RESOURCES[p.rtype];
     p.res = p.rtype === 'mana' ? (ch.mp >= 0 ? Math.min(ch.mp, p.rmax) : p.rmax) : Math.round(R.start * p.rmax);
-    if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || p.hp === 0 || p.x > DUNGEON_X) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || p.hp === 0 || (p.x > DUNGEON_X && !this.rientraInMappa(p))) {
       const sp = villageSpawn(p.kingdom); p.x = sp.x; p.z = sp.z; p.hp = p.maxHp;
     }
     if (p.hp < 0 || p.hp > p.maxHp) p.hp = p.maxHp;
@@ -517,6 +519,7 @@ export class World {
       else if (e.kind === 'drop' && t > e.expire) this.remove(e);
     }
     for (const inst of [...this.instances.values()]) this.updateTrial(inst, t, regen);
+    this.tickMappe(t);
     for (const sp of this.spawners) {
       for (let i = sp.pending.length - 1; i >= 0; i--) {
         if (sp.pending[i] <= t) { sp.pending.splice(i, 1); this.spawnFromSpawner(sp); }
@@ -752,6 +755,8 @@ export class World {
     if (!b || b === a) return false;
     if (b.kind === 'mob') return b.hp > 0;
     if (b.kind === 'player') {
+      const arena = this.pvpArena(a, b);   // nell'arena: tutti contro tutti tranne il gruppo
+      if (arena !== null) return arena;
       if (!this.cfg.pvp || b.dead || a.kingdom === b.kingdom) return false;
       if (a.lvl < this.cfg.pvpMinLevel || b.lvl < this.cfg.pvpMinLevel) return false;
       if (safeZoneAt(a.x, a.z) || safeZoneAt(b.x, b.z)) return false;
@@ -1018,10 +1023,10 @@ export class World {
     this.recalc(p);
     this.touch(p); p.selfDirty = true;
     let lost = 0;
-    if (killer.kind === 'mob') {
+    if (killer.kind === 'mob' && !this.inArena(p)) {
       lost = Math.min(p.ch.exp, Math.floor(expToNext(p.lvl) * 0.03));
       p.ch.exp -= lost;
-    } else if (killer.kind === 'player') {
+    } else if (killer.kind === 'player' && !this.uccisioneArena(killer, p)) {
       this.broadcast({ t: 'sys', m: `${killer.name} (${KINGDOMS[killer.kingdom].short}) ha sconfitto ${p.name} (${KINGDOMS[p.kingdom].short}).` });
     }
     this.fx(p, { k: 'die', d: p.id });
@@ -1032,7 +1037,10 @@ export class World {
   respawn(p, mode) {
     if (!p.dead) return;
     const el = NOW() - p.deadAt;
-    if (mode === 'here') {
+    if (this.inArena(p)) {
+      if (el < 3000) return;
+      this.rinasciInArena(p);   // nell'arena si rinasce sempre a una porta
+    } else if (mode === 'here') {
       if (el < 8000) return;
       p.hp = Math.round(p.maxHp * 0.5);
       if (p.rtype === 'mana') p.res = Math.round(p.rmax * 0.5);
@@ -1051,6 +1059,8 @@ export class World {
   clampPos(p, x, z) {
     const inst = p.inst ? this.instances.get(p.inst) : null;
     if (inst) return [clamp(x, inst.ox + DUNGEON.boundsMin[0], inst.ox + DUNGEON.boundsMax[0]), clamp(z, inst.oz + DUNGEON.boundsMin[1], inst.oz + DUNGEON.boundsMax[1])];
+    const inMappa = this.limitaPosMappa(x, z);
+    if (inMappa) return inMappa;
     return [clamp(x, -PLAY_LIMIT, PLAY_LIMIT), clamp(z, -PLAY_LIMIT, PLAY_LIMIT)];
   }
 
@@ -1088,6 +1098,7 @@ export class World {
       case 'trial': return this.onTrial(p, msg.npc, msg.a);
       case 'tleave': return this.leaveTrial(p);
       case 'stable': return this.onStable(p, msg.npc, msg.a);
+      case 'viaggio': return this.onViaggio(p, msg);
       case 'pinv': return this.onPartyInvite(p, msg.id ? this.ents.get(msg.id) : this.playerByName(msg.n));
       case 'preply': return this.onPartyReply(p, !!msg.ok);
       case 'pleave': return this.leaveParty(p);
@@ -1185,14 +1196,14 @@ export class World {
   }
 
   friendly(p, target, range) {
-    return (target && target.kind === 'player' && target.kingdom === p.kingdom && !target.dead && dist(target, p) <= range + 2) ? target : p;
+    return (target && target.kind === 'player' && this.alleato(p, target) && !target.dead && dist(target, p) <= range + 2) ? target : p;
   }
 
   // L'alleato del regno con meno vita (in %) entro il raggio, sé compreso: bersaglio delle cure quando si ha un nemico selezionato.
   piuFerito(p, raggio) {
     let best = p, bv = p.hp / p.maxHp;
     for (const q of this.players) {
-      if (q === p || q.kingdom !== p.kingdom || q.dead || dist(q, p) > raggio) continue;
+      if (q === p || !this.alleato(p, q) || q.dead || dist(q, p) > raggio) continue;
       const v = q.hp / q.maxHp;
       if (v < bv) { bv = v; best = q; }
     }
@@ -1220,7 +1231,7 @@ export class World {
         return { target };
       }
       case 'heal_target': case 'hot_target': case 'shield': case 'heal_aoe': {
-        const amico = target && target.kind === 'player' && target.kingdom === p.kingdom && !target.dead && dist(target, p) <= (range || 20) + 2;
+        const amico = target && target.kind === 'player' && this.alleato(p, target) && !target.dead && dist(target, p) <= (range || 20) + 2;
         return { target: amico ? target : (sk.finale ? this.piuFerito(p, range || 20) : p) };
       }
       default:
@@ -1940,7 +1951,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n] [raggio], /heal, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /spawn mostro [n] [raggio], /heal, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -1973,6 +1984,7 @@ export class World {
       case 'tp': {
         if (a.length >= 2 && !isNaN(+a[0]) && !isNaN(+a[1])) return this.teleport(p, +a[0], +a[1]);
         if (KINGDOMS[a[0]]) { const s = villageSpawn(a[0]); return this.teleport(p, s.x, s.z); }
+        if (MAPPE[a[0]]) { const s = arrivoMappa(a[0]); return this.teleport(p, s.x, s.z); }   // /tp selva | distesa | arena
         const q = [...this.players].find(x => x.name.toLowerCase() === String(a[0]).toLowerCase());
         if (!q) return sys('Destinazione non trovata.');
         return this.teleport(p, q.x + 1.5, q.z);
@@ -2251,6 +2263,7 @@ export class World {
     if (n.role === 'fabbro') return this.send(p, { t: 'smith', npc: n.id });
     if (n.role === 'stalliere') return this.send(p, { t: 'stable', npc: n.id });
     if (n.role === 'custode') return this.sendTrialInfo(p, n.id);
+    if (n.role === 'guida' || n.role === 'araldo') return this.sendViaggio(p, n);
     let m;
     if (n.role === 'maestro') {
       const c = CLASSES[p.cls];
@@ -2406,3 +2419,5 @@ export class World {
     this.send(p, { t: 'applied', m: `Fusione riuscita: ${ITEMS[next].name}.` });
   }
 }
+
+installaMappe(World);

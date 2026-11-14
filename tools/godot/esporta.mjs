@@ -1,6 +1,7 @@
 // Prepara i dati per il client Godot (cartella godot/): `npm run godot:dati`.
 // - godot/dati/gioco.json   tabelle del gioco (shared/data.js) e geografia (shared/world.js)
 // - godot/dati/terreno.bin  altezze e pesi dei materiali del terreno, calcolati con le stesse funzioni del server
+// - godot/dati/mappe.bin    altezze delle mappe da esperienza e dell'arena (shared/mappe.js), una griglia per mappa
 // - godot/modelli/*.glb     copie dei modelli di client/assets senza compressione Draco (Godot non la legge)
 // Va rilanciato ogni volta che cambiano shared/data.js, shared/world.js o i modelli.
 import fs from 'node:fs';
@@ -8,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as D from '../../shared/data.js';
 import * as W from '../../shared/world.js';
+import * as M from '../../shared/mappe.js';
 import { POSTURA } from '../../shared/postura.js';
 import { togliDraco } from './togli_draco.mjs';
 
@@ -61,12 +63,65 @@ function vegetazione() {
   return liste;
 }
 
+// ------------------------------------------------------------------ mappe da esperienza e arena
+// Griglie di altezze (float32, riga per riga lungo z) concatenate in godot/dati/mappe.bin; in gioco.json le definizioni,
+// dove sta la griglia di ciascuna e le piante (stesso formato di `vegetazione`).
+const PASSO_M = 2;
+const griglieMappe = [];
+let offsetMappe = 0;
+function pianteMappa(id) {
+  const m = M.MAPPE[id], T = m.tema, rnd = W.mulberry32(9100 + m.terreno.seme);
+  const liste = {};
+  for (const sp of Object.keys(T.piante)) liste[sp] = [];
+  const est = m.tipo === 'arena' ? 118 : m.raggio + 46, passo = T.fitta;
+  const vuoti = [];   // spiazzi senza piante: arrivo e obelischi
+  if (m.arrivo) vuoti.push([m.arrivo.x, m.arrivo.z, 22]);
+  for (const o of m.obelischi || []) vuoti.push([o[1], o[2], 10]);
+  for (let lx = -est; lx < est; lx += passo) for (let lz = -est; lz < est; lz += passo) {
+    const px = lx + (rnd() - 0.5) * passo, pz = lz + (rnd() - 0.5) * passo;
+    const r = rnd(), s = 0.8 + rnd() * 0.5, rot = rnd() * Math.PI * 2;
+    const d = Math.hypot(px, pz);
+    if (d > est) continue;
+    if (m.tipo === 'arena' && d < 84) continue;
+    if (vuoti.some(([vx, vz, vr]) => Math.hypot(px - vx, pz - vz) < vr)) continue;
+    // sentiero libero dall'arrivo verso il centro (serpeggia appena)
+    if (m.arrivo && pz > m.arrivo.z && pz < 30 && Math.abs(px - Math.sin(pz * 0.03) * 10) < 5) continue;
+    const dens = M.fbmMappa(px * 0.02, pz * 0.02, 3, m.terreno.seme + 31);
+    let acc = 0;
+    for (const [sp, p] of Object.entries(T.piante)) {
+      const mul = sp === 'bambu' ? W.smoothstep(0.32, 0.6, dens) * 1.6 : (sp === 'roccia' ? 1 : 0.6 + dens * 0.8);
+      acc += p * mul;
+      if (r < acc) {
+        const x = m.cx + px, z = m.cz + pz;
+        liste[sp].push([r2(x), r2(M.altezzaMappa(x, z) - 0.2), r2(z), r2(sp === 'bambu' ? s * 1.15 : s), r2(rot)]);
+        break;
+      }
+    }
+  }
+  return liste;
+}
+function mappe() {
+  const out = {};
+  for (const id of M.MAPPE_IDS) {
+    const m = M.MAPPE[id];
+    const est = m.tipo === 'arena' ? 120 : m.raggio + 60;
+    const lato = Math.round(2 * est / PASSO_M) + 1, x0 = m.cx - est, z0 = m.cz - est;
+    const h = new Float32Array(lato * lato);
+    for (let j = 0; j < lato; j++) for (let i = 0; i < lato; i++) h[j * lato + i] = M.altezzaMappa(x0 + i * PASSO_M, z0 + j * PASSO_M);
+    griglieMappe.push(Buffer.from(h.buffer));
+    const { branchi, terreno, ...resto } = m;
+    out[id] = { ...resto, id, griglia: { x0, z0, lato, passo: PASSO_M, offset: offsetMappe }, vegetazione: pianteMappa(id) };
+    offsetMappe += h.byteLength;
+  }
+  return out;
+}
+
 const gioco = {
   versione: D.DATA_VERSION,
   costanti: {
     PTS_MAX: D.PTS_MAX, QB_SIZE: D.QB_SIZE, INV_SIZE: D.INV_SIZE, GCD_MS: D.GCD_MS, VIA_LEVEL: D.VIA_LEVEL,
     WORLD_HALF: W.WORLD_HALF, PLAY_LIMIT: W.PLAY_LIMIT, SAFE_RADIUS: W.SAFE_RADIUS, WALL_RADIUS: W.WALL_RADIUS,
-    VILLAGE_HEIGHT: W.VILLAGE_HEIGHT, CENTER: W.CENTER, DUNGEON_X: W.DUNGEON_X,
+    VILLAGE_HEIGHT: W.VILLAGE_HEIGHT, CENTER: W.CENTER, DUNGEON_X: W.DUNGEON_X, MAPPE_X: M.MAPPE_X, MAPPE_REGIONE: M.MAPPE_REGIONE,
   },
   SLANCIO: D.SLANCIO, SUPREMA: D.SUPREMA, COMBAT: D.COMBAT, POSTURA,
   WEAPON_TYPES: D.WEAPON_TYPES, RESOURCES: D.RESOURCES, CLASSES: D.CLASSES, VIE: D.VIE, BUFFS: D.BUFFS,
@@ -81,8 +136,10 @@ const gioco = {
   strade: W.ROADS.map(s => s.map(r2)),
   ostacoli: W.buildColliders(),
   vegetazione: vegetazione(),
+  MAPPE: mappe(),
 };
 fs.writeFileSync(path.join(uscita, 'dati', 'gioco.json'), JSON.stringify(gioco));
+fs.writeFileSync(path.join(uscita, 'dati', 'mappe.bin'), Buffer.concat(griglieMappe));
 
 // ------------------------------------------------------------------ terreno
 // Intestazione: 'RDGT', lato della griglia delle altezze, passo (m), lato della griglia dei pesi, passo (m) — 5 × uint32/float32.
@@ -142,4 +199,5 @@ for (const f of modelli) {
 fs.copyFileSync(path.join(origine, 'modelli', 'indice.json'), path.join(uscita, 'dati', 'indice.json'));
 
 const n = Object.values(gioco.vegetazione).reduce((a, l) => a + l.length, 0);
-console.log(`Dati per Godot scritti in godot/: ${Object.keys(gioco.SKILLS).length} tecniche, ${n} piante e rocce, terreno ${LATO_H}×${LATO_H}, ${modelli.length} modelli.`);
+const nm = Object.values(gioco.MAPPE).map(m => `${m.id} ${m.griglia.lato}×${m.griglia.lato} (${Object.values(m.vegetazione).reduce((a, l) => a + l.length, 0)} piante)`).join(', ');
+console.log(`Dati per Godot scritti in godot/: ${Object.keys(gioco.SKILLS).length} tecniche, ${n} piante e rocce, terreno ${LATO_H}×${LATO_H}, ${modelli.length} modelli; mappe: ${nm}.`);
