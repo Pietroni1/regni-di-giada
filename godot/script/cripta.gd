@@ -27,6 +27,21 @@ func calpestabile(x: float, z: float, margine := 0.5) -> bool:
 	return false
 
 
+## Il punto calpestabile più vicino a (x, z): serve a liberare chi è finito dentro un muro.
+func piu_vicino(x: float, z: float, margine := 0.6) -> Vector2:
+	var lx := x - origine.x
+	var lz := z - origine.y
+	var meglio := Vector2(lx, lz)
+	var md := INF
+	for r in Dati.gioco.DUNGEON.rooms:
+		var q := Vector2(clampf(lx, float(r[0]) + margine, float(r[2]) - margine), clampf(lz, float(r[1]) + margine, float(r[3]) - margine))
+		var d := q.distance_squared_to(Vector2(lx, lz))
+		if d < md:
+			md = d
+			meglio = q
+	return meglio + origine
+
+
 func _costruisci() -> void:
 	var D: Dictionary = Dati.gioco.DUNGEON
 	var pav := ShaderMaterial.new()
@@ -69,13 +84,14 @@ func _costruisci() -> void:
 		var orizz := absf(a.y - b.y) < 0.01
 		var dim := Vector3(lung, ALTEZZA, 0.9) if orizz else Vector3(0.9, ALTEZZA, lung)
 		Edifici.scatola(dim, Vector3(centro.x, ALTEZZA * 0.5, centro.y), muro, self)
-		var zoccolo := Vector3(lung, 0.7, 1.3) if orizz else Vector3(1.3, 0.7, lung)
+		# zoccolo e pilastri stanno dentro il mezzo metro che il personaggio non può calpestare: niente compenetrazioni
+		var zoccolo := Vector3(lung, 0.7, 0.98) if orizz else Vector3(0.98, 0.7, lung)
 		Edifici.scatola(zoccolo, Vector3(centro.x, 0.35, centro.y), muro, self)
 		# pilastri ogni 8 m
 		var quanti := int(a.distance_to(b) / 8.0)
 		for k in range(quanti + 1):
 			var p := a.lerp(b, float(k) / maxf(1.0, quanti))
-			Edifici.scatola(Vector3(1.3, ALTEZZA + 0.3, 1.3), Vector3(p.x, (ALTEZZA + 0.3) * 0.5, p.y), muro, self)
+			Edifici.scatola(Vector3(0.98, ALTEZZA + 0.3, 0.98), Vector3(p.x, (ALTEZZA + 0.3) * 0.5, p.y), muro, self)
 
 	# altare nella sala del boss
 	var altare := Vector3(float(boss.x), 0, float(boss.z) + 9.0)

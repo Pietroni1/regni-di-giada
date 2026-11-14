@@ -3,7 +3,7 @@
 import {
   CLASSES, VIE, SKILLS, BUFFS, RESOURCES, ITEMS, MOBS, UPGRADE, SHOPS, NPC_ROLES, WEAPON_TYPES, GUARD_LINES,
   INV_SIZE, QB_SIZE, STACK_MAX, STAT_MAX, EQUIP_SLOTS, MAX_LEVEL, VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BOOK_CHANCE,
-  PTS_MAX, COMBAT, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, weeklyAffixes, trialScale, keyChange, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
+  PTS_MAX, COMBAT, dungeonWalkable, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, weeklyAffixes, trialScale, keyChange, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
   expToNext, skillVal, upgradedStat, equipSlotOf, SLANCIO, BONUS_RISORSA, SUPREMA,
 } from '../shared/data.js';
 import {
@@ -1349,8 +1349,10 @@ export class World {
           const ang = Math.atan2(target.x - p.x, target.z - p.z);
           const off = this.radiusOf(target) + 1.1, sgn = sk.behindDash ? 1 : -1;
           const from = { x: r1(p.x), z: r1(p.z) };
-          p.x = clamp(target.x + Math.sin(ang) * off * sgn, -PLAY_LIMIT, PLAY_LIMIT);
-          p.z = clamp(target.z + Math.cos(ang) * off * sgn, -PLAY_LIMIT, PLAY_LIMIT);
+          // arrivo dello scatto: dentro i limiti della zona in cui si è (mondo o istanza della cripta) e, nella cripta,
+          // su un punto calpestabile — altrimenti si arretra lungo la traiettoria finché lo è
+          const [ax, az] = this.arrivoScatto(p, target.x + Math.sin(ang) * off * sgn, target.z + Math.cos(ang) * off * sgn);
+          p.x = ax; p.z = az;
           p.r = Math.atan2(target.x - p.x, target.z - p.z);
           if (p.casting) p.casting = null;
           this.touch(p);
@@ -1472,6 +1474,20 @@ export class World {
     p.selfDirty = true; this.touch(p);
     this.send(p, { t: 'cd', s: sid, ms: (sk.cd || 0) * 1000, gcd: gcd ?? (sk.offgcd ? 0 : this.gcdMs(p)) });
     this.fx(p, fxd);
+  }
+
+  // Punto d'arrivo valido per uno scatto verso (x, z): rispetta i confini della zona e i muri della cripta.
+  arrivoScatto(p, x, z) {
+    [x, z] = this.clampPos(p, x, z);
+    const inst = p.inst ? this.instances.get(p.inst) : null;
+    if (!inst) return [x, z];
+    const ok = (qx, qz) => dungeonWalkable(qx - inst.ox, qz - inst.oz, 0.5);
+    if (ok(x, z)) return [x, z];
+    for (let k = 1; k <= 20; k++) {
+      const t = k / 20, qx = x + (p.x - x) * t, qz = z + (p.z - z) * t;
+      if (ok(qx, qz)) return [qx, qz];
+    }
+    return [p.x, p.z];
   }
 
   // Interruzione: spezza il lancio del bersaglio (mostro o giocatore) e rende un po' di risorsa.

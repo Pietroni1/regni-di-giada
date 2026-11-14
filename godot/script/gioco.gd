@@ -830,7 +830,12 @@ func _process(dt: float) -> void:
 		var nz := me.z + dir.y * passo
 		if me.x > float(Dati.costanti.DUNGEON_X):
 			# nella cripta si cammina solo in stanze e corridoi, scivolando lungo i muri
-			if cripta != null and not cripta.calpestabile(nx, nz):
+			if cripta != null and not cripta.calpestabile(me.x, me.z):
+				# finito dentro un muro (scatto, spinta, ritardo di rete): si esce verso il punto libero più vicino
+				var libero := cripta.piu_vicino(me.x, me.z)
+				nx = libero.x
+				nz = libero.y
+			elif cripta != null and not cripta.calpestabile(nx, nz):
 				if cripta.calpestabile(nx, me.z):
 					nz = me.z
 				elif cripta.calpestabile(me.x, nz):
