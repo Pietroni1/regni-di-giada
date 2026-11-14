@@ -510,7 +510,8 @@ func _suprema(sk: Dictionary, da: Entita, su: Entita, colore: Color, qui: Vector
 					var p := (su.petto() if is_instance_valid(su) else la + Vector3(0, 1.2, 0))
 					var a := randf() * TAU
 					taglio(p, a, colore.lerp(Color(0.6, 0.3, 1.0), 0.5), 3.2, 2.2, 0.2, randf_range(-1.4, 1.4))
-					bagliore(p + Vector3(cos(a), 0, sin(a)) * 1.6, Color(0.5, 0.25, 0.9), 2.0, 0.18)
+					if randf() < 0.4:
+						bagliore(p + Vector3(cos(a), 0, sin(a)) * 1.6, Color(0.5, 0.25, 0.9), 1.6, 0.18)
 					scintille(p, colore, 8, 6.0, 0.3))
 			_dopo(passo * ondate + 0.08, func() -> void:
 				var p := (su.petto() if is_instance_valid(su) else la + Vector3(0, 1.2, 0))

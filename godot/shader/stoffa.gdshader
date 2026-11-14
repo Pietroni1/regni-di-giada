@@ -20,12 +20,11 @@ void fragment() {
 	float tinta = fbm3(pl * 3.2);
 	float piega = sin(uv.x * 26.0 + fbm3(pl * 2.0) * 7.0) * 0.5 + 0.5;
 	vec3 col = colore * (0.78 + 0.32 * tinta) * (0.9 + 0.14 * piega) * (0.93 + 0.1 * filo);
-	// motivo a onde ricamato su fasce orizzontali (orli di vesti e maniche)
-	float quota = fract(pl.y * 1.6 + 0.12);
-	float fascia = smoothstep(0.0, 0.01, quota) * (1.0 - smoothstep(0.045, 0.055, quota));
-	float onda = smoothstep(0.012, 0.0, abs(quota - 0.027 - sin(uv.x * 34.0) * 0.012));
-	float riga = smoothstep(0.004, 0.0, abs(quota - 0.004)) + smoothstep(0.004, 0.0, abs(quota - 0.05));
-	col = mix(col, ricamo, clamp(fascia * onda + riga, 0.0, 1.0) * 0.85);
+	// filo di ricamo molto rado nel colore della classe: piccoli punti sparsi, non fasce (sui capi aderenti le fasce
+	// orizzontali diventavano anelli attorno a gambe e busto)
+	vec2 gp = uv * 9.0;
+	float punto = (1.0 - smoothstep(0.05, 0.09, length(fract(gp) - 0.5))) * step(0.8, h21(floor(gp)));
+	col = mix(col, ricamo, punto * 0.55);
 	ALBEDO = col;
 	ROUGHNESS = 0.92;
 	SPECULAR = 0.12;
