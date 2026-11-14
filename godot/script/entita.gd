@@ -142,6 +142,8 @@ func _costruisci() -> void:
 			corpo.altezza = 0.8
 	if corpo != null:
 		add_child(corpo)
+		if corpo.has_method("stato"):
+			corpo.call("stato", hp / mhp)
 		if morto:
 			corpo.muori()
 	if tipo == "p":
@@ -211,6 +213,8 @@ func aggiorna(u: Array) -> void:
 		postura = int(u[8])
 		squilibrato = int(u[9]) == 1
 	if corpo != null:
+		if corpo.has_method("stato"):
+			corpo.call("stato", hp / mhp)
 		if morto and not era_morto:
 			corpo.muori()
 		elif era_morto and not morto:
