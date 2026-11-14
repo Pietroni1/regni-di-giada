@@ -302,7 +302,15 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   Gli shader `pietra`, `intonaco` e `roccia` hanno il parametro `origine`: lontano dall'origine il rumore perde precisione,
   quindi nelle mappe i materiali si copiano con il centro della mappa (`TerraLontana._localizza`).
 - Prova con bot: `node tools/prove/mappe.mjs [porta]` (27 verifiche: viaggi, mostri, obelisco, ritorno, confini, arena, gruppo, rientro).
-  Da guardare a schermo: tutte e tre le mappe, i temi, la finestra dei viaggi e la classifica.
+  Viste a schermo nel client Godot: le tre mappe con i loro temi e gli obelischi dentro Selva e Distesa.
+  Non viste: la finestra dei viaggi, la classifica dell'arena, i branchi del mondo aperto e l'uscita dai muri nella cripta.
+- Revisione del server (controllore): corretti viaggio con mappa inesistente (faceva cadere il server; ora `Object.hasOwn`
+  e try/catch attorno a `world.handle`), sostegno dalle nicchie dell'arena (`alleato`), finale della Via nella barra al
+  login (`autoQuickbar` in `addPlayer`), veleni e ondate azzerati da `viaggia` e alla morte, `interrompi` con `canAttack`.
+  Lasciati così, da decidere: l'arena resta PvP anche con `cfg.pvp` spento; in PvP un tentativo di stordimento respinto
+  rinnova la finestra di 15 s (immunità continua).
+- Nota per l'orchestrazione con agenti: mai `pkill -f "node server/index.js"` (uccide i server degli altri agenti):
+  chiudere solo per porta, `kill $(lsof -ti tcp:PORTA)`.
 
 ## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.
