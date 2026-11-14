@@ -5,12 +5,13 @@ render_mode diffuse_burley;
 
 uniform vec3 colore : source_color = vec3(0.42, 0.40, 0.37);
 uniform float concio = 0.75;         // lato dei conci in metri
+uniform vec3 origine = vec3(0.0);     // nelle mappe lontane: il centro della mappa (il rumore resta preciso)
 varying vec3 pm;
 varying vec3 nm;
 varying vec3 pl;
 
 void vertex() {
-	pm = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	pm = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz - origine;
 	nm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	pl = VERTEX;
 }

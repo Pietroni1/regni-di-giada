@@ -256,6 +256,25 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 
+## Mappe da esperienza e Arena PvP
+- Definizioni in `shared/mappe.js` (nessun import: lo importano `data.js`, che aggiunge `MOBS_MAPPE` a `MOBS` e
+  `NPC_MAPPE` a `NPC_ROLES`, e `world.js`, dove `heightAt`, `safeZoneAt` e `zoneAt` passano alle mappe per x > `MAPPE_X` = 5000).
+  **Selva dei Mille Steli** (centro 6000, 0; raggio 160; livelli 30-40, minimo 28), **Distesa dei Venti Rossi** (7000, 0;
+  raggio 170; 40-50, minimo 38), **Arena del Loto Cremisi** (8000, 0; pavimento di raggio 58, 4 porte con nicchie sicure).
+  Terreno da `altezzaMappa` (stessa funzione per server ed esportazione), arrivo pianeggiante e sicuro, confine circolare.
+- Server in `server/mappe.js` (metodi aggiunti a World con `installaMappe`): branchi e obelischi (`initMappe`), PNG `guida`
+  (anche nei villaggi, `VILLAGE_LAYOUT.npcs`) e `araldo` (nicchie dell'arena), messaggio `viaggio` (`info`/`vai`/`torna`),
+  PvP dell'arena (`pvpArena` in `canAttack`, `alleato` per cure e sostegno), uccisioni annunciate (`arena_k`) e classifica
+  della sessione (`arena`), rinascita a una porta (da soli dopo 5 s), nessuna perdita alla morte nell'arena.
+  Al login: chi era in una mappa da esperienza riparte dal suo arrivo (se ha il livello), dall'arena si torna al villaggio.
+  Comandi GM: `/tp selva|distesa|arena`.
+- Client Godot: `mappe.gd` (geografia e altezze da `dati/mappe.bin`), `terra_lontana.gd` (terreno, piante, arrivo, rovine,
+  arena costruita da codice), `viaggi.gd` (finestra della guida, classifica, annunci); shader `terreno_mappa` e `arena`.
+  Gli shader `pietra`, `intonaco` e `roccia` hanno il parametro `origine`: lontano dall'origine il rumore perde precisione,
+  quindi nelle mappe i materiali si copiano con il centro della mappa (`TerraLontana._localizza`).
+- Prova con bot: `node tools/prove/mappe.mjs [porta]` (27 verifiche: viaggi, mostri, obelisco, ritorno, confini, arena, gruppo, rientro).
+  Da guardare a schermo: tutte e tre le mappe, i temi, la finestra dei viaggi e la classifica.
+
 ## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.
 - Da fare: luce da HDRI vera; il bilanciamento `LUCE` va riguardato a vista insieme a GTAO e correzione colore.

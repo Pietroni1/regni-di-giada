@@ -127,6 +127,14 @@ func _costruisci() -> void:
 			elif String(info.get("role", "")) in ["maestro", "custode"]:
 				veste["cappello_paglia"] = true
 				arma = "staff"
+			elif String(info.get("role", "")) == "guida":
+				# viandante delle mappe lontane: cappello di paglia, bastone, veste color terra
+				veste = {"veste": Color(0.45, 0.36, 0.22), "pantaloni": Color(0.22, 0.18, 0.13), "cappello_paglia": true, "sandali": true}
+				arma = "staff"
+			elif String(info.get("role", "")) == "araldo":
+				# araldo dell'arena: armatura laccata vermiglia
+				veste = {"veste": Color(0.42, 0.08, 0.06), "pantaloni": Color(0.12, 0.08, 0.07), "lamellare": {"stoffa": Color(0.6, 0.1, 0.08), "piastre": Color(0.75, 0.6, 0.3)}, "elmo_bronzo": true, "stivali_cuoio": true}
+				arma = "sword"
 			corpo = Personaggio.umano("base_donna" if String(info.get("role", "")) == "erbe" else "base_uomo", veste, arma, 1)
 			var ruolo := String(info.get("role", ""))
 			corpo.metti_testa("long" if ruolo == "erbe" else ("short" if veste.has("elmo_bronzo") or veste.has("cappello_paglia") else "topknot"), Color(0.75, 0.75, 0.72) if ruolo in ["maestro", "erbe"] else Color(0.1, 0.08, 0.07))

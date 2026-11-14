@@ -35,7 +35,7 @@ export const MAPPE = {
       suolo: ['#1d3417', '#34502a'], macchie: '#6a6a2c', terra: '#4a3a24', roccia: '#4a4f44', lastrico: '#7a7466',
       piante: { bambu: 0.62, pino: 0.06, cespuglio: 0.05, roccia: 0.02, acero: 0.01 },
       tinte: { bambu: ['#ffffff', '#e0ffd8', '#f4ffe0'], pino: ['#c8f0c0'], cespuglio: ['#d0ffc8', '#ffffff'], acero: ['#ffe0a0'] },
-      fitta: 4.0,
+      fitta: 4.0, tetto: '#24402a', accento: '#3a8a5a', quotaRoccia: 24,
     },
   },
   distesa: {
@@ -60,7 +60,7 @@ export const MAPPE = {
       suolo: ['#a0582c', '#d08a4c'], macchie: '#e8b070', terra: '#6a3a20', roccia: '#7a4a32', lastrico: '#9a7a5a',
       piante: { roccia: 0.08, cespuglio: 0.05, acero: 0.012, pino: 0.006 },
       tinte: { cespuglio: ['#c8a060', '#a08048'], acero: ['#ff9050', '#e07038'], pino: ['#a09060'] },
-      fitta: 5.5, dune: 1,
+      fitta: 5.5, dune: 1, tetto: '#6a3220', accento: '#c8742c', quotaRoccia: 60,
     },
   },
   arena: {
@@ -73,7 +73,7 @@ export const MAPPE = {
       suolo: ['#3a5a26', '#5a7034'], macchie: '#7a7a3a', terra: '#5a4630', roccia: '#5a5650', lastrico: '#8a7e6e',
       piante: { ciliegio: 0.12, pino: 0.1, cespuglio: 0.06, roccia: 0.02 },
       tinte: { ciliegio: ['#ffffff', '#ffd8e8'], pino: ['#e0ffe0'], cespuglio: ['#ffffff'] },
-      fitta: 6.0,
+      fitta: 6.0, tetto: '#4a1a16', accento: '#b02a22', quotaRoccia: 12,
     },
   },
 };

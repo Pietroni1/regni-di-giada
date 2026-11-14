@@ -137,6 +137,8 @@ func chiudi_tutto() -> bool:
 		if f.visible:
 			aperta = true
 		f.visible = false
+	if gioco != null and gioco.viaggi != null and gioco.viaggi.chiudi():
+		aperta = true
 	negozio_png = 0
 	fabbro_png = 0
 	return aperta

@@ -227,6 +227,12 @@ func _prova_automatica() -> void:
 						Rete.manda({"t": "npc", "id": e.id})
 						break
 			"sella": Rete.manda({"t": "mount"})
+			"viaggio":
+				# viaggio selva|distesa|arena|torna: con la Guida dei Sentieri o l'Araldo più vicino
+				for e: Entita in gioco.ents.values():
+					if e.tipo == "n" and String(e.info.get("role", "")) in ["guida", "araldo"] and Vector2(e.x - gioco.me.x, e.z - gioco.me.z).length() < 8.0:
+						Rete.manda({"t": "viaggio", "npc": e.id, "a": "torna" if p[1] == "torna" else "vai", "m": p[1]})
+						break
 			"interrompi":
 				# aspetta che il bersaglio inizi un lancio (fino a 20 s), fotografa la barra e poi usa l'interruzione
 				var scade := Time.get_ticks_msec() + 20000

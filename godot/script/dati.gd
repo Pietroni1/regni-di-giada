@@ -66,7 +66,7 @@ func _terreno() -> void:
 ## Altezza del terreno in un punto (interpolazione sulla griglia esportata dal server).
 func altezza(x: float, z: float) -> float:
 	if x > float(costanti.DUNGEON_X) or lato_h == 0:
-		return 0.0
+		return Mappe.altezza(x, z) if costanti.has("MAPPE_X") and x > float(costanti.MAPPE_X) else 0.0   # cripta piatta, poi le mappe lontane
 	var gx := clampf((x + meta) / passo_h, 0.0, lato_h - 1.001)
 	var gz := clampf((z + meta) / passo_h, 0.0, lato_h - 1.001)
 	var ix := int(gx)

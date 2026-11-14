@@ -18,11 +18,11 @@ const metodi = {
         for (let i = 0; i < m.porte; i++) {
           const a = portaArena(i), r = m.distNicchia + 3.2;
           const x = m.cx + Math.sin(a) * r + Math.cos(a) * 2.5, z = m.cz + Math.cos(a) * r - Math.sin(a) * 2.5;
-          this.add({ kind: 'npc', role: 'araldo', kingdom: null, name: NPC_ROLES.araldo.name, x, z, r: a + Math.PI });
+          this.add({ kind: 'npc', role: 'araldo', kingdom: '', name: NPC_ROLES.araldo.name, x, z, r: a + Math.PI });
         }
         continue;
       }
-      this.add({ kind: 'npc', role: 'guida', kingdom: null, name: NPC_ROLES.guida.name, x: m.cx + m.guida.x, z: m.cz + m.guida.z, r: 0 });
+      this.add({ kind: 'npc', role: 'guida', kingdom: '', name: NPC_ROLES.guida.name, x: m.cx + m.guida.x, z: m.cz + m.guida.z, r: 0 });
       // branchi in posizioni fisse (seme per mappa), lontani dall'arrivo e un po' distanziati fra loro
       const rng = mulberry32(7000 + m.terreno.seme);
       const presi = [];

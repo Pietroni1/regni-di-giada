@@ -602,6 +602,12 @@ func _process(dt: float) -> void:
 		bott_qui.text = "Rinasci qui con metà vita" if da >= 8.0 else "Rinasci qui (fra %d s)" % int(ceil(8.0 - da))
 		bott_villaggio.disabled = da < 3.0
 		bott_villaggio.text = ("Torna all'ingresso della Prova" if not gioco.prova.is_empty() else "Torna al villaggio") if da >= 3.0 else "Torna al villaggio (fra %d s)" % int(ceil(3.0 - da))
+		if Mappe.in_arena(gioco.me.x, gioco.me.z):
+			# nell'arena si rinasce sempre a una porta, anche da soli dopo 5 secondi
+			bott_qui.visible = false
+			bott_villaggio.text = "Rinasci a una porta dell'arena" if da >= 3.0 else "Rinasci a una porta (fra %d s)" % int(ceil(3.0 - da))
+		else:
+			bott_qui.visible = true
 	# ricariche; il tasto dell'Interruzione lampeggia se il bersaglio sta lanciando, quello del finale se c'è la Risonanza
 	var ora := Time.get_ticks_msec()
 	var sta_lanciando: bool = b != null and gioco.lanci_nemici.has(b.id) and float(gioco.lanci_nemici[b.id].fine) > ora
@@ -645,6 +651,7 @@ func _disegna_minimappa() -> void:
 	var scala := lato * 0.5 / 60.0
 	minimappa.draw_circle(c, lato * 0.5, Color(0.08, 0.1, 0.07, 0.78))
 	var io: Entita = gioco.me
+	Mappe.disegna_minimappa(minimappa, io.x, io.z, c, scala, lato)   # confini e zone sicure delle mappe lontane
 	var su := func(x: float, z: float) -> Vector2: return c + Vector2(x - io.x, z - io.z) * scala
 	for s in Dati.gioco.strade:
 		var a: Vector2 = su.call(float(s[0]), float(s[1]))

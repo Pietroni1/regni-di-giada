@@ -5,6 +5,7 @@ render_mode diffuse_burley;
 uniform float muschio_forza = 1.0;     // 0 per i muri della cripta
 uniform vec3 tinta : source_color = vec3(1.0);
 
+uniform vec3 origine = vec3(0.0);     // nelle mappe lontane: il centro della mappa (il rumore resta preciso)
 varying vec3 pm;
 varying vec3 nm;
 
@@ -17,7 +18,7 @@ float rn(vec3 p) {
 }
 
 void vertex() {
-	pm = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	pm = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz - origine;
 	nm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 

@@ -33,6 +33,8 @@ Il client ricorda l'ultimo server e l'ultimo account usati.
 - **Oggetti**: trascina per spostare e indossare; gemme e pergamene si trascinano su un'arma o un'armatura; clic destro usa,
   fonde tre gemme uguali o vende (col negozio aperto).
 - **Altro**: Z raccoglie · R cavalcatura · Invio chat (comandi GM compresi) · F11 schermo intero.
+- **Viaggi**: la Guida dei Sentieri (vicino alla porta est di ogni villaggio) porta alle mappe da esperienza e all'arena;
+  in ogni mappa una guida (o l'Araldo, alle porte dell'arena) riporta al villaggio. GM: `/tp selva`, `/tp distesa`, `/tp arena`.
 - **Comandi GM utili per provare**: `/level 30`, `/via fulmine`, `/risorsa`, `/punti`, `/suprema`, `/abilita lama_tuono 20`, `/spawn fantoccio 3`, `/tael 50000`.
 
 ## Quando cambiano i dati del gioco
@@ -53,6 +55,8 @@ Riscrive `godot/dati/` (tabelle e terreno) e `godot/modelli/` (copie dei `.glb` 
 - `script/effetti.gd` + `shader/fx_*.gdshader` — effetti delle tecniche, composti da pochi mattoni riusabili.
 - `script/hud.gd` — interfaccia di gioco; `script/finestre.gd` — inventario, personaggio, abilità, negozi, menu, impostazioni.
 - `script/cripta.gd` — la cripta delle Prove del Sigillo.
+- `script/mappe.gd`, `script/terra_lontana.gd`, `script/viaggi.gd` — mappe da esperienza (Selva dei Mille Steli, Distesa dei
+  Venti Rossi) e Arena del Loto Cremisi: geografia, costruzione da codice, finestra della Guida dei Sentieri e classifica.
 - `script/impostazioni.gd`, `script/suoni.gd` — caricati sempre: impostazioni salvate e suoni (generati da codice, nessun file audio).
 - `shader/` — terreno dipinto, chiome, cortecce, rocce, tetti a coppi, acqua.
 
