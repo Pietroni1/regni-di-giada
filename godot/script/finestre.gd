@@ -139,6 +139,8 @@ func chiudi_tutto() -> bool:
 		f.visible = false
 	if gioco != null and gioco.viaggi != null and gioco.viaggi.chiudi():
 		aperta = true
+	if gioco != null and gioco.mappa != null and gioco.mappa.chiudi():
+		aperta = true
 	negozio_png = 0
 	fabbro_png = 0
 	return aperta
@@ -741,7 +743,7 @@ Ogni colpo a segno dà una tacca di SLANCIO (fino a 5): più risorsa e rapidità
 Spendendo risorsa si riempie la barra della TECNICA SUPREMA.
 
 FINESTRE
-I: inventario  ·  C: personaggio e punti statistica  ·  K: abilità e Via (dal livello 5)  ·  O: impostazioni  ·  Esc: chiude / menu
+M: mappa grande delle zone  ·  I: inventario  ·  C: personaggio e punti statistica  ·  K: abilità e Via (dal livello 5)  ·  O: impostazioni  ·  Esc: chiude / menu
 Trascina tecniche e pozioni sulla barra rapida; tasto destro su un tasto della barra per svuotarlo.
 Z: raccoglie il bottino  ·  R: sale o scende da cavallo  ·  Invio: chat
 

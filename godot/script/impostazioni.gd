@@ -10,9 +10,11 @@ var sensibilita := 1.0         # visuale col mouse
 var numeri_danno := true
 var server := "localhost:3000"
 var utente := ""
+var _tema: Theme
 
 
 func _ready() -> void:
+	_metti_font()
 	var c := ConfigFile.new()
 	if c.load(FILE) == OK:
 		schermo_intero = c.get_value("schermo", "intero", schermo_intero)
@@ -52,3 +54,24 @@ func applica() -> void:
 		sole.directional_shadow_max_distance = [70.0, 120.0, 160.0][clampi(qualita, 0, 2)]
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(volume, 0.0001)))
 	AudioServer.set_bus_mute(0, volume <= 0.001)
+
+
+## Font dei testi: Tahoma libero (vedi font/LEGGIMI.md); kanji e simboli mancanti dal font predefinito di Godot.
+func _metti_font() -> void:
+	# letto come file (non come risorsa importata): funziona anche senza passare dall'editor
+	var dati := FileAccess.get_file_as_bytes("res://font/testo.ttf")
+	if dati.is_empty():
+		return
+	var f := FontFile.new()
+	f.data = dati
+	f.fallbacks = [ThemeDB.fallback_font]
+	f.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+	f.hinting = TextServer.HINTING_LIGHT
+	ThemeDB.fallback_font = f
+	_tema = Theme.new()
+	_tema.default_font = f
+	get_tree().root.set_deferred("theme", _tema)
+	# il tema non attraversa i nodi che non sono Control (CanvasLayer, Node3D): lo si dà al primo Control di ogni ramo
+	get_tree().node_added.connect(func(n: Node) -> void:
+		if n is Control and not (n.get_parent() is Control) and n.theme == null:
+			n.theme = _tema)

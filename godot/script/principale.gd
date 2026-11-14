@@ -220,6 +220,7 @@ func _prova_automatica() -> void:
 			"attendi": await _attendi(float(p[1]))
 			"foto": await _foto(p[1])
 			"tecnica": gioco.usa_tecnica(p[1])
+			"mappa": gioco.mappa.apri_chiudi()
 			"finestra": gioco.hud.finestre.apri_chiudi(p[1])
 			"png":
 				for e: Entita in gioco.ents.values():

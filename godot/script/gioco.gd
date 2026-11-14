@@ -50,6 +50,7 @@ var _passo_t := 0.0
 var _amb_fuori: Environment = null
 var _amb_cripta: Environment = null
 var _dentro := false
+var mappa: MappaGrande = null      # mappa grande delle zone (tasto M)
 var viaggi: Viaggi = null           # finestra dei viaggi e classifica dell'arena (viaggi.gd)
 var terra: TerraLontana = null      # la mappa lontana in cui si trova il personaggio (terra_lontana.gd)
 var _zona_amb := "-"                # ambiente in uso: "" mondo dei regni, "cripta" o id della mappa
@@ -73,6 +74,9 @@ func _ready() -> void:
 	viaggi = Viaggi.new()
 	viaggi.gioco = self
 	hud.radice.add_child(viaggi)
+	mappa = MappaGrande.new()
+	mappa.gioco = self
+	hud.radice.add_child(mappa)
 	anello_bersaglio = MeshInstance3D.new()
 	var t := TorusMesh.new()
 	t.inner_radius = 0.92
@@ -748,6 +752,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			Impostazioni.schermo_intero = not Impostazioni.schermo_intero
 			Impostazioni.applica()
 			Impostazioni.salva()
+		elif k == KEY_M:
+			mappa.apri_chiudi()
 		elif k == KEY_I:
 			hud.finestre.apri_chiudi("inventario")
 		elif k == KEY_C:
