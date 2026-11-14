@@ -13,6 +13,9 @@ import {
 import { POSTURA, posturaBase, posturaColpo } from '../shared/postura.js';
 
 const VIEW = 105;
+const SEP_BRANCHI = 22;          // metri minimi fra due branchi
+const RAGGIO_BRANCO = 10;        // metri entro cui i compagni accorrono se ne colpisci uno
+const RAGGIO_DISPERSIONE = 3.4;  // raggio entro cui compaiono i mostri di un branco
 const NOW = () => Date.now();
 const rand = (a, b) => a + Math.random() * (b - a);
 const randi = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
@@ -163,64 +166,89 @@ export class World {
     }
   }
 
+  // ------------------------------------------------------------ branchi (farming nel mondo aperto)
+  // Il mondo aperto è fatto di BRANCHI: gruppi di 4-7 mostri della stessa famiglia a pochi metri l'uno dall'altro, con i
+  // branchi distanziati (almeno SEP_BRANCHI metri), pensati per i colpi ad area e la Risonanza (3 o più nemici colpiti).
+  //  · aggro di branco: se uno viene colpito (o ti nota), i compagni entro RAGGIO_BRANCO metri da lui ti attaccano;
+  //  · rinascita: quando TUTTO il branco è a terra rinasce insieme dopo `respawn` secondi; i superstiti che restano
+  //    soli non bloccano i morti, che tornano comunque dopo tre volte quel tempo;
+  //  · accanto ai branchi ci sono solitari più forti (élite, vita base ≥ 1000: hanno la Postura) con rinascita singola.
   initSpawns() {
-    const rng = mulberry32(20261112);
-    const validPos = (x, z, allowCenter = false) => {
+    const rng = mulberry32(20261113);
+    const radura = (x, z) => Math.hypot(x + 228, z + 228) < 50;      // la radura di `npm run sim` (/tp -228 -228) resta libera
+    const validPos = (x, z) => {
       if (Math.abs(x) > 245 || Math.abs(z) > 245) return false;
-      if (heightAt(x, z) < 0.6) return false;
+      if (heightAt(x, z) < 0.6 || radura(x, z)) return false;
       for (const kid of KINGDOM_IDS) {
         const v = KINGDOMS[kid].village;
-        if (Math.hypot(x - v.x, z - v.z) < 54) return false;
+        if (Math.hypot(x - v.x, z - v.z) < 58) return false;       // niente branchi alle porte dei villaggi
       }
-      if (!allowCenter && Math.hypot(x - CENTER.x, z - CENTER.z) < 32) return false;
+      if (Math.hypot(x - CENTER.x, z - CENTER.z) < 32) return false;
       return true;
     };
+    const lontano = (x, z, sep) => this.spawners.every(sp => Math.hypot(sp.x - x, sp.z - z) >= sep);
     const pick = (table) => {
-      const tot = table.reduce((s, t) => s + t[1], 0);
+      const tot = table.reduce((a, t) => a + t.peso, 0);
       let r = rng() * tot;
-      for (const [ty, w] of table) { if ((r -= w) <= 0) return ty; }
-      return table[0][0];
+      for (const t of table) { if ((r -= t.peso) <= 0) return t; }
+      return table[0];
     };
-    const place = (cx, cz, rmin, rmax, groups, table, countRange, filter) => {
-      let made = 0, tries = 0;
-      while (made < groups && tries++ < 500) {
+    // composizione: { peso, tipi: [[tipo, min, max], ...] }  →  elenco dei tipi dei singoli mostri
+    const membri = (comp) => {
+      const out = [];
+      for (const [ty, mn, mx] of comp.tipi) { const n = mn + Math.floor(rng() * (mx - mn + 1)); for (let i = 0; i < n; i++) out.push(ty); }
+      return out;
+    };
+    // `n` spawner nell'anello [rmin, rmax] attorno a (cx, cz); sep = distanza minima dagli altri
+    const semina = (cx, cz, rmin, rmax, n, tabella, sep, filtro) => {
+      let fatti = 0, prove = 0;
+      while (fatti < n && prove++ < 800) {
         const a = rng() * Math.PI * 2, r = rmin + rng() * (rmax - rmin);
         const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
-        if (!validPos(x, z) || (filter && !filter(x, z))) continue;
-        const type = pick(table);
-        const stone = MOBS[type].stone;
-        const count = stone ? 1 : countRange[0] + Math.floor(rng() * (countRange[1] - countRange[0] + 1));
-        this.addSpawner(type, x, z, count);
-        made++;
+        if (!validPos(x, z) || (filtro && !filtro(x, z)) || !lontano(x, z, sep)) continue;
+        const comp = pick(tabella), elenco = membri(comp);
+        if (comp.solo) this.addSpawner(elenco[0], x, z, 1);
+        else this.addBranco(elenco, x, z);
+        fatti++;
       }
     };
-    const farFromCenter = (x, z) => Math.hypot(x - CENTER.x, z - CENTER.z) > 95;
+    const lontanoDalCentro = (x, z) => Math.hypot(x - CENTER.x, z - CENTER.z) > 95;
+    const B = SEP_BRANCHI;
     for (const kid of KINGDOM_IDS) {
       const v = KINGDOMS[kid].village;
-      place(v.x, v.z, 58, 115, 16, [['lupo', 3], ['cinghiale', 3], ['lupo_alfa', 1]], [3, 4]);
-      place(v.x, v.z, 118, 175, 12, [['bandito', 3], ['scimmia', 2], ['arciere_bandito', 2], ['orso_nero', 1]], [2, 4], farFromCenter);
-      place(v.x, v.z, 80, 160, 2, [['obelisco_minore', 1]], [1, 1], farFromCenter);
+      // intorno al villaggio: lupi, cinghiali, il branco dei lupi giovani; élite: il Lupo Anziano
+      semina(v.x, v.z, 62, 118, 16, [
+        { peso: 3, tipi: [['lupo', 5, 7]] },
+        { peso: 3, tipi: [['cinghiale', 4, 6]] },
+        { peso: 2, tipi: [['lupo_branco', 6, 7]] },
+      ], B, null);
+      semina(v.x, v.z, 66, 118, 3, [{ peso: 1, solo: true, tipi: [['lupo_anziano', 1, 1]] }], 16, null);
+      semina(v.x, v.z, 70, 118, 2, [{ peso: 1, solo: true, tipi: [['lupo_alfa', 1, 1]] }], 16, null);
+      // più lontano: banditi (con qualche arciere), predoni, scimmie; élite: l'orso nero
+      semina(v.x, v.z, 122, 175, 18, [
+        { peso: 3, tipi: [['bandito', 3, 5], ['arciere_bandito', 1, 2]] },
+        { peso: 2, tipi: [['predone', 5, 7]] },
+        { peso: 2, tipi: [['scimmia', 4, 6]] },
+      ], B, lontanoDalCentro);
+      semina(v.x, v.z, 125, 175, 3, [{ peso: 1, solo: true, tipi: [['orso_nero', 1, 1]] }], 16, lontanoDalCentro);
+      semina(v.x, v.z, 80, 160, 2, [{ peso: 1, solo: true, tipi: [['obelisco_minore', 1, 1]] }], 24, lontanoDalCentro);
     }
-    place(CENTER.x, CENTER.z, 38, 92, 16, [['terracotta', 3], ['spirito_lanterna', 3], ['tigre_spettrale', 1]], [2, 3]);
-    place(CENTER.x, CENTER.z, 45, 88, 3, [['obelisco_abisso', 1]], [1, 1]);
+    // Altopiano delle Spade Spezzate: soldati di terracotta in branco, spiriti a piccoli gruppi, élite solitarie
+    semina(CENTER.x, CENTER.z, 40, 92, 12, [{ peso: 1, tipi: [['soldato_terracotta', 5, 7]] }], B, null);
+    semina(CENTER.x, CENTER.z, 40, 92, 3, [{ peso: 1, tipi: [['spirito_lanterna', 3, 4]] }], B, null);
+    semina(CENTER.x, CENTER.z, 42, 90, 4, [{ peso: 1, solo: true, tipi: [['terracotta', 1, 1]] }], 16, null);
+    semina(CENTER.x, CENTER.z, 42, 90, 3, [{ peso: 1, solo: true, tipi: [['tigre_spettrale', 1, 1]] }], 16, null);
+    semina(CENTER.x, CENTER.z, 45, 88, 3, [{ peso: 1, solo: true, tipi: [['obelisco_abisso', 1, 1]] }], 24, null);
     this.addSpawner('generale', CENTER.x, CENTER.z, 1);
-    // accampamenti: molti mostri deboli e vicini, ricomparsa rapida (grind ad area, ideale a cavallo)
-    const camp = (cx, cz, rmin, rmax, n, type, count, filter) => {
-      let made = 0, tries = 0;
-      while (made < n && tries++ < 400) {
-        const a = rng() * Math.PI * 2, r = rmin + rng() * (rmax - rmin);
-        const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
-        if (!validPos(x, z) || (filter && !filter(x, z))) continue;
-        this.addSpawner(type, x, z, count, 10);
-        made++;
-      }
-    };
-    for (const kid of KINGDOM_IDS) {
-      const v = KINGDOMS[kid].village;
-      camp(v.x, v.z, 82, 118, 2, 'lupo_branco', 12);
-      camp(v.x, v.z, 132, 172, 2, 'predone', 12, farFromCenter);
-    }
-    camp(CENTER.x, CENTER.z, 55, 90, 3, 'soldato_terracotta', 12);
+  }
+
+  // Un branco: `slots` è l'elenco dei tipi dei suoi mostri.
+  addBranco(slots, x, z) {
+    const respawn = Math.max(...slots.map(ty => MOBS[ty].respawn));
+    const sp = { type: slots[0], slots, x, z, count: slots.length, radius: RAGGIO_DISPERSIONE, pending: [], branco: true, membri: new Set(), rinasce: [], respawn };
+    this.spawners.push(sp);
+    for (const ty of slots) this.spawnFromSpawner(sp, ty);
+    return sp;
   }
 
   addSpawner(type, x, z, count, radius = 6) {
@@ -229,17 +257,52 @@ export class World {
     for (let i = 0; i < count; i++) this.spawnFromSpawner(sp);
   }
 
-  spawnFromSpawner(sp) {
+  spawnFromSpawner(sp, tipo = sp.type) {
     let x = sp.x, z = sp.z;
-    if (!MOBS[sp.type].stone && !MOBS[sp.type].boss) {
+    if (!MOBS[tipo].stone && !MOBS[tipo].boss) {
       for (let i = 0; i < 6; i++) {
-        const nx = sp.x + rand(-sp.radius, sp.radius), nz = sp.z + rand(-sp.radius, sp.radius);
+        const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * sp.radius;
+        const nx = sp.x + Math.cos(a) * r, nz = sp.z + Math.sin(a) * r;
         if (heightAt(nx, nz) > 0.3) { x = nx; z = nz; break; }
       }
     }
-    const m = this.spawnMob(sp.type, x, z, sp, false);
-    if (MOBS[sp.type].boss) this.broadcast({ t: 'notice', m: `${m.name} è apparso sull'Altopiano delle Spade Spezzate!` });
+    const m = this.spawnMob(tipo, x, z, sp, false);
+    if (sp.branco) { m.vaga = 2.5; sp.membri.add(m); }
+    if (MOBS[tipo].boss) this.broadcast({ t: 'notice', m: `${m.name} è apparso sull'Altopiano delle Spade Spezzate!` });
     return m;
+  }
+
+  // Un mostro dello spawner è morto: programma la rinascita (singola, o di tutto il branco insieme).
+  programmaRinascita(m) {
+    const sp = m.spawner, t = NOW();
+    if (!sp.branco) { sp.pending.push(t + m.d.respawn * 1000 * rand(0.9, 1.15)); return; }
+    sp.membri.delete(m);
+    if (sp.membri.size === 0) {
+      const quando = t + sp.respawn * 1000 * rand(0.9, 1.15);
+      sp.rinasce = sp.slots.map(ty => ({ t: quando, ty }));
+    } else sp.rinasce.push({ t: t + m.d.respawn * 3000, ty: m.type });
+  }
+
+  tickBranchi(t) {
+    for (const sp of this.spawners) {
+      if (!sp.branco || !sp.rinasce.length) continue;
+      for (let i = sp.rinasce.length - 1; i >= 0; i--) {
+        if (sp.rinasce[i].t <= t) { const { ty } = sp.rinasce[i]; sp.rinasce.splice(i, 1); this.spawnFromSpawner(sp, ty); }
+      }
+    }
+  }
+
+  // Aggro di branco: chi colpisce (o viene notato da) un mostro chiama i compagni del suo branco vicini a lui.
+  chiamaBranco(m, p) {
+    const sp = m.spawner;
+    if (!sp || !sp.branco || !p || p.kind !== 'player') return;
+    for (const q of sp.membri) {
+      if (q === m || q.hp <= 0 || q.target || q.state === 'return' || q.chiamato) continue;
+      if (dist(q, m) > RAGGIO_BRANCO) continue;
+      q.chiamato = true;
+      q.aggro.set(p.id, 1);
+      q.target = p.id;
+    }
   }
 
   spawnMob(type, x, z, spawner, temp) {
@@ -272,7 +335,7 @@ export class World {
   extraDrops(m, top) {
     const d = m.d, lv = d.lvl;
     const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
-    const mul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100);
+    const mul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100) * (d.bott ?? 1);   // bott: bottino ridotto per i mostri dei branchi
     const owner = top ? top.id : 0;
     const roll = (ch) => Math.random() < ch * mul;
     const rolls = d.boss ? 3 : d.stone ? 2 : 1;
@@ -522,6 +585,7 @@ export class World {
         if (sp.pending[i] <= t) { sp.pending.splice(i, 1); this.spawnFromSpawner(sp); }
       }
     }
+    this.tickBranchi(t);
   }
 
   updatePlayer(p, t, regen, dt) {
@@ -663,8 +727,9 @@ export class World {
           if (dd < d.aggro && (!best || dd < dist(best, m))) best = p;
         }
       }
-      if (best) { tgt = best; m.target = best.id; }
+      if (best) { tgt = best; m.target = best.id; if (!m.chiamato) { m.chiamato = true; this.chiamaBranco(m, best); } }
     }
+    if (!tgt && m.chiamato && !m.aggro.size) m.chiamato = false;   // a riposo: potrà chiamare di nuovo il branco
     if (tgt) {
       m.lastActive = t;
       const leash = m.inst ? 9999 : m.temp ? 70 : (d.boss ? 42 : 34);
@@ -697,7 +762,7 @@ export class World {
       if (this.moveToward(m, m.dest.x, m.dest.z, spd * 0.4 * dt, 0.3)) m.dest = null;
     } else if (t > m.wanderAt) {
       m.wanderAt = t + rand(4000, 11000);
-      const a = Math.random() * Math.PI * 2, r = Math.random() * 7;
+      const a = Math.random() * Math.PI * 2, r = Math.random() * (m.vaga ?? 7);
       const nx = m.spawn.x + Math.cos(a) * r, nz = m.spawn.z + Math.sin(a) * r;
       if (heightAt(nx, nz) > 0.2 && !safeZoneAt(nx, nz)) m.dest = { x: nx, z: nz };
     }
@@ -819,6 +884,7 @@ export class World {
       if (src.kind === 'player') {
         tgt.aggro.set(src.id, (tgt.aggro.get(src.id) || 0) + dmg * threat * (src.threat || 1));
         if (!tgt.target && tgt.state !== 'return') tgt.target = src.id;
+        if (!tgt.chiamato) { tgt.chiamato = true; this.chiamaBranco(tgt, src); }
         src.lastCombat = NOW();
       }
       if (tgt.d.stone && tgt.hp > 0) this.stoneWaves(tgt, src);
@@ -949,12 +1015,12 @@ export class World {
     }
     if (m.inst) { this.trialMobDied(m); m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = []; return; }
     const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
-    const dmul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100);
+    const dmul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100) * (d.bott ?? 1);
     for (const [id, ch, mn = 1, mx = 1] of d.drops || []) {
       if (Math.random() < ch * dmul) this.spawnDrop(id, randi(mn, mx), m.x, m.z, top ? top.id : 0, source);
     }
     this.extraDrops(m, top);
-    if (m.spawner) m.spawner.pending.push(NOW() + d.respawn * 1000 * rand(0.9, 1.15));
+    if (m.spawner) this.programmaRinascita(m);
     if (d.boss) this.broadcast({ t: 'notice', m: `${top ? top.name : 'Un eroe'} ha sconfitto ${d.name}!` });
     m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = [];
   }
