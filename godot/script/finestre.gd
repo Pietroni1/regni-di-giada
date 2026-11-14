@@ -451,9 +451,15 @@ func _riempi_abilita() -> void:
 		var h := HBoxContainer.new()
 		h.add_theme_constant_override("separation", 10)
 		riga.add_child(h)
-		var glifo := _etichetta(h, String(sk.get("glyph", "?")), Dati.colore(sk.get("color", 0xcccccc)) if imparata else Color(0.4, 0.4, 0.4), 26)
-		glifo.autowrap_mode = TextServer.AUTOWRAP_OFF
-		glifo.custom_minimum_size = Vector2(36, 0)
+		if Icone.ha(sid):
+			var vista := Icone.Vista.new(sid, 40.0)
+			vista.spento = not imparata
+			vista.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			h.add_child(vista)
+		else:
+			var glifo := _etichetta(h, String(sk.get("glyph", "?")), Dati.colore(sk.get("color", 0xcccccc)) if imparata else Color(0.4, 0.4, 0.4), 26)
+			glifo.autowrap_mode = TextServer.AUTOWRAP_OFF
+			glifo.custom_minimum_size = Vector2(36, 0)
 		var testo := VBoxContainer.new()
 		testo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(testo)
@@ -475,10 +481,13 @@ func _riempi_abilita() -> void:
 			riga.tooltip_text = testo_tecnica(sid, liv)
 			var glifo_tr := String(sk.get("glyph", "?"))
 			riga.set_drag_forwarding(func(_p: Vector2) -> Variant:
-				var l := Label.new()
-				l.text = glifo_tr
-				l.add_theme_font_size_override("font_size", 28)
-				riga.set_drag_preview(l)
+				if Icone.ha(nome):
+					riga.set_drag_preview(Icone.Vista.new(nome, 44.0))
+				else:
+					var l := Label.new()
+					l.text = glifo_tr
+					l.add_theme_font_size_override("font_size", 28)
+					riga.set_drag_preview(l)
 				return {"tipo": "tec", "id": nome}, Callable(), Callable())
 			riga.gui_input.connect(func(ev: InputEvent) -> void:
 				if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
@@ -645,7 +654,7 @@ func _riempi_scuderia() -> void:
 	righe.append("Premi R per salire in sella o scendere.")
 	for sid in Dati.gioco.MOUNT_SKILLS:
 		var sk: Dictionary = Dati.SKILLS[sid]
-		righe.append("%s  %s%s" % [sk.glyph, sk.name, "" if lv >= int(sk.hlvl) else "  (dal livello %d)" % int(sk.hlvl)])
+		righe.append("%s%s" % [sk.name,"" if lv >= int(sk.hlvl) else "  (dal livello %d)" % int(sk.hlvl)])
 	_testo_scuderia.text = "\n".join(PackedStringArray(righe))
 
 

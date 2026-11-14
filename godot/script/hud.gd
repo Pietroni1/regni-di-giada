@@ -445,6 +445,7 @@ func _riempi_effetti(riga: HBoxContainer, voci: Array, firma_vecchia: String) ->
 		for v in voci:
 			var ic := Icona.new()
 			ic.glifo = String(v.glifo)
+			ic.icona = String(v.id) if Icone.ha(String(v.id)) else ""
 			ic.colore = v.colore
 			ic.tooltip_text = "%s\n%s" % [v.nome, v.desc] if not String(v.desc).is_empty() else String(v.nome)
 			ic.set_meta("id", v.id)
@@ -744,6 +745,7 @@ class Tasto:
 	var indice := 0
 	var voce = null                # { k: "s"|"i", id }
 	var glifo := ""
+	var icona := ""                # id dell'icona disegnata (vuoto: si usa il glifo)
 	var nome := ""
 	var ruolo := ""
 	var colore := Color(0.8, 0.8, 0.8)
@@ -759,6 +761,7 @@ class Tasto:
 	func imposta(v, io: Dictionary) -> void:
 		voce = v
 		glifo = ""
+		icona = ""
 		nome = ""
 		ruolo = ""
 		spento = false
@@ -766,6 +769,7 @@ class Tasto:
 		if v is Dictionary and v.get("k") == "s" and Dati.SKILLS.has(v.id):
 			var sk: Dictionary = Dati.SKILLS[v.id]
 			glifo = String(sk.get("glyph", "?"))
+			icona = String(v.id) if Icone.ha(String(v.id)) else ""
 			nome = String(sk.name)
 			ruolo = "interr" if sk.get("interrupt", false) else String(sk.get("ruolo", ""))
 			colore = Dati.colore(sk.get("color", 0xcccccc))
@@ -778,6 +782,7 @@ class Tasto:
 		elif v is Dictionary and v.get("k") == "i" and Dati.ITEMS.has(v.id):
 			var it: Dictionary = Dati.ITEMS[v.id]
 			glifo = String(it.get("glyph", "?"))
+			icona = String(v.id) if Icone.ha(String(v.id)) else ""
 			nome = String(it.name)
 			colore = Color(0.85, 0.85, 0.8)
 			tooltip_text = nome
@@ -824,10 +829,13 @@ class Tasto:
 		_giu = false
 		if not (voce is Dictionary):
 			return null
-		var l := Label.new()
-		l.text = glifo
-		l.add_theme_font_size_override("font_size", 28)
-		set_drag_preview(l)
+		if not icona.is_empty():
+			set_drag_preview(Icone.Vista.new(icona, 44.0))
+		else:
+			var l := Label.new()
+			l.text = glifo
+			l.add_theme_font_size_override("font_size", 28)
+			set_drag_preview(l)
 		return {"tipo": "tasto", "i": indice, "v": voce}
 
 	func _can_drop_data(_p: Vector2, d: Variant) -> bool:
@@ -849,7 +857,9 @@ class Tasto:
 		var r := Rect2(Vector2.ZERO, size)
 		draw_style_box(Hud.stile(Color(0.08, 0.07, 0.06, 0.9), Hud.ORO.darkened(0.45), 5, 2), r)
 		var f := ThemeDB.fallback_font
-		if not glifo.is_empty():
+		if not icona.is_empty():
+			Icone.disegna(self, icona, Rect2(3, 3, size.x - 6, size.y - 6), spento)
+		elif not glifo.is_empty():
 			var c := colore if not spento else colore.darkened(0.6)
 			var larg := f.get_string_size(glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
 			draw_string(f, Vector2((size.x - larg) * 0.5, 40), glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, c)
@@ -865,7 +875,8 @@ class Tasto:
 			var cb: Color = Hud.RUOLI.get(ruolo, Color.WHITE)
 			draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color(cb.r, cb.g, cb.b, p), false, 3.0)
 			draw_rect(Rect2(3, 3, size.x - 6, size.y - 6), Color(cb.r, cb.g, cb.b, p * 0.18), true)
-		draw_string(f, Vector2(5, 14), str((indice + 1) % 10), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.8, 0.8, 0.75))
+		draw_string_outline(f, Vector2(5, 14), str((indice + 1) % 10), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 4, Color(0, 0, 0, 0.9))
+		draw_string(f, Vector2(5, 14), str((indice + 1) % 10), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.9, 0.85))
 		if Hud.RUOLI.has(ruolo):
 			draw_rect(Rect2(8, size.y - 6, size.x - 16, 3), Hud.RUOLI[ruolo])
 
@@ -874,6 +885,7 @@ class Tasto:
 class Icona:
 	extends Control
 	var glifo := "?"
+	var icona := ""                # id dell'icona disegnata (vuoto: si usa il glifo)
 	var colore := Color.WHITE
 	var secondi := 0.0
 
@@ -884,8 +896,11 @@ class Icona:
 	func _draw() -> void:
 		draw_style_box(Hud.stile(Color(0.05, 0.05, 0.05, 0.9), colore.darkened(0.2), 4, 2), Rect2(Vector2.ZERO, size))
 		var f := ThemeDB.fallback_font
-		var larg := f.get_string_size(glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-		draw_string(f, Vector2((size.x - larg) * 0.5, 19), glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, colore)
+		if not icona.is_empty():
+			Icone.disegna(self, icona, Rect2(2, 2, size.x - 4, size.y - 4))
+		else:
+			var larg := f.get_string_size(glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			draw_string(f, Vector2((size.x - larg) * 0.5, 19), glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, colore)
 		if secondi > 0.0:
 			var t := str(int(ceil(secondi)))
 			var lt := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
