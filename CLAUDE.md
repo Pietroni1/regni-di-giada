@@ -16,7 +16,7 @@ Gameplay alla WoW, grind coreano, dungeon a tempo (Prove del Sigillo), cavalcatu
 npm install
 npm start          # http://localhost:3000 — account GM: "admin" (server/config.json)
 ```
-Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n [raggio]`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/aiuto`.
+Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n [raggio]`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/risorsa`, `/punti`, `/suprema`, `/abilita id livello`, `/aiuto`.
 
 ## Struttura
 - `server/` — Node.js (HTTP + WebSocket), logica autoritativa (`world.js`), database JSON (`db.js`).
@@ -31,6 +31,7 @@ Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/s
   - `vfx.js` effetti delle abilità; `gear-fx.js` effetti di armi/armature; `post.js` bloom e qualità.
 - `tools/blender/` — script Python per Blender che generano i `.glb` in `client/assets/`.
 - `tools/sim/` — simulazione del combattimento senza browser (`npm run sim`, vedi «Sistema di combattimento»).
+- `godot/` — client Godot 4.4 (vedi «Client Godot»); `tools/godot/` — esportazione dei dati per Godot.
 
 ## Pipeline Blender
 ```
@@ -152,7 +153,83 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   su PC con GPU. La Postura (`shared/postura.js`) non è stata tarata: il Mistico squilibra il fantoccio 2-3 volte al minuto,
   le altre classi 5.
 
-## Altri passi grafici in sospeso
+## Client Godot (in corso — direzione scelta dall'autore)
+L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Godot 4.4** (`godot/`). Il server Node,
+`shared/` e la simulazione restano; il client nel browser resta com'è finché quello Godot non lo raggiunge.
+- Avvio e struttura: `godot/LEGGIMI.md`. Dati per Godot: `npm run godot:dati` (`tools/godot/esporta.mjs`) scrive
+  `godot/dati/gioco.json` (tabelle di `shared/data.js` + geografia, ostacoli, vegetazione), `godot/dati/terreno.bin`
+  (altezze a 2 m e pesi dei materiali a 1 m, calcolati con `heightAt`) e copia i `.glb` in `godot/modelli/` togliendo
+  Draco (`togli_draco.mjs`, usa il decodificatore di `node_modules/three`). Va rilanciato quando cambiano dati o modelli.
+- Fatto: accesso e scelta/creazione del personaggio, terreno dipinto (shader procedurali), acqua, vegetazione da
+  `natura.glb` (MultiMesh), villaggi costruiti da codice (`edifici.gd`: tetti concavi a coppi, pagoda, mura, porte),
+  giocatori/PNG con corpo base + capi + armi + animazioni Mixamo, animali da `animali.glb`, movimento con gli stessi
+  urti del server, visuale, bersagli, attacco automatico, barra rapida con ricariche, Slancio/punti/Suprema, chat con
+  comandi GM, targhette e numeri di danno, effetti delle tecniche per tipo `fx` (`effetti.gd`); finestre (`finestre.gd`):
+  Inventario (I), Personaggio (C) con punti statistica, Abilità (K) con scelta della Via e assegnazione alla barra, negozio,
+  fabbro, dialoghi; minimappa; visuale che si accorcia davanti agli edifici; albero di animazione per gli umani
+  (`_crea_albero` in `personaggio.gd`: il colpo prende solo la parte alta del corpo se ci si muove).
+- Renderer predefinito: **Compatibilità** (è l'unico verificabile nel container, via `xvfb-run` + `--rendering-driver opengl3`;
+  Forward+ richiede Vulkan). Con Forward+ la luce va riguardata a vista.
+- Prove automatiche: `godot --path godot -- --server=localhost:3999 --auto=utente:password:Personaggio --foto=cartella
+  "--comandi=/level 30;tecnica lama_tuono;attendi 0.1;foto nome"` (copione in `principale.gd`). Nel container il rendering
+  è ~1 fps: usare `--fixed-fps 30` (il tempo di gioco avanza di 1/30 a fotogramma, così gli effetti si fotografano) e
+  `--write-movie file.avi` per i video. Verificato a vista così: villaggio, Lama del Tuono e Tempesta di Lame sul fantoccio, lupi fuori dalle mura.
+- Fatto anche: **Prove del Sigillo** (`cripta.gd` costruisce stanze e muri da `DUNGEON` all'origine data da `dg_start`;
+  ambiente buio in `gioco.gd` `_ambiente`; finestra delle Prove e riquadro con tempo/forze/custode), **gruppo** (inviti,
+  riquadri dei compagni, «Invita nel gruppo» sul bersaglio), **scuderia e cavalcature** (cavallo da `animali.glb`, posa
+  `sella`, barra con le tecniche a cavallo), figure per lanterne, ombre, statue di terracotta, custode e obelischi.
+  Il renderer Compatibilità regge poche luci: nella cripta restano accese solo le lanterne entro 42 m (`Cripta._process`).
+- Provato a schermo con il copione automatico: Lama (Fulmine), Ombra (Pugnali), Monaco (Ferro), Mistico (Tempesta) con
+  scarichi potenti e Suprema; finestre Prove e scuderia; sella; cripta e combattimento lì dentro; invito al gruppo da un
+  secondo giocatore (bot) e riquadro del compagno; dialogo del maestro; fabbro. Comandi GM aggiunti per le prove:
+  `/punti` (punti al massimo) e `/suprema` (barra piena).
+  Provate poi anche le Vie Montagna, Arco, Loto e Benedizione (scarichi potenti e Suprema), la morte con le due rinascite e
+  una Prova del Sigillo completata fino al boss (con `/uccidi`): riquadro, esito, sigillo +2 → +5 e ricompense in inventario.
+  Non provati: vendita, cure su un alleato vero, trascinamento col mouse (il copione non muove il puntatore), suoni all'ascolto.
+  Nota per gli script di prova: avviando il server con `( ... nohup node ... & )` dentro uno script la cui uscita va in una
+  pipe, la pipe resta aperta e il comando non termina: aggiungere `> /dev/null 2>&1` alla sottoshell.
+- Aggiunti: capelli per stile (`metti_testa` in `personaggio.gd`: crocchia, lunghi, cappuccio, corti), pelo degli animali
+  (`pelo.gdshader`: dorso scuro, ventre chiaro, tigrato). Occhi e volti provati e tolti: sul manichino non rendono.
+- **Basi di gioco** (richieste dall'autore prima della sua prova): icone degli effetti attivi su di sé (`me.buffs`) e di
+  quelli messi sul bersaglio (messaggi `dot`, `stun`, `post` → `gioco.effetti_bersagli`), coda dei comandi (`gioco.coda`,
+  mezzo secondo), bottino e tael in chat, colonna di luce sugli oggetti a terra, intenti `parla`/`raccogli` (si cammina fino
+  al PNG o all'oggetto), rinascita sul posto o al villaggio, gemme e pergamene (`apply`, `combine`), trascinamento fra
+  inventario, equipaggiamento e barra rapida, menu (Esc), impostazioni salvate (`impostazioni.gd`, autoload), aiuto (H),
+  suoni generati da codice (`suoni.gd`, autoload: `Suoni.suona(nome, dB, intonazione)`), barra dell'esperienza.
+- **Eseguibile**: `godot/export_presets.cfg` (Windows e Linux, `include_filter="dati/*"`). Nel container:
+  `godot --headless --path godot --export-release "Windows" ../esporta/RegniDiGiada.exe` (modelli di esportazione in
+  `~/.local/share/godot/export_templates/4.4.1.stable/`). L'eseguibile Linux esportato è stato provato ed entra in gioco;
+  quello Windows non si può provare qui. `esporta/` è ignorata da git.
+- Limiti delle prove nel container: i suoni non si possono ascoltare (nessuna uscita audio); con `--fixed-fps` il tempo
+  reale corre ~30 volte più del tempo di gioco, quindi i timer basati sull'orologio (ricariche, icone degli effetti) scadono
+  subito nelle foto; a 1 fps reale il movimento è limitato a 0,1 s per fotogramma (`gioco.gd`).
+- **Grafica, dopo la prima prova dell'autore** (spada storta, effetti persi, texture povere, piedi storti):
+  - `equip.gd`: armi rifatte e **presa calcolata sulla posa a riposo** (`Equip.impugna`: +y = lato del pollice, +z = dita;
+    `inclina` in gradi: spada 28, pugnali 20, bastone −78 cioè lungo l'avambraccio); scia dei colpi (`Equip.Scia`).
+  - **Effetti per potenziamento** (`Equip.LIVELLI`: +7 gelo, +9 fuoco, +12 tempesta, +15 leggenda): lama accesa,
+    particelle, alone, luce, spirali; aura dell'armatura dal +9 o Epica, cerchio di rune al +15 o Leggendaria.
+    Il proprio equipaggiamento arriva da `inv.eq` (`wu`, `wr`, `bu`, `br`), quello degli altri dalle info del server.
+  - `piedi_dritti.gd` (`SkeletonModifier3D`): toglie ai piedi la rotazione verso l'esterno dopo l'animazione.
+  - `effetti.gd` riscritto: mattoni `rune`, `crepe`, `spirale`, `bagliore`, `polvere`, `taglio`; colori resi saturi da
+    `vivo()` (i colori pastello sommati diventavano bianchi: tenere basse le intensità additive); `_suprema` ha una regia
+    per classe distesa su `waves × waveGap`.
+  - Texture da codice in `shader/`: `comune.gdshaderinc` (rumore, celle, `rilievo` da derivate), `intonaco`, `legno`,
+    `pietra`, `stoffa` (trama + orlo ricamato nel colore `trim` della classe), `metallo`, `pelle`; rilievo anche su tetti
+    e terreno, fiorellini nell'erba.
+  Visto a schermo: presa della spada da fermo e in corsa, spada +15 Leggendaria, scia, Lama del Tuono, Tempesta di Lame,
+  Giudizio dei Tuoni, edifici e personaggio con le texture nuove; poi pugnali +9, arco +12 e bastone +7 in mano, Mille Ombre,
+  Collera del Cielo, Drago Celeste (rifatto: era un disco bianco) e il cerchio di rune dell'armatura +15 Leggendaria.
+  Non visti: le scintille dell'aura dell'armatura (dal +9), l'arco nel momento del tiro. Il ricamo a fasce della stoffa è
+  stato tolto (sui capi aderenti faceva anelli): ora sono punti radi.
+- **Aspetto delle tecniche per livello dell'abilità** (richiesto dall'autore): il server manda il livello nell'effetto
+  (`fx` `sk` con campo `l`); `Effetti.grado()` lo traduce in 5 gradi — Appresa (1), Affinata (5), Esperta (10), Maestra (15),
+  Perfetta (20) — e `_arricchisci` aggiunge strati (rune, eco del colpo, più saette/proiettili, crepe e onda, sigillo
+  d'oro e tinta dorata al 20); le forme principali crescono dell'8% a grado. Il grado compare nella finestra Abilità e nel
+  tooltip. Comando GM `/abilita id livello` per provarli. Visto a schermo: Lama del Tuono ai livelli 1, 10 e 20.
+- Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
+  modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
+
+## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.
 - Da fare: luce da HDRI vera; il bilanciamento `LUCE` va riguardato a vista insieme a GTAO e correzione colore.
 - Fatto (`world3d.js`, `terrain.js`): ombra del sole agganciata alla visuale con scatto al texel e scostamenti in

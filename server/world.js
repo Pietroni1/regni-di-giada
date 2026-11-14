@@ -1289,7 +1289,7 @@ export class World {
       if (sk.stun) this.stun(tgt, skillVal(sk.stun, lvl));
       if (sk.slow) this.slow(tgt, sk.slow.dur);
     };
-    const fxd = { k: 'sk', s: p.id, sk: sid };
+    const fxd = { k: 'sk', s: p.id, sk: sid, l: lvl };   // l: livello dell'abilità, per l'aspetto dell'effetto nel client
     switch (sk.type) {
       case 'strike': {
         if (sk.dash) {
@@ -1852,7 +1852,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n] [raggio], /heal, /risorsa, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n] [raggio], /heal, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -1899,6 +1899,15 @@ export class World {
       }
       case 'heal': p.hp = p.maxHp; if (p.rtype !== 'ira') p.res = p.rmax; p.selfDirty = true; this.touch(p); return;
       case 'risorsa': p.res = p.rmax; p.selfDirty = true; return;
+      case 'abilita': {                                                          // per le prove: /abilita id livello
+        const sk = SKILLS[a[0]];
+        if (!sk || sk.cls !== p.cls) return sys('Abilità inesistente o di un\'altra classe.');
+        p.ch.skills[a[0]] = clamp(parseInt(a[1], 10) || 1, 1, SKILL_MAX);
+        p.selfDirty = true;
+        return sys(`${sk.name} portata al livello ${p.ch.skills[a[0]]}.`);
+      }
+      case 'punti': p.pts = PTS_MAX; p.lastCombat = NOW(); p.selfDirty = true; return;                 // per le prove: punti combo/sfere/cariche al massimo
+      case 'suprema': p.sup = SUPREMA.max; p.selfDirty = true; return;           // per le prove: barra Suprema piena
       case 'uccidi': {
         let best = null, bd = 20;
         for (const e of this.ents.values()) {
