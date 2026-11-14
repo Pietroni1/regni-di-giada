@@ -182,13 +182,14 @@ func _giocatore() -> Personaggio:
 	if info.get("h") != null:
 		stile = "short" if stile != "bald" else "bald"      # sotto l'elmo niente crocchie o code
 	p.metti_testa(stile, Dati.colore(look.get("hair", 0x1a1210)) if look.get("hair") != null else Color(0.1, 0.08, 0.07), Dati.colore(look.get("robe", 0x26293a)))
+	p.metti_effetti(int(info.get("wu", 0)), int(info.get("wr", 0)), int(info.get("bu", 0)), int(info.get("br", 0)), io)
 	return p
 
 
 ## Aggiorna l'aspetto quando cambia l'equipaggiamento.
 func cambia_aspetto(nuovo: Dictionary) -> void:
 	var diverso := false
-	for c in ["w", "b", "h", "f"]:
+	for c in ["w", "b", "h", "f", "wu", "wr", "bu", "br"]:
 		if info.get(c) != nuovo.get(c):
 			diverso = true
 		info[c] = nuovo.get(c)

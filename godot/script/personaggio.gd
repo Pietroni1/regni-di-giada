@@ -24,7 +24,9 @@ var _corsa := "corsa"
 var _blocco := 0.0         # secondi rimasti di un'animazione singola (attacco, colpito)
 var _base := ""
 var _att_i := 0
-var _arma: Node3D = null
+var armi: Array = []
+var _scie: Array = []
+var _piedi: PiediDritti = null
 var _albero: AnimationTree = null      # solo umani: movimento sotto, colpi sulla parte alta del corpo
 var _nodo_colpo: AnimationNodeAnimation
 var _nodo_singola: AnimationNodeOneShot
@@ -87,6 +89,8 @@ static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado
 	p.attacchi = ATTACCHI.get(tipo_arma, ATTACCHI.sword)
 	p._metti_arma(tipo_arma, grado_arma)
 	p._crea_albero(radice)
+	p._piedi = PiediDritti.new()
+	p.scheletro.add_child(p._piedi)
 	return p
 
 
@@ -319,54 +323,24 @@ func _sfera(genitore: Node3D, pos: Vector3, raggio: float, m: Material, scala :=
 	return mi
 
 
-# ------------------------------------------------------------------ armi
+# ------------------------------------------------------------------ armi ed effetti dell'equipaggiamento
 func _metti_arma(tipo: String, grado: int) -> void:
-	if scheletro == null or tipo == "fists":
-		return
-	var metallo := Edifici.mat([Color(0.72, 0.72, 0.74), Color(0.78, 0.64, 0.36), Color(0.5, 0.86, 0.66), Color(0.88, 0.92, 0.98)][clampi(grado - 1, 0, 3)], 0.3, 0.85)
-	var legno := Edifici.mat(Color(0.3, 0.18, 0.1), 0.8)
-	match tipo:
-		"sword":
-			_arma = _impugna("hand_R")
-			Edifici.scatola(Vector3(0.05, 1.15, 0.012), Vector3(0, 0.68, 0), metallo, _arma)
-			Edifici.scatola(Vector3(0.2, 0.03, 0.07), Vector3(0, 0.1, 0), Edifici.mat(Edifici.ORO, 0.4, 0.8), _arma)
-			Edifici.cilindro(0.022, 0.022, 0.26, Vector3(0, -0.03, 0), legno, _arma, 8)
-		"daggers":
-			for osso in ["hand_R", "hand_L"]:
-				var d := _impugna(osso)
-				Edifici.scatola(Vector3(0.04, 0.42, 0.01), Vector3(0, 0.3, 0), metallo, d)
-				Edifici.cilindro(0.02, 0.02, 0.16, Vector3(0, 0.02, 0), legno, d, 8)
-				_arma = d
-		"bow":
-			_arma = _impugna("hand_L")
-			for s in [-1.0, 1.0]:
-				var ramo := Edifici.scatola(Vector3(0.035, 0.75, 0.05), Vector3(0, s * 0.36, -0.07), legno, _arma)
-				ramo.rotation.x = s * 0.28
-			Edifici.scatola(Vector3(0.006, 1.42, 0.006), Vector3(0, 0, -0.17), Edifici.mat(Color(0.9, 0.9, 0.85), 0.6), _arma)
-		"staff":
-			_arma = _impugna("hand_R")
-			Edifici.cilindro(0.025, 0.03, 1.9, Vector3(0, 0.45, 0), legno, _arma, 8)
-			var sfera := MeshInstance3D.new()
-			var sm := SphereMesh.new()
-			sm.radius = 0.11
-			sm.height = 0.22
-			sfera.mesh = sm
-			sfera.material_override = Edifici.mat([Color(1.0, 0.94, 0.6), Color(0.6, 0.85, 1.0), Color(0.6, 1.0, 0.75), Color(1.0, 0.65, 0.95)][clampi(grado - 1, 0, 3)], 0.3, 0.0, 3.0)
-			sfera.position.y = 1.48
-			_arma.add_child(sfera)
+	armi = Equip.metti(scheletro, tipo, grado)
+	for a in armi:
+		var sc := Equip.Scia.new()
+		sc.arma = a
+		add_child(sc)
+		_scie.append(sc)
 
 
-## Nodo agganciato a un osso della mano; l'asse lungo dell'arma è +y del nodo restituito.
-func _impugna(osso: String) -> Node3D:
-	var ba := BoneAttachment3D.new()
-	ba.bone_name = osso
-	scheletro.add_child(ba)
-	var presa := Node3D.new()
-	# le ossa della mano di Mixamo hanno +y lungo le dita: l'arma esce dal palmo, perpendicolare alle dita
-	presa.position = Vector3(0, 0.09, 0.03)
-	presa.rotation = Vector3(-PI * 0.5, 0, 0)
-	ba.add_child(presa)
-	return presa
+## Effetti per livello di potenziamento e rarità: wu/wr dell'arma, bu/br dell'armatura. mio = è il proprio personaggio.
+func metti_effetti(wu: int, wr: int, bu: int, br: int, mio: bool) -> void:
+	var l := Equip.livello(wu)
+	for a in armi:
+		Equip.effetti_arma(a, wu, wr, mio)
+	for sc in _scie:
+		(sc as Equip.Scia).colore = l.c1.lightened(0.3) if not l.is_empty() else Color(1.0, 0.96, 0.88)
+	Equip.aura_armatura(self, bu, br)
 
 
 # ------------------------------------------------------------------ animazioni
@@ -388,6 +362,13 @@ func muovi(velocita: float, dt: float) -> void:
 	if player == null or morto:
 		return
 	_muove = velocita > 0.3
+	if _piedi != null:
+		# piedi dritti in cammino e in corsa; da fermi resta un filo dell'apertura naturale
+		_piedi.peso = lerpf(_piedi.peso, 0.0 if in_sella else (1.0 if _muove else 0.7), minf(1.0, dt * 8.0))
+	if not _scie.is_empty() and _albero != null:
+		var colpisce: bool = _albero.get("parameters/singola/active")
+		for sc in _scie:
+			(sc as Equip.Scia).attiva = colpisce and not morto
 	if in_sella:
 		if _stato != "sella" and _albero != null:
 			_stato = "sella"

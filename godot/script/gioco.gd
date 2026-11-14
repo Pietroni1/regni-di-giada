@@ -156,6 +156,10 @@ func _su_inv(m: Dictionary) -> void:
 	for coppia in [["w", "weapon"], ["b", "body"], ["h", "head"], ["f", "feet"]]:
 		var pezzo = eq.get(coppia[1])
 		aspetto[coppia[0]] = pezzo.id if pezzo is Dictionary else null
+	for coppia in [["w", "weapon"], ["b", "body"]]:
+		var pezzo = eq.get(coppia[1])
+		aspetto[coppia[0] + "u"] = int(pezzo.get("up", 0)) if pezzo is Dictionary else 0
+		aspetto[coppia[0] + "r"] = int(pezzo.get("r", 0)) if pezzo is Dictionary else 0
 	me.cambia_aspetto(aspetto)
 
 
