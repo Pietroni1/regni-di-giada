@@ -140,6 +140,8 @@ func chiudi_tutto() -> bool:
 		aperta = true
 	if gioco != null and gioco.mappa != null and gioco.mappa.chiudi():
 		aperta = true
+	if gioco != null and gioco.missioni != null and gioco.missioni.chiudi():
+		aperta = true
 	negozio_png = 0
 	fabbro_png = 0
 	return aperta
@@ -158,12 +160,15 @@ func testo_oggetto(s) -> String:
 	righe.append(nome)
 	if it.has("atk") or it.has("def") or ri > 0:
 		righe.append(IconeOggetti.nome_rarita(ri))
-	if it.has("atk"):
-		righe.append("Attacco %d" % int(it.atk))
-	if it.has("def"):
-		righe.append("Difesa %d" % int(it.def))
+	var mio := _valori_oggetto(s)
+	for k in ["atk", "matk", "def", "speed"]:
+		if it.has(k):
+			var base := int(it[k])
+			var eff := int(mio.get(k, 0))
+			righe.append("%s %d%s" % [NOMI_VALORE[k], eff, "" if eff == base else "  (base %d)" % base])
 	if it.has("lvl"):
 		righe.append("Livello richiesto %d" % int(it.lvl))
+	righe.append_array(_confronto(s, it, mio))
 	for b in s.get("b", []):
 		var stat := ""
 		var val := 0.0
@@ -181,6 +186,65 @@ func testo_oggetto(s) -> String:
 	if it.has("price"):
 		righe.append("Valore %d tael" % int(it.price))
 	return "\n".join(righe)
+
+
+const NOMI_VALORE := {"atk": "Attacco", "matk": "Attacco magico", "def": "Difesa", "speed": "Velocità %"}
+
+
+## Valori effettivi di un pezzo (potenziamento e rarità), come recalc nel server.
+func _valori_oggetto(s) -> Dictionary:
+	var out := {}
+	if not (s is Dictionary) or not Dati.ITEMS.has(s.id):
+		return out
+	var it: Dictionary = Dati.ITEMS[s.id]
+	var up := int(s.get("up", 0))
+	var molt := float(Dati.gioco.RARITIES[clampi(int(s.get("r", 0)), 0, 4)].get("mult", 1.0))
+	var arma := String(it.get("type", "")) == "weapon"
+	for k in ["atk", "matk", "def"]:
+		if it.has(k) and float(it[k]) > 0.0:
+			var b := float(it[k])
+			var v := roundf(b * (1.0 + 0.12 * up) + up * 2) if arma else roundf(b * (1.0 + 0.1 * up) + up)
+			out[k] = v * molt
+	if it.has("speed"):
+		out["speed"] = float(it.speed)
+	return out
+
+
+## Confronto con il pezzo indossato nello stesso spazio: righe «▲ +12 attacco» (meglio) e «▼ -3 difesa» (peggio);
+## «✕» se non si può indossare. Il tooltip delle caselle le colora (Casella._make_custom_tooltip).
+func _confronto(s, it: Dictionary, mio: Dictionary) -> Array:
+	var tipo := String(it.get("type", ""))
+	if not (tipo in ["weapon", "body", "head", "feet"]) or gioco == null:
+		return []
+	var righe: Array = []
+	var cls: Dictionary = Dati.CLASSES.get(gioco.classe, {})
+	if tipo == "weapon" and not (cls.get("weapons", []) as Array).has(String(it.get("wt", ""))):
+		righe.append("✕ La tua classe non può usare quest'arma")
+		return righe
+	if int(it.get("lvl", 1)) > int(gioco.io.get("lvl", 1)):
+		righe.append("✕ Serve il livello %d" % int(it.lvl))
+	var eq: Dictionary = gioco.inv.get("eq", {})
+	var indossato = eq.get(tipo)
+	if is_same(indossato, s):
+		return righe
+	if not (indossato is Dictionary):
+		righe.append("▲ Non indossi nulla in questo spazio")
+		return righe
+	var suo := _valori_oggetto(indossato)
+	var diff: Array = []
+	for k in ["atk", "matk", "def", "speed"]:
+		var d := roundi(float(mio.get(k, 0.0)) - float(suo.get(k, 0.0)))
+		if d != 0:
+			diff.append("%s %s%d %s" % ["▲" if d > 0 else "▼", "+" if d > 0 else "-", absi(d), String(NOMI_VALORE[k]).to_lower()])
+	var nb := (s.get("b", []) as Array).size() - (indossato.get("b", []) as Array).size()
+	if nb != 0:
+		diff.append("%s %s%d bonus" % ["▲" if nb > 0 else "▼", "+" if nb > 0 else "-", absi(nb)])
+	if diff.is_empty():
+		righe.append("= Uguale a quello che indossi")
+	else:
+		righe.append("Rispetto a quello che indossi:")
+		righe.append_array(diff)
+	return righe
 
 
 func testo_tecnica(sid: String, lvl: int) -> String:
@@ -760,9 +824,14 @@ I lanci del Mistico (Dardo, Sfera) si fanno anche camminando.
 Spendendo risorsa si riempie la barra della TECNICA SUPREMA.
 
 FINESTRE
-M: mappa grande delle zone  ·  I: inventario  ·  C: personaggio e punti statistica  ·  K: abilità e Via (dal livello 5)  ·  O: impostazioni  ·  Esc: chiude / menu
+M: mappa grande delle zone  ·  L: diario delle missioni  ·  I: inventario  ·  C: personaggio e punti statistica  ·  K: abilità e Via (dal livello 5)  ·  O: impostazioni  ·  Esc: chiude / menu
 Trascina tecniche e pozioni sulla barra rapida; tasto destro su un tasto della barra per svuotarlo.
 Z: raccoglie il bottino  ·  R: sale o scende da cavallo  ·  Invio: chat
+
+MISSIONI
+«!» sopra un abitante: ha una missione per te  ·  «?»: puoi consegnargliela (o devi parlargli). Le missioni aperte sono a destra,
+sotto la minimappa; il punto dorato sulla minimappa e sulla mappa (M) indica dove andare. Lo Scrivano Ming, vicino all'arrivo del
+villaggio, affida ogni giorno 3-4 incarichi adatti al tuo livello (nelle terre lontane: il Viandante Lu).
 
 IN GIRO PER IL MONDO
 Clic su un abitante del villaggio per parlargli: mercanti, fabbro (potenziamenti), maestro delle Vie,

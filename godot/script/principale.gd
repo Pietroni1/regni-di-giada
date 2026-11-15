@@ -232,12 +232,29 @@ func _prova_automatica() -> void:
 			"foto": await _foto(p[1])
 			"tecnica": gioco.usa_tecnica(p[1])
 			"mappa": gioco.mappa.apri_chiudi()
+			"diario": gioco.missioni.apri_chiudi()
+			"missione":
+				# missione accetta|consegna id: risponde al dialogo delle missioni aperto («*» = la prima voce del dialogo)
+				var mid := p[2]
+				var chiave := "consegne" if p[1] == "consegna" else "offerte"
+				var scade := Time.get_ticks_msec() + 300000
+				while Time.get_ticks_msec() < scade and (gioco.missioni._ultimo_dialogo.get(chiave, []) as Array).is_empty():
+					await get_tree().process_frame
+				if mid == "*":
+					var voci: Array = gioco.missioni._ultimo_dialogo.get("consegne" if p[1] == "consegna" else "offerte", [])
+					mid = String(voci[0].id) if not voci.is_empty() else ""
+				Rete.manda({"t": "mis", "a": p[1], "id": mid, "npc": gioco.missioni._png_dialogo})
+				gioco.missioni._ultimo_dialogo = {}
 			"finestra": gioco.hud.finestre.apri_chiudi(p[1])
 			"png":
+				# il PNG di quel ruolo più vicino
+				var vicino: Entita = null
 				for e: Entita in gioco.ents.values():
 					if e.tipo == "n" and String(e.info.get("role", "")) == p[1]:
-						Rete.manda({"t": "npc", "id": e.id})
-						break
+						if vicino == null or Vector2(e.x - gioco.me.x, e.z - gioco.me.z).length() < Vector2(vicino.x - gioco.me.x, vicino.z - gioco.me.z).length():
+							vicino = e
+				if vicino != null:
+					Rete.manda({"t": "npc", "id": vicino.id})
 			"sella": Rete.manda({"t": "mount"})
 			"viaggio":
 				# viaggio selva|distesa|arena|torna: con la Guida dei Sentieri o l'Araldo più vicino

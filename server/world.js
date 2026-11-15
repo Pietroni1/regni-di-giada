@@ -12,6 +12,8 @@ import {
 } from '../shared/world.js';
 import { POSTURA, posturaBase, posturaColpo } from '../shared/postura.js';
 import { installaMappe, MAPPE, arrivoMappa } from './mappe.js';
+import { installaBottino } from './bottino.js';
+import { installaMissioni } from './missioni.js';
 
 const VIEW = 105;
 const SEP_BRANCHI = 22;          // metri minimi fra due branchi
@@ -33,12 +35,6 @@ function expMod(plvl, mlvl) {
 }
 
 // ------------------------------------------------------------------ oggetti con rarità e bonus
-const GEAR_BY_TIER = {};
-for (const [id, it] of Object.entries(ITEMS)) {
-  if (!equipSlotOf(it)) continue;
-  (GEAR_BY_TIER[it.tier] || (GEAR_BY_TIER[it.tier] = [])).push(id);
-}
-function tierForLevel(l) { return l < 10 ? 1 : l < 20 ? 2 : l < 30 ? 3 : 4; }
 
 export function rollRarity(source) {
   const w = RARITY_WEIGHTS[source] || RARITY_WEIGHTS.mob;
@@ -245,10 +241,14 @@ export class World {
         { peso: 2, tipi: [['scimmia', 4, 6]] },
       ], B, lontanoDalCentro);
       semina(v.x, v.z, 125, 175, 3, [{ peso: 1, solo: true, tipi: [['orso_nero', 1, 1]] }], 16, lontanoDalCentro);
+      // ancora più in là, nelle gole: i razziatori (livello 15), per chi è fra il 14 e il 18
+      semina(v.x, v.z, 142, 182, 4, [{ peso: 1, tipi: [['razziatore_gola', 4, 6]] }], B, lontanoDalCentro);
       semina(v.x, v.z, 80, 160, 2, [{ peso: 1, solo: true, tipi: [['obelisco_minore', 1, 1]] }], 24, lontanoDalCentro);
     }
     // Altopiano delle Spade Spezzate: soldati di terracotta in branco, spiriti a piccoli gruppi, élite solitarie
-    semina(CENTER.x, CENTER.z, 40, 92, 12, [{ peso: 1, tipi: [['soldato_terracotta', 5, 7]] }], B, null);
+    // Altopiano: al centro, attorno al Generale, la sua guardia di lancieri di bronzo (livello 24); più fuori i soldati
+    semina(CENTER.x, CENTER.z, 36, 60, 5, [{ peso: 1, tipi: [['lanciere_bronzo', 4, 6]] }], B, null);
+    semina(CENTER.x, CENTER.z, 52, 92, 10, [{ peso: 1, tipi: [['soldato_terracotta', 5, 7]] }], B, null);
     semina(CENTER.x, CENTER.z, 40, 92, 3, [{ peso: 1, tipi: [['spirito_lanterna', 3, 4]] }], B, null);
     semina(CENTER.x, CENTER.z, 42, 90, 4, [{ peso: 1, solo: true, tipi: [['terracotta', 1, 1]] }], 16, null);
     semina(CENTER.x, CENTER.z, 42, 90, 3, [{ peso: 1, solo: true, tipi: [['tigre_spettrale', 1, 1]] }], 16, null);
@@ -345,30 +345,7 @@ export class World {
     });
   }
 
-  // Bottino aggiuntivo per fascia di livello: equipaggiamento casuale, gemme, modificatori, essenze.
-  extraDrops(m, top) {
-    const d = m.d, lv = d.lvl;
-    const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
-    const mul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100) * (d.bott ?? 1);   // bott: bottino ridotto per i mostri dei branchi
-    const owner = top ? top.id : 0;
-    const roll = (ch) => Math.random() < ch * mul;
-    const rolls = d.boss ? 3 : d.stone ? 2 : 1;
-    const gearChance = d.boss ? 1 : d.stone ? 0.7 : 0.05;
-    for (let i = 0; i < rolls; i++) {
-      if (!roll(gearChance)) continue;
-      const pool = GEAR_BY_TIER[d.boss ? 4 : tierForLevel(lv)];
-      this.dropInstance(makeEquip(pool[randi(0, pool.length - 1)], rollRarity(source)), m.x, m.z, owner);
-    }
-    const gems = Object.keys(GEM_TYPES);
-    if (roll(d.boss ? 0.8 : d.stone ? 0.45 : lv >= 5 ? 0.015 : 0)) {
-      const grade = d.boss ? (Math.random() < 0.25 ? 2 : 1) : d.stone && lv >= 15 ? 1 : 0;
-      this.spawnDrop(`gemma_${gems[randi(0, gems.length - 1)]}_${grade}`, 1, m.x, m.z, owner);
-    }
-    if (lv >= 8 && roll(d.boss ? 0.6 : d.stone ? 0.3 : 0.008)) this.spawnDrop('pietra_affinamento', d.boss ? 2 : 1, m.x, m.z, owner);
-    if (roll(d.boss ? 0.4 : d.stone ? 0.12 : lv >= 12 ? 0.002 : 0)) this.spawnDrop('pergamena_mutamento', 1, m.x, m.z, owner);
-    if (roll(d.boss ? 0.25 : d.stone && lv >= 15 ? 0.05 : 0)) this.spawnDrop('sigillo_ascensione', 1, m.x, m.z, owner);
-    if (roll(d.boss ? 0.9 : d.stone && lv >= 15 ? 0.3 : lv >= 18 ? 0.01 : 0)) this.spawnDrop('essenza_celeste', d.boss ? randi(2, 4) : 1, m.x, m.z, owner);
-  }
+  // extraDrops (bottino per classe e livello) è in server/bottino.js
 
   // ------------------------------------------------------------ giocatori
   addPlayer(sess, ch) {
@@ -398,6 +375,7 @@ export class World {
       pvp: this.cfg.pvp ? 1 : 0, pvpMin: this.cfg.pvpMinLevel,
     });
     this.broadcast({ t: 'sys', m: `${p.name} (${KINGDOMS[p.kingdom].short}) è entrato nel mondo.` });
+    this.missioniEntra(p);   // missioni (server/missioni.js): stato, incarichi del giorno, segni sui PNG
     return p;
   }
 
@@ -607,6 +585,7 @@ export class World {
       }
     }
     this.tickBranchi(t);
+    this.tickMissioni(t);
   }
 
   updatePlayer(p, t, regen, dt) {
@@ -1039,6 +1018,7 @@ export class World {
       const each = Math.max(1, Math.round(amt / Math.max(1, members.length)));
       for (const q of members) { q.ch.tael += each; q.selfDirty = true; this.send(q, { t: 'gain', tael: each }); }
     }
+    this.missioniMorte(m, killer);   // server/missioni.js
     if (m.inst) { this.trialMobDied(m); m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = []; return; }
     const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
     const dmul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100) * (d.bott ?? 1);
@@ -1081,6 +1061,7 @@ export class World {
 
   gainExp(p, amt) {
     if (p.lvl >= MAX_LEVEL) return;
+    const prima = p.lvl;
     p.ch.exp += amt;
     this.send(p, { t: 'gain', exp: amt });
     let up = false;
@@ -1097,8 +1078,8 @@ export class World {
       this.touch(p);
       this.fx(p, { k: 'lvl', s: p.id });
       this.send(p, { t: 'notice', m: `Sei salito al livello ${p.lvl}!` });
-      if (p.lvl >= VIA_LEVEL && !p.ch.via) this.sys(p, 'Hai raggiunto il livello 5: scegli la tua Via nella finestra Abilità (tasto K).');
       this.autoQuickbar(p, true);
+      this.missioniLivello(p, prima);   // avviso con ciò che si sblocca, missioni del nuovo livello
     }
     p.selfDirty = true;
   }
@@ -1175,6 +1156,7 @@ export class World {
       case 'via': return this.onVia(p, msg.v);
       case 'qb': return this.onQuickbar(p, msg.i | 0, msg.v);
       case 'npc': return this.onNpc(p, msg.id);
+      case 'mis': return this.onMissione(p, msg);
       case 'buy': return this.onBuy(p, msg.npc, msg.it, msg.n | 0);
       case 'sell': return this.onSell(p, msg.npc, msg.i | 0);
       case 'up': return this.onUpgrade(p, msg.npc, msg.i | 0, !!msg.seal);
@@ -1914,6 +1896,7 @@ export class World {
     for (const q of this.instMembers(inst)) {
       if (change > 0) q.ch.trialBest = Math.max(q.ch.trialBest || 0, oldKl);
       this.trialRewards(q, oldKl, change > 0);
+      this.missioniEvento(q, 'prova');
     }
     const mm = Math.floor(elapsed / 60), ss = String(Math.round(elapsed % 60)).padStart(2, '0');
     this.instBroadcast(inst, { t: 'notice', m: change > 0 ? `Prova completata in ${mm}:${ss}! Sigillo +${oldKl} → +${newKl}` : `Prova completata fuori tempo (${mm}:${ss}). Sigillo +${oldKl} → +${newKl}` });
@@ -1929,12 +1912,13 @@ export class World {
       if (left) { if (inst) this.dropInstance(inst, q.x, q.z, q.id); else this.spawnDrop(id, left, q.x, q.z, q.id); }
     };
     const rolls = Math.min(6, 1 + Math.floor(kl / 2) + (inTime ? 1 : 0));
-    const pool = GEAR_BY_TIER[4];
     for (let i = 0; i < rolls; i++) {
       let r = rollRarity('boss');
       if (kl >= 6) r = Math.max(r, 2);
       if (kl >= 10) r = Math.max(r, 3);
-      const it = makeEquip(pool[randi(0, pool.length - 1)], r);
+      // pezzi della classe, qualche livello sopra il personaggio (dal 30 in su, il sigillo alto alza il livello)
+      const it = this.premioEquip(q, Math.min(45, Math.max(30, q.lvl + 2) + Math.floor(kl / 4) * 5), null, r);
+      if (!it) continue;
       give(it.id, 1, it);
       got.push(`${ITEMS[it.id].name} (${RARITIES[r].name})`);
     }
@@ -2123,7 +2107,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /spawn mostro [n] [raggio], /heal, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -2149,7 +2133,9 @@ export class World {
         if (diff > 0) { p.ch.statPts += diff * 3; p.ch.skillPts += diff; }
         this.recalc(p); p.hp = p.maxHp; if (p.rtype === 'mana') p.res = p.rmax; this.touch(p);
         this.autoQuickbar(p, false);
-        return sys(`Livello impostato a ${L}.`);
+        sys(`Livello impostato a ${L}.`);
+        if (p.ch.mis) { if (diff > 0) this.missioniLivello(p, L - diff); else { this.giornoMissioni(p, true); this.mandaMissioni(p); } }
+        return;
       }
       case 'exp': return this.gainExp(p, Math.max(0, parseInt(a[0], 10) || 0));
       case 'tael': p.ch.tael = Math.max(0, p.ch.tael + (parseInt(a[0], 10) || 0)); p.selfDirty = true; return;
@@ -2220,6 +2206,7 @@ export class World {
       case 'items': return sys(Object.keys(ITEMS).join(', '));
       case 'mobs': return sys(Object.keys(MOBS).join(', '));
       case 'save': this.saveAll(); this.db.save(); return sys('Salvataggio completato.');
+      case 'missione': return this.comandoMissione(p, a);   // /missione c05 | fatta | giorno
       case 'annuncio': return this.broadcast({ t: 'notice', m: a.join(' ').slice(0, 120) });
     }
     sys('Comando sconosciuto. Scrivi /aiuto');
@@ -2342,6 +2329,7 @@ export class World {
     this.remove(d);
     const r = d.item.r || 0;
     this.send(p, { t: 'gain', item: it.name, n: d.item.n, up: d.item.up, r });
+    this.missioniRaccolta(p, d.item.id, d.item.n);
     if (r >= 4) this.broadcast({ t: 'sys', m: `${p.name} ha trovato un oggetto Leggendario: ${it.name}!` });
   }
 
@@ -2431,6 +2419,11 @@ export class World {
   onNpc(p, id) {
     const n = this.nearNpc(p, id);
     if (!n) return;
+    // missioni da dare o da consegnare (server/missioni.js): il loro dialogo si apre accanto alla finestra del PNG;
+    // per maestro e guardie prende il posto delle solite frasi
+    const mis = this.missioniPng(p, n);
+    if (n.role === 'scrivano') { if (!mis) this.missioniPng(p, n, true); return; }
+    if (mis && (n.role === 'maestro' || n.role === 'guardia')) return;
     if (n.role === 'armi' || n.role === 'erbe') return this.send(p, { t: 'shop', npc: n.id, role: n.role, items: SHOPS[n.role] });
     if (n.role === 'fabbro') return this.send(p, { t: 'smith', npc: n.id });
     if (n.role === 'stalliere') return this.send(p, { t: 'stable', npc: n.id });
@@ -2593,3 +2586,5 @@ export class World {
 }
 
 installaMappe(World);
+installaBottino(World);
+installaMissioni(World);

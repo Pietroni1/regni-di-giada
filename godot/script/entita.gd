@@ -231,12 +231,13 @@ func _giocatore() -> Personaggio:
 		if grado >= 1:
 			var capo: String = ["", "tunica", "lamellare", "giada", "nubi"][grado]
 			wear[capo] = {"stoffa": regno, "piastre": Dati.colore(look.get("trim", 0x999999))} if grado == 1 else {"stoffa": regno}
+	# copricapi e calzari dei gradi intermedi usano il modello di un pezzo dei quattro gradi (campo `aspetto`)
 	if info.get("f") != null:
-		wear[String(info.f)] = true
+		wear[String(Dati.ITEMS.get(String(info.f), {}).get("aspetto", info.f))] = true
 	else:
 		wear["sandali"] = true          # senza calzari equipaggiati: sandali, non piedi nudi
 	if info.get("h") != null:
-		wear[String(info.h)] = true
+		wear[String(Dati.ITEMS.get(String(info.h), {}).get("aspetto", info.h))] = true
 	var tipo_arma := "fists"
 	var grado_arma := 1
 	var arma = info.get("w")

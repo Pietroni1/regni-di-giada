@@ -145,12 +145,19 @@ static func tooltip(testo: String, id: String, r: int, up: int) -> Control:
 	l1.text = righe[0]
 	l1.add_theme_color_override("font_color", colore_rarita(r).lightened(0.15))
 	v.add_child(l1)
-	if righe.size() > 1:
+	# le righe del confronto con il pezzo indossato hanno il loro colore: ▲ verde, ▼ e ✕ rosso
+	for i in range(1, righe.size()):
+		var riga := String(righe[i])
 		var l2 := Label.new()
-		l2.text = "\n".join(righe.slice(1))
+		l2.text = riga
 		l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l2.custom_minimum_size = Vector2(240, 0)
-		l2.add_theme_color_override("font_color", Color(0.9, 0.88, 0.82))
+		var col := Color(0.9, 0.88, 0.82)
+		if riga.begins_with("▲"):
+			col = Color(0.49, 0.91, 0.48)
+		elif riga.begins_with("▼") or riga.begins_with("✕"):
+			col = Color(1.0, 0.48, 0.42)
+		l2.add_theme_color_override("font_color", col)
 		v.add_child(l2)
 	return h
 

@@ -1,6 +1,8 @@
 // Dati di gioco condivisi tra server e client.
 // Modifica questo file per bilanciare classi, abilità, oggetti e mostri.
 import { MOBS_MAPPE, NPC_MAPPE } from './mappe.js';
+import { NPC_MISSIONI } from './missioni.js';
+export { CATENA, INCARICHI, MISSIONI, PNG_INCARICHI, ZONE_MISSIONI, SBLOCCHI } from './missioni.js';
 
 export const MAX_LEVEL = 99;
 export const INV_SIZE = 45;
@@ -42,7 +44,20 @@ export const BOOK_CHANCE = 0.5;
 // Da aumentare quando cambiano gli id delle abilità: il server azzera punti abilità e barra rapida dei vecchi salvataggi.
 export const DATA_VERSION = 5;
 
-export function expToNext(l) { return Math.floor(80 * Math.pow(l, 1.85) + 40 * l); }
+// Curva dei livelli: la forma di prima (80·l^1,85 + 40·l) per un fattore che cresce con il livello. Stima da
+// `npm run farming` (giocatore vero = 45% del bot, missioni della catena comprese; vedi CLAUDE.md, «Crescita: missioni e
+// bottino»): con la forma sola si arrivava al 10 in ~25 minuti e al 40 in ~2 ore e mezza; ora il 10 in ~45 minuti,
+// il 20 in ~2 ore, il 30 in ~5, il 40 in ~10.
+export const CURVA_LIVELLI = [[1, 3.0], [10, 3.2], [15, 3.9], [20, 4.6], [30, 6.2], [40, 8.5], [50, 9.5]];
+function fattoreCurva(l) {
+  const C = CURVA_LIVELLI;
+  if (l <= C[0][0]) return C[0][1];
+  for (let i = 1; i < C.length; i++) {
+    if (l <= C[i][0]) { const [a, fa] = C[i - 1], [b, fb] = C[i]; return fa + (fb - fa) * (l - a) / (b - a); }
+  }
+  return C[C.length - 1][1];
+}
+export function expToNext(l) { return Math.floor((80 * Math.pow(l, 1.85) + 40 * l) * fattoreCurva(l)); }
 export function skillVal(arr, lvl) { return Array.isArray(arr) ? arr[0] + arr[1] * (lvl - 1) : arr; }
 export function upgradedStat(base, up, weapon) {
   if (!base) return 0;
@@ -340,6 +355,49 @@ export const ITEMS = {
   scalpello: { name: 'Scalpello del Gioielliere', type: 'mod', mod: 'extract', price: 1500, stack: true, glyph: '鑿', color: '#6a6a6a', desc: "Trascinalo su un oggetto: estrae tutte le gemme incastonate e te le restituisce." },
 };
 
+// ------------------------------------------------------------------ gradi intermedi (un pezzo ogni 5 livelli)
+// Fra i quattro gradi dei livelli 1/10/20/30 c'erano dieci livelli vuoti: qui un pezzo ai livelli 5, 15, 25, 35, 40 e 45
+// per ogni arma e per armatura, copricapo e calzari. L'aspetto nel client viene dal grado (`tier`, 1-4) come per gli
+// altri; copricapi e calzari hanno anche `aspetto`, l'id del pezzo di cui usano il modello (i modelli si chiamano come
+// gli oggetti dei quattro gradi). Statistiche e prezzi stanno a metà fra i gradi vicini (oltre il 30 crescono allo stesso passo).
+export const LIV_INTERMEDI = [5, 15, 25, 35, 40, 45];
+const tierDi = (l) => (l < 10 ? 1 : l < 20 ? 2 : l < 30 ? 3 : 4);
+const ELMO_DI = ['', 'cappello_paglia', 'elmo_bronzo', 'elmo_cornuto', 'elmo_drago'];
+const CALZARE_DI = ['', 'sandali', 'stivali_cuoio', 'stivali_vento', 'stivali_nube'];
+const PREZZI_ARMI = [1000, 7000, 24000, 60000, 85000, 115000];
+const PREZZI_CORAZZE = [800, 6500, 22000, 55000, 78000, 105000];
+const INTERMEDI = [
+  // [prefisso dell'id, campi comuni, valori per livello, nomi per livello]
+  ['spada', { type: 'weapon', wt: 'sword', glyph: '剣' }, { atk: [22, 43, 68, 95, 108, 121] },
+    ['Spada del Viandante', 'Lama di Ferro Temprato', 'Spada del Fiume di Giada', 'Spada della Gru Argentata', 'Spada del Vento Rosso', 'Spada delle Dune Cantanti']],
+  ['pugnali', { type: 'weapon', wt: 'daggers', glyph: '刃' }, { atk: [18, 35, 56, 79, 90, 101] },
+    ['Pugnali del Cacciatore', 'Pugnali a Dente di Lupo', 'Pugnali della Vipera Verde', 'Pugnali della Luna Nuova', 'Pugnali dello Scorpione Rosso', 'Pugnali del Miraggio']],
+  ['arco', { type: 'weapon', wt: 'bow', glyph: '弓' }, { atk: [16, 33, 53, 75, 86, 97], range: [15, 16, 17, 18, 18, 18] },
+    ['Arco di Gelso', 'Arco del Cacciatore di Gole', 'Arco del Salice Piangente', 'Arco della Canna Cava', 'Arco del Simun', 'Arco del Sole Calante']],
+  ['pugni', { type: 'weapon', wt: 'fists', glyph: '拳' }, { atk: [16, 33, 52, 72, 82, 92], matk: [9, 20, 33, 47, 54, 61] },
+    ['Fasce di Cuoio Intrecciato', 'Nocche di Bronzo', 'Artigli della Gru di Giada', 'Guanti del Tuono Verde', 'Guanti della Sabbia Rovente', 'Pugni del Leone delle Dune']],
+  ['bastone', { type: 'weapon', wt: 'staff', glyph: '杖' }, { atk: [7, 13, 19, 25, 28, 31], matk: [22, 43, 67, 93, 106, 119], range: [15, 16, 17, 18, 18, 18] },
+    ['Bastone di Bambù Nero', 'Bastone della Lanterna', "Bastone del Loto d'Argento", 'Bastone dello Smeraldo Cavo', 'Bastone del Vento Rosso', 'Bastone del Miraggio Eterno']],
+  ['corazza', { type: 'body', glyph: '鎧' }, { def: [10, 23, 38, 54, 62, 70] },
+    ['Giubba Imbottita', 'Corazza di Cuoio Borchiato', 'Corazza del Guardiano di Giada', 'Armatura della Gru Celeste', 'Armatura delle Dune', 'Armatura del Sole Rosso']],
+  ['elmo', { type: 'head', glyph: '兜' }, { def: [4, 8, 14, 20, 23, 26] },
+    ['Fascia del Viandante', 'Elmo del Predone', 'Elmo del Guardiano di Giada', 'Elmo della Gru Celeste', 'Elmo delle Dune', 'Elmo del Sole Rosso']],
+  ['calzari', { type: 'feet', glyph: '靴' }, { def: [2, 4, 6, 9, 10, 11], speed: [2, 7, 12, 15, 16, 17] },
+    ['Calzari di Feltro', 'Stivali delle Gole', 'Stivali del Guardiano di Giada', 'Stivali della Gru Celeste', 'Stivali delle Dune', 'Stivali del Sole Rosso']],
+];
+for (const [pre, comuni, valori, nomi] of INTERMEDI) {
+  LIV_INTERMEDI.forEach((lvl, i) => {
+    const tier = tierDi(lvl);
+    const it = { name: nomi[i], ...comuni, lvl, tier };
+    for (const [k, arr] of Object.entries(valori)) it[k] = arr[i];
+    const prezzi = comuni.type === 'weapon' ? PREZZI_ARMI : PREZZI_CORAZZE;
+    it.price = Math.round(prezzi[i] * (comuni.type === 'head' ? 0.7 : comuni.type === 'feet' ? 0.65 : 1));
+    if (comuni.type === 'head') it.aspetto = ELMO_DI[tier];
+    if (comuni.type === 'feet') it.aspetto = CALZARE_DI[tier];
+    ITEMS[`${pre}_${lvl}`] = it;
+  });
+}
+
 // ------------------------------------------------------------------ rarità e bonus casuali
 export const RARITIES = [
   { name: 'Comune', color: '#e8e0d0', mult: 1.0, bonuses: 0, sockets: 0 },
@@ -351,6 +409,7 @@ export const RARITIES = [
 // probabilità (in peso) delle rarità per fonte del bottino
 export const RARITY_WEIGHTS = {
   mob: [60, 26, 10, 3.4, 0.6],
+  elite: [20, 40, 28, 10, 2],   // solitari élite (vita ≥ 1000): pezzi migliori
   stone: [25, 35, 25, 12, 3],
   boss: [0, 20, 40, 28, 12],
 };
@@ -417,27 +476,27 @@ for (const [type, g] of Object.entries(GEM_TYPES)) {
 // cast: lancio interrompibile { name, ms, mult (× attacco), cd, raggio (se colpisce ad area attorno al mostro) }
 export const MOBS = {
   lupo: { name: 'Lupo Grigio', lvl: 2, hp: 72, atk: 9, def: 2, exp: 25, speed: 5.5, aggro: 0, range: 2.0, aspd: 1600, model: 'wolf', color: 0x777370, scale: 1, bott: 0.8, respawn: 24, tael: [3, 8],
-    drops: [['zanna_lupo', 0.35], ['ginseng_p', 0.08], ['tunica_canapa', 0.01], ['sandali', 0.01]] },
+    drops: [['zanna_lupo', 0.35], ['ginseng_p', 0.08]] },
   cinghiale: { name: 'Cinghiale Selvatico', lvl: 3, hp: 112, atk: 11, def: 4, exp: 34, speed: 5, aggro: 0, range: 2.2, aspd: 1700, model: 'boar', color: 0x5a3e2b, scale: 1, bott: 0.8, respawn: 24, tael: [4, 10],
-    drops: [['pelle_cinghiale', 0.35], ['ginseng_p', 0.1], ['cappello_paglia', 0.015], ['loto_p', 0.06]] },
+    drops: [['pelle_cinghiale', 0.35], ['ginseng_p', 0.1], ['loto_p', 0.06]] },
   lupo_alfa: { name: 'Lupo Alfa', lvl: 5, hp: 260, atk: 17, def: 6, exp: 85, speed: 6, aggro: 9, range: 2.3, aspd: 1500, model: 'wolf', color: 0x3c3a40, scale: 1.3, respawn: 30, tael: [10, 25],
     drops: [['zanna_lupo', 0.6, 1, 2], ['ginseng_p', 0.15], ['loto_p', 0.1], ['pergamena_ritorno', 0.03]] },
   lupo_anziano: { name: 'Lupo Anziano', lvl: 6, hp: 1000, atk: 20, def: 8, exp: 330, speed: 5.5, aggro: 8, range: 2.4, aspd: 1500, model: 'wolf', color: 0xb8b8c4, scale: 1.45, respawn: 60, tael: [30, 60],
-    drops: [['zanna_lupo', 0.7, 1, 2], ['ginseng_p', 0.25], ['loto_p', 0.12], ['pergamena_ritorno', 0.05], ['tunica_canapa', 0.03], ['cappello_paglia', 0.03]] },
+    drops: [['zanna_lupo', 0.7, 1, 2], ['ginseng_p', 0.25], ['loto_p', 0.12], ['pergamena_ritorno', 0.05]] },
   bandito: { name: 'Bandito della Strada', lvl: 8, hp: 330, atk: 26, def: 10, exp: 118, speed: 5, aggro: 10, range: 2.4, aspd: 1500, model: 'bandit', color: 0x3b2f2f, scale: 1, bott: 0.9, respawn: 32, tael: [20, 45],
-    drops: [['benda_bandito', 0.4], ['ginseng_m', 0.08], ['minerale_ferro', 0.04], ['sciabola_bronzo', 0.006], ['pugnali_acciaio', 0.006], ['artigli_ferro', 0.006], ['bastone_pruno', 0.006], ['arco_corno', 0.006], ['corazza_lamelle', 0.006]] },
+    drops: [['benda_bandito', 0.4], ['ginseng_m', 0.08], ['minerale_ferro', 0.04]] },
   scimmia: { name: 'Scimmia Ladra', lvl: 10, hp: 380, atk: 30, def: 12, exp: 146, speed: 6.5, aggro: 0, range: 2.0, aspd: 1200, model: 'monkey', color: 0x7a5230, scale: 1, bott: 0.9, respawn: 32, tael: [32, 72],
-    drops: [['ginseng_m', 0.12], ['loto_m', 0.1], ['minerale_ferro', 0.05], ['elmo_bronzo', 0.008], ['stivali_cuoio', 0.008]] },
+    drops: [['ginseng_m', 0.12], ['loto_m', 0.1], ['minerale_ferro', 0.05]] },
   arciere_bandito: { name: 'Arciere Bandito', cast: { name: 'Tiro Mirato', ms: 1800, mult: 2.4, cd: 9000 }, lvl: 12, hp: 420, atk: 36, def: 12, exp: 185, speed: 5, aggro: 14, range: 13, ranged: true, aspd: 1900, model: 'bandit_archer', color: 0x3b3a2f, scale: 1, bott: 0.9, respawn: 36, tael: [32, 68],
-    drops: [['benda_bandito', 0.4], ['ginseng_m', 0.1], ['minerale_ferro', 0.06], ['arco_corno', 0.01], ['corazza_lamelle', 0.008]] },
+    drops: [['benda_bandito', 0.4], ['ginseng_m', 0.1], ['minerale_ferro', 0.06]] },
   orso_nero: { name: 'Orso Nero della Gola', lvl: 14, hp: 1100, atk: 48, def: 20, exp: 380, speed: 4.5, aggro: 0, range: 2.8, aspd: 2000, model: 'bear', color: 0x2a2420, scale: 1.25, respawn: 45, tael: [60, 120],
-    drops: [['ginseng_m', 0.2, 1, 2], ['minerale_ferro', 0.1], ['elmo_bronzo', 0.01], ['corazza_lamelle', 0.01]] },
+    drops: [['ginseng_m', 0.2, 1, 2], ['minerale_ferro', 0.15], ['frammento_obelisco', 0.01]] },
   spirito_lanterna: { name: 'Spirito della Lanterna', cast: { name: 'Fuoco Fatuo', ms: 2000, mult: 2.4, cd: 9000 }, lvl: 16, hp: 800, atk: 52, def: 16, exp: 420, speed: 4, aggro: 12, range: 12, ranged: true, magic: true, aspd: 2000, model: 'lantern', color: 0xff8a3a, scale: 1, respawn: 40, tael: [70, 140],
-    drops: [['loto_m', 0.2], ['loto_g', 0.04], ['minerale_ferro', 0.08], ['bastone_cielo', 0.004], ['stivali_vento', 0.004]] },
+    drops: [['loto_m', 0.2], ['loto_g', 0.04], ['minerale_ferro', 0.08]] },
   terracotta: { name: 'Guerriero di Terracotta', lvl: 18, hp: 1500, atk: 62, def: 30, exp: 560, speed: 4, aggro: 10, range: 2.6, aspd: 1800, model: 'terracotta', color: 0xa86a42, scale: 1.1, respawn: 45, tael: [90, 180],
-    drops: [['coccio_terracotta', 0.4], ['ginseng_g', 0.05], ['minerale_ferro', 0.1], ['spada_giada', 0.004], ['pugnali_serpe', 0.004], ['artigli_tigre', 0.004], ['arco_airone', 0.004], ['armatura_giada', 0.004], ['elmo_cornuto', 0.004]] },
+    drops: [['coccio_terracotta', 0.4], ['ginseng_g', 0.05], ['minerale_ferro', 0.15], ['frammento_obelisco', 0.015]] },
   tigre_spettrale: { name: 'Tigre Spettrale', lvl: 21, hp: 1900, atk: 78, def: 32, exp: 720, speed: 6.5, aggro: 12, range: 2.6, aspd: 1500, model: 'tiger', color: 0xc8d0f0, scale: 1.2, respawn: 60, tael: [120, 220],
-    drops: [['ginseng_g', 0.08], ['frammento_obelisco', 0.02], ['minerale_ferro', 0.12], ['artigli_tigre', 0.006], ['stivali_vento', 0.006]] },
+    drops: [['ginseng_g', 0.08], ['frammento_obelisco', 0.02], ['minerale_ferro', 0.15]] },
   generale: { name: 'Generale Senza Volto', cast: { name: 'Grido di Guerra', ms: 2600, mult: 2.4, cd: 14000, raggio: 9 }, lvl: 25, hp: 18000, atk: 120, def: 45, exp: 9000, speed: 4.5, aggro: 14, range: 3.4, aspd: 2200, model: 'general', color: 0x2a1a1a, scale: 1.9, respawn: 900, boss: true, tael: [3000, 6000],
     drops: [['frammento_obelisco', 0.9, 2, 4], ['tomo_tecnica', 0.7, 1, 2], ['sigillo_fabbro', 0.35], ['spada_gru', 0.12], ['pugnali_eclissi', 0.12], ['arco_autunno', 0.12], ['guanti_sole', 0.12], ['bastone_nubi', 0.12], ['armatura_nubi', 0.1], ['elmo_drago', 0.1], ['stivali_nube', 0.1]] },
   fantoccio: { name: "Fantoccio d'Addestramento", lvl: 30, hp: 9999999, atk: 0, def: 25, exp: 0, dummy: true, model: 'dummy', color: 0xc8a860, scale: 1, respawn: 0, speed: 0, aggro: 0, drops: [] },
@@ -447,6 +506,12 @@ export const MOBS = {
     drops: [['benda_bandito', 0.25], ['ginseng_m', 0.04], ['minerale_ferro', 0.02]] },
   soldato_terracotta: { name: 'Soldato di Terracotta', lvl: 20, hp: 520, atk: 58, def: 22, exp: 175, speed: 4.2, aggro: 9, range: 2.5, aspd: 1700, model: 'terracotta', color: 0xb07a52, scale: 0.95, bott: 0.85, respawn: 36, tael: [24, 48],
     drops: [['coccio_terracotta', 0.25], ['ginseng_g', 0.02], ['minerale_ferro', 0.04]] },
+  // Razziatori delle Gole (Terre di Confine lontane, 14-18) e Lancieri di Bronzo (cuore dell'Altopiano, 22-28): riempiono
+  // i due buchi della curva (prima non c'erano branchi adatti fra il 13 e il 19 né fra il 22 e il 28).
+  razziatore_gola: { name: 'Razziatore delle Gole', lvl: 15, hp: 340, atk: 40, def: 14, exp: 108, speed: 5.2, aggro: 10, range: 2.4, aspd: 1550, model: 'bandit', color: 0x5a2a22, scale: 1.02, bott: 0.9, respawn: 30, tael: [14, 30],
+    drops: [['benda_bandito', 0.25], ['ginseng_m', 0.05], ['minerale_ferro', 0.03]] },
+  lanciere_bronzo: { name: 'Lanciere di Bronzo', lvl: 24, hp: 640, atk: 70, def: 26, exp: 228, speed: 4.3, aggro: 10, range: 2.8, aspd: 1750, model: 'terracotta', color: 0x8a6a3a, scale: 1.0, bott: 0.85, respawn: 36, tael: [30, 60],
+    drops: [['coccio_terracotta', 0.25], ['ginseng_g', 0.03], ['minerale_ferro', 0.05]] },
   sentinella_cripta: { name: 'Sentinella di Bronzo', lvl: 26, hp: 2600, atk: 72, def: 40, exp: 420, speed: 4, aggro: 11, range: 2.7, aspd: 1900, model: 'terracotta', color: 0x8a6a3a, scale: 1.25, respawn: 0, dungeon: true, tael: [60, 120], drops: [] },
   ombra_cripta: { name: 'Ombra Velata', lvl: 26, hp: 1400, atk: 66, def: 20, exp: 300, speed: 6.5, aggro: 13, range: 2.3, aspd: 1300, model: 'shade', color: 0x3a2a5a, scale: 1, respawn: 0, dungeon: true, tael: [40, 90], drops: [] },
   lanterna_cripta: { name: 'Lanterna Insonne', cast: { name: 'Fiamma Spettrale', ms: 2200, mult: 2.6, cd: 8000 }, lvl: 26, hp: 1300, atk: 78, def: 18, exp: 320, speed: 3.5, aggro: 13, range: 12, ranged: true, magic: true, aspd: 2100, model: 'lantern', color: 0x8a5aff, scale: 1.05, respawn: 0, dungeon: true, tael: [40, 90], drops: [] },
@@ -569,3 +634,4 @@ export function dungeonWalkable(lx, lz, margin = 0.5) {
 // Mostri e PNG delle mappe da esperienza e dell'Arena (definiti in shared/mappe.js).
 Object.assign(MOBS, MOBS_MAPPE);
 Object.assign(NPC_ROLES, NPC_MAPPE);
+Object.assign(NPC_ROLES, NPC_MISSIONI);

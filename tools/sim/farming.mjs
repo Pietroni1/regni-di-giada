@@ -6,11 +6,16 @@
 //   npm run farming                                  (tutte le zone, Fulmine e Arco, 5 minuti, velocità 3)
 //   node tools/sim/farming.mjs [--zone bassa,media,alta] [--vie fulmine,arco] [--minuti 5] [--velocita 3]
 //                              [--livello N] [--bonus-livello 5] [--ripeti 1] [--paralleli 1] [--json file]
+//                              [--porte 4201-4209]
 //
 // Zone (anelli attorno a un centro, con le famiglie di mostri che il bot considera suoi bersagli):
 //   bassa  intorno al Borgo delle Braci, 58-120 m: lupi, cinghiali, lupi alfa, lupi del branco       (livello 5)
 //   media  intorno al Borgo delle Braci, 118-178 m: banditi, scimmie, arcieri, orsi, predoni         (livello 12)
 //   alta   intorno al centro della mappa, 38-95 m: terracotta, spiriti, tigri, soldati               (livello 19)
+//   gole   intorno al Borgo delle Braci, 135-182 m: razziatori, predoni, banditi, scimmie            (livello 16)
+//   cuore  intorno al centro della mappa, 30-66 m: lancieri di bronzo e soldati                      (livello 25)
+//   selva  Selva dei Mille Steli (mappa lontana)                                                     (livello 33)
+//   distesa  Distesa dei Venti Rossi (mappa lontana)                                                 (livello 43)
 // --livello N        forza lo stesso livello in tutte le zone;  --bonus-livello K  aggiunge K livelli a quello della zona
 //                    (prova del giocatore sopra la zona: l'esperienza non deve esplodere).
 // Vie provabili: fulmine, montagna, pugnali, arco, ferro, loto, tempesta (le rotazioni sono nella tabella ROTAZIONI).
@@ -45,6 +50,11 @@ const ZONE = {
   bassa: { centro: FENICE, rmin: 58, rmax: 120, livello: 5, tipi: ['lupo', 'cinghiale', 'lupo_alfa', 'lupo_branco'] },
   media: { centro: FENICE, rmin: 118, rmax: 178, livello: 12, tipi: ['bandito', 'scimmia', 'arciere_bandito', 'orso_nero', 'predone'] },
   alta: { centro: CENTER, rmin: 38, rmax: 95, livello: 19, tipi: ['terracotta', 'spirito_lanterna', 'tigre_spettrale', 'soldato_terracotta'] },
+  // zone aggiunte con le missioni (curva dei livelli): gole lontane, cuore dell'Altopiano, Selva e Distesa
+  gole: { centro: FENICE, rmin: 135, rmax: 182, livello: 16, tipi: ['razziatore_gola', 'predone', 'bandito', 'arciere_bandito', 'scimmia', 'orso_nero'] },
+  cuore: { centro: CENTER, rmin: 30, rmax: 66, livello: 25, tipi: ['lanciere_bronzo', 'soldato_terracotta', 'terracotta', 'spirito_lanterna', 'tigre_spettrale'] },
+  selva: { centro: { x: 6000, z: 0 }, rmin: 15, rmax: 140, livello: 33, tipi: ['lupo_canne', 'scimmia_urlatrice', 'brigante_selva', 'cerbottaniere_selva', 'spirito_canna', 'orso_ventre_giada', 'tigre_smeraldo'] },
+  distesa: { centro: { x: 7000, z: 0 }, rmin: 15, rmax: 150, livello: 43, tipi: ['sciacallo_dune', 'cinghiale_zanne_ferro', 'predone_dune', 'arciere_simun', 'anima_miraggio', 'guerriero_arenaria', 'campione_arenaria', 'tigre_sole_rovente'] },
 };
 
 // ------------------------------------------------------------------ opzioni
@@ -62,6 +72,7 @@ function leggiOpzioni(argv) {
       case '--ripeti': o.ripeti = Math.max(1, parseInt(v(), 10) || 1); break;
       case '--paralleli': o.paralleli = Math.max(1, Math.min(2, parseInt(v(), 10) || 1)); break;
       case '--json': o.json = v(); break;
+      case '--porte': { const [a, b] = v().split('-').map((x) => parseInt(x, 10)); PORTE = [a, b || a]; break; }
       case '--aiuto': case '-h': case '--help':
         console.log('Uso: node tools/sim/farming.mjs [--zone bassa,media,alta] [--vie fulmine,arco] [--minuti 5] [--velocita 3]\n' +
           '       [--livello N] [--bonus-livello K] [--ripeti 1] [--paralleli 1|2] [--json file]\n' +
@@ -77,6 +88,8 @@ function leggiOpzioni(argv) {
 }
 
 // ------------------------------------------------------------------ server di prova
+// porte che il bot può usare per i suoi server (--porte 4201-4209 per non disturbare altri server in prova)
+let PORTE = [4201, 4209];
 function portaLibera() {
   const prova = (p) => new Promise((ok) => {
     const s = net.createServer();
@@ -85,8 +98,12 @@ function portaLibera() {
     s.listen(p, '127.0.0.1', () => s.close(() => ok(true)));
   });
   return (async () => {
-    for (let p = 4201; p <= 4209; p++) if (await prova(p)) return p;   // solo queste porte
-    throw new Error('Nessuna porta libera fra 4201 e 4209.');
+    // solo queste porte (--porte); il server della prova prima può metterci qualche secondo a liberarla
+    for (let giro = 0; giro < 40; giro++) {
+      for (let p = PORTE[0]; p <= PORTE[1]; p++) if (await prova(p)) return p;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    throw new Error(`Nessuna porta libera fra ${PORTE[0]} e ${PORTE[1]}.`);
   })();
 }
 
@@ -180,6 +197,7 @@ class Bot {
     // misure
     this.uccisioni = 0; this.exp = 0; this.tael = 0; this.subiti = 0; this.minVita = 1; this.morti = 0; this.pozioni = 0;
     this.oggetti = { equip: 0, gemme: 0, modif: 0, materiali: 0, altro: 0 }; this.valore = 0; this.dettaglio = {};
+    this.utili = 0; this.utiliPregiati = 0;
     this.tCombatto = 0; this.tCammino = 0; this.tMorto = 0; this.livelloIniziale = 0; this.expIniziale = 0;
     this.chiuso = null;
   }
@@ -279,6 +297,11 @@ class Bot {
     const n = e.n || 1;
     const cat = equipSlotOf(it) ? 'equip' : it.type === 'gem' ? 'gemme' : it.type === 'mod' ? 'modif' : it.type === 'material' || it.type === 'seal' || it.type === 'book' ? 'materiali' : 'altro';
     this.oggetti[cat] += n;
+    // «utili»: pezzi che il personaggio può indossare ora (classe e livello) e non più vecchi di un grado
+    if (cat === 'equip' && (it.type !== 'weapon' || CLASSES[this.cls].weapons.includes(it.wt)) && it.lvl <= this.livello && it.lvl > this.livello - 10) {
+      this.utili++;
+      if ((e.r || 0) >= 1) this.utiliPregiati++;
+    }
     this.valore += (it.price || 0) * n;
     this.dettaglio[e.it] = (this.dettaglio[e.it] || 0) + n;
   }
@@ -539,7 +562,7 @@ class Bot {
       exp: this.exp, exp_min: this.exp / min, exp_ora_pct_livello: this.exp / min * 60 / bisogno * 100,
       tael_min: this.tael / min,
       subiti_min: this.subiti / min, vita_min_pct: this.minVita * 100, morti: this.morti, pozioni: this.pozioni,
-      oggetti: this.oggetti, equip_ora: this.oggetti.equip / min * 60, valore_min: this.valore / min, dettaglio: this.dettaglio,
+      oggetti: this.oggetti, equip_ora: this.oggetti.equip / min * 60, utili_ora: this.utili / min * 60, pregiati_ora: this.utiliPregiati / min * 60, valore_min: this.valore / min, dettaglio: this.dettaglio,
       scatti_min: this.scatti / min, serie_max: this.serieMax,
       quote: { combatte: this.tCombatto / (T * 1000) * 100, cammina: this.tCammino / (T * 1000) * 100, morto: this.tMorto / (T * 1000) * 100 },
     };
@@ -583,19 +606,19 @@ async function main() {
   for (const r of risultati) { const k = r.zona + '/' + r.via; (gruppi.get(k) || gruppi.set(k, []).get(k)).push(r); }
   const media = (l, f) => l.reduce((s, r) => s + f(r), 0) / l.length;
   console.log(`\nFarming: ${opt.minuti} min di gioco per prova, velocità ${opt.velocita}, ${opt.ripeti} prova/e per riga${opt.bonus ? `, livello +${opt.bonus}` : ''}`);
-  console.log('zona/via          liv  ucc/min  exp/min  exp/h(%liv)  tael/min  subiti/s  vitaMin%  morti  ginseng  equip/h  valore/min  (combatte/cammina/morto %)');
+  console.log('zona/via          liv  ucc/min  exp/min  exp/h(%liv)  tael/min  subiti/s  vitaMin%  morti  ginseng  equip/h  utili/h (pregiati)  valore/min  (combatte/cammina/morto %)');
   const righe = [];
   for (const [k, l] of [...gruppi.entries()].sort()) {
     const r = {
       chiave: k, livello: l[0].livello, ucc_min: media(l, (r) => r.ucc_min), exp_min: media(l, (r) => r.exp_min), exp_ora_pct: media(l, (r) => r.exp_ora_pct_livello),
       tael_min: media(l, (r) => r.tael_min), subiti_s: media(l, (r) => r.subiti_min / 60), vita_min: Math.min(...l.map((r) => r.vita_min_pct)),
-      morti: media(l, (r) => r.morti), pozioni: media(l, (r) => r.pozioni), equip_ora: media(l, (r) => r.equip_ora), valore_min: media(l, (r) => r.valore_min),
+      morti: media(l, (r) => r.morti), pozioni: media(l, (r) => r.pozioni), equip_ora: media(l, (r) => r.equip_ora), utili_ora: media(l, (r) => r.utili_ora), pregiati_ora: media(l, (r) => r.pregiati_ora), valore_min: media(l, (r) => r.valore_min),
       quote: ['combatte', 'cammina', 'morto'].map((q) => Math.round(media(l, (r) => r.quote[q]))),
       livelli: media(l, (r) => r.livelloFinale - r.livello),
       scatti_min: media(l, (r) => r.scatti_min || 0), serie_max: Math.max(...l.map((r) => r.serie_max || 0)),
     };
     righe.push(r);
-    console.log(`${k.padEnd(16)} ${String(r.livello).padStart(4)} ${r.ucc_min.toFixed(1).padStart(8)} ${r.exp_min.toFixed(0).padStart(8)} ${r.exp_ora_pct.toFixed(0).padStart(11)}% ${r.tael_min.toFixed(0).padStart(9)} ${r.subiti_s.toFixed(1).padStart(9)} ${r.vita_min.toFixed(0).padStart(9)} ${r.morti.toFixed(1).padStart(6)} ${r.pozioni.toFixed(0).padStart(8)} ${r.equip_ora.toFixed(1).padStart(8)} ${r.valore_min.toFixed(0).padStart(11)}   (${r.quote.join('/')})${r.livelli ? `  +${r.livelli.toFixed(1)} livelli` : ''}  scatti/min ${r.scatti_min.toFixed(1)}, serie max ${r.serie_max}`);
+    console.log(`${k.padEnd(16)} ${String(r.livello).padStart(4)} ${r.ucc_min.toFixed(1).padStart(8)} ${r.exp_min.toFixed(0).padStart(8)} ${r.exp_ora_pct.toFixed(0).padStart(11)}% ${r.tael_min.toFixed(0).padStart(9)} ${r.subiti_s.toFixed(1).padStart(9)} ${r.vita_min.toFixed(0).padStart(9)} ${r.morti.toFixed(1).padStart(6)} ${r.pozioni.toFixed(0).padStart(8)} ${r.equip_ora.toFixed(1).padStart(8)} ${r.utili_ora.toFixed(1).padStart(8)} (${r.pregiati_ora.toFixed(1).padStart(5)}) ${r.valore_min.toFixed(0).padStart(11)}   (${r.quote.join('/')})${r.livelli ? `  +${r.livelli.toFixed(1)} livelli` : ''}  scatti/min ${r.scatti_min.toFixed(1)}, serie max ${r.serie_max}`);
   }
   if (opt.json) fs.writeFileSync(opt.json, JSON.stringify({ opzioni: opt, righe, risultati }, null, 1));
   process.exit(0);

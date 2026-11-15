@@ -19,8 +19,8 @@ npm start          # http://localhost:3000 — account GM: "admin" (server/confi
 Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n [raggio]`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/risorsa`, `/punti`, `/suprema`, `/abilita id livello`, `/aiuto`.
 
 ## Struttura
-- `server/` — Node.js (HTTP + WebSocket), logica autoritativa (`world.js`), database JSON (`db.js`).
-- `shared/` — dati (`data.js`: classi, abilità, oggetti, mostri, dungeon) e geografia (`world.js`: terreno, villaggi, strade).
+- `server/` — Node.js (HTTP + WebSocket), logica autoritativa (`world.js`; moduli installati su World: `mappe.js`, `missioni.js`, `bottino.js`), database JSON (`db.js`).
+- `shared/` — dati (`data.js`: classi, abilità, oggetti, mostri, dungeon; `missioni.js`, `mappe.js`) e geografia (`world.js`: terreno, villaggi, strade).
 - `client/js/`
   - `main.js` avvio e caricamento asset; `game.js` gioco ed eventi di rete; `ui.js` interfaccia.
   - `world3d.js` mondo (cielo, luci, edifici con motivi dipinti, dissolvenza davanti alla camera).
@@ -368,6 +368,72 @@ L'autore vuole il farming «alla Metin»: branchi da falciare con i colpi ad are
 - Da sapere: il bot cammina il 25-75% del tempo (i branchi sono distanziati: è il limite del ritmo, non la vita dei
   mostri); contro un branco il Fulmine al livello 5 beve ~9 ginseng in 5 min (prima 1) ma non muore; il bottino misurato è
   molto rumoroso (decine di oggetti in 5 min), la taratura vera è nei valori attesi per uccisione.
+
+## Crescita: missioni e bottino (fatto)
+Richiesta dell'autore: «leveling experience e miglioramento degli oggetti» (le icone e l'aspetto degli oggetti a terra
+li fa un altro lavoro: `icone.gd` e la figura del bottino non sono stati toccati qui).
+- **Curva dei livelli** (`expToNext` e `CURVA_LIVELLI` in `shared/data.js`): la forma di prima per un fattore che cresce col
+  livello (3,0 al livello 1 → 4,6 al 20 → 8,5 al 40). Stima con i numeri di `npm run farming` (giocatore vero = 45% del bot,
+  missioni della catena comprese, ~1,5 min di cammino per missione; calcolo ripetibile: esperienza al minuto del bot per
+  zona × curva): prima livello 10 in ~25 min, 20 in ~55 min, 30 in ~1,6 h, 40 in ~2,4 h; ora 10 in ~45 min, 20 in ~2,2 h,
+  30 in ~5 h, 40 in ~9-10 h. Bot (esperienza al minuto, Fulmine): liv. 2 piana 1826, 5 piana ~2300, 8 piana 2012,
+  12 confine ~6300, 16 gole 4818, 19 altopiano ~12000, 25 cuore dell'Altopiano 11429, 33 Selva 20483.
+  Premi delle missioni, ricompense della Prova (5%) e perdita alla morte (3%) sono in frazioni del livello: scalano da soli.
+- **Buchi riempiti**: `razziatore_gola` (liv. 15, branchi nelle gole lontane dai villaggi, 142-182 m) e `lanciere_bronzo`
+  (liv. 24, cuore dell'Altopiano 36-60 m attorno al Generale; i soldati ora 52-92 m). Etichette della mappa grande: confine
+  8-18, Altopiano 17-28.
+- **Missioni** (`shared/missioni.js` dati, `server/missioni.js` logica installata su World come `server/mappe.js`):
+  catena di 34 missioni dal livello 1 al 40 (piana → Via al 5 → obelisco → puledro al 10 → confine → gole → fabbro →
+  Altopiano → Prova del Sigillo al 20 → Generale al 25 → Selva dal 28 → Distesa al 38-40) e 22 incarichi giornalieri
+  (3 al giorno, 4 dal 20, scelti per livello con un seme personaggio+giorno; dallo **Scrivano Ming**, nuovo PNG
+  `scrivano` nei villaggi vicino all'arrivo, o dal Viandante Lu nelle mappe lontane; si consegnano a entrambi).
+  Obiettivi: `uccidi`, `raccogli` (oggetti del bottino raccolti dopo l'accettazione; con la missione aperta i mostri giusti
+  lasciano l'oggetto più spesso), `parla`, `prova`, `obelisco`, `luogo`, `livello`, `via`, `destriero`, `arena`.
+  Premi: esperienza in frazione del livello della missione, tael, oggetti, **equipaggiamento della classe** scelto
+  all'accettazione (per l'arma il tipo impugnato: l'Ombra con l'arco riceve archi), destriero.
+  Agganci in `world.js`: `missioniEntra` (addPlayer), `missioniMorte` (mobDie: contano tutti quelli che hanno colpito e i
+  loro compagni entro 80 m), `missioniRaccolta` (onPickup), `missioniPng` (onNpc: il dialogo delle missioni si apre
+  accanto alla finestra del PNG; per maestro e guardie sostituisce le solite frasi), `missioniEvento` (Prova completata,
+  uccisione nell'arena in `server/mappe.js`), `missioniLivello` (gainExp e `/level`), `tickMissioni`, messaggio `mis`.
+  Salvataggio: `ch.mis = { cat, att, gg }`; i personaggi di prima ricevono `mis` al primo ingresso e la catena riparte
+  dalla missione del loro livello (nessun azzeramento, `DATA_VERSION` invariato).
+  Messaggi: `mis` (stato completo: aperte con avanzamento, premio e `dove` {x, z, n}; `png` ruolo → «!»/«?»; `pross`;
+  `gg`), `mis_png` (dialogo: offerte e consegne), `mis_ev` (nuova/avanza/pronta/fatta/via), `sblocchi` (passaggio di
+  livello: tecniche, Via, cavalcatura, Prove, mappe, pezzi nuovi). Client → server: `{ t: 'mis', a: accetta|consegna|abbandona, id, npc }`.
+  GM: `/missione c07` (porta lì la catena e la accetta), `/missione fatta` (obiettivi aperti completati), `/missione giorno`.
+- **Oggetti**: 48 pezzi intermedi (livelli 5, 15, 25, 35, 40, 45 per ogni arma e per armatura, copricapo, calzari; id
+  `spada_15`, `corazza_25`, `elmo_5`…) con `tier` del grado vicino per l'aspetto; copricapi e calzari hanno `aspetto` (id del
+  modello dei quattro gradi, usato da `entita.gd`). Il client nel browser non li conosce come modelli: mostra il corpo senza elmo.
+- **Bottino** (`server/bottino.js`, `extraDrops` spostato lì): pezzi del livello della zona (livello richiesto in
+  (L-10, L+1], di solito il gradino più alto), 75% della classe di chi ha fatto più danni (armi del tipo impugnato al 70%);
+  élite (vita ≥ 1000) 30% di un pezzo con rarità `RARITY_WEIGHTS.elite`, gemme 8%; tolti dai mostri del mondo i pezzi
+  fissi di qualsiasi classe; minerale di ferro un po' più frequente da orso e terracotta. Premi della Prova del Sigillo:
+  pezzi della classe (livello 30, 35 dal sigillo +4, 40 dal +8). Misura (`npm run farming`, nuova colonna «utili/h»:
+  pezzi della propria classe indossabili e non più vecchi di un grado; 5 min per prova, molto rumorosa):
+
+  | zona/via | equip/h prima → dopo | utili/h prima → dopo | di cui Pregiati o meglio |
+  |---|---|---|---|
+  | bassa (5) Fulmine / Arco | 144-192 / 288-336 → 48 / 72 | 60 / 228 → 48 / 60 | 0 / 24 → 36 / 36 |
+  | media (12) Fulmine / Arco | 96-180 / 300 → 48 / 60 | 24 → 24 / 48 | 24 → 24 / 12 |
+  | alta (19) Fulmine / Arco | 96-144 / 108-156 → 156 / 168 | 0 / 0 → 84 / 60 | 0 → 60 / 36 |
+
+  Prima nella piana gli «utili» erano quasi tutti pezzi del livello 1 (tunica, sandali, cappello); ora i pezzi a terra sono
+  meno, del livello giusto e della classe. `farming.mjs` ha anche le zone `gole`, `cuore`, `selva`, `distesa` e `--porte`
+  (`simula.mjs`: `--porta`). La Distesa al livello 43 non parte (il bot non ha Tomi per le abilità oltre il 10).
+- **Client Godot** (`godot/script/missioni.gd`): diario (tasto **L**, nell'aiuto H), elenco a destra sotto la minimappa
+  («◆» catena, «◇» incarichi, «✓ Torna da…»), dialogo con Accetta/Consegna, «!» e «?» disegnati sopra i PNG (controllo
+  `segni`, sotto le finestre), rombo dorato sulla minimappa (freccia sul bordo se lontano) e sulla mappa grande
+  (`MappaGrande.punto_mappa`, anche nei dischi delle mappe lontane), riquadro del passaggio di livello, riga
+  d'avanzamento. Tooltip delle caselle con i valori effettivi (potenziamento e rarità) e il confronto con il pezzo
+  indossato («▲ +12 attacco» verde, «▼ -3 difesa» rosso, «✕ Serve il livello…»; `Casella._make_custom_tooltip`).
+  Copione: `diario`, `missione accetta|consegna id|*` (aspetta il dialogo), `png ruolo` ora sceglie il PNG più vicino.
+  Nota: nel container il client è lentissimo quando girano altri Godot (risposte del server mostrate dopo 1-2 minuti):
+  nelle prove a schermo servono attese lunghe.
+- Prove: `node tools/prove/missioni.mjs [porta]` (31 verifiche: prima missione automatica, segni, consegne, uccisioni,
+  raccolta, premi della classe anche per l'Ombra con l'arco, Via, livello, incarichi e nuovo giorno, rientro e database,
+  abbandono, personaggio vecchio senza `mis`, bottino per classe e livello).
+- **Non verificati**: tempi della curva con giocatori veri (sono stime dal bot), Distesa col bot, missioni di gruppo e
+  dell'arena giocate davvero, tooltip del confronto a schermo, client nel browser con i pezzi nuovi.
 
 ## Client Godot (in corso — direzione scelta dall'autore)
 L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Godot 4.4** (`godot/`). Il server Node,
