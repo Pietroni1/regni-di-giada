@@ -118,6 +118,7 @@ async function avviaServer(velocita) {
 // `ritmo`: la Via premia l'alternanza dei due colpi base (Pugno di Ferro).
 function rotazione(S, c) {
   if (S.ok(S.sup)) return S.sup;
+  if (!c.cura && S.b('occasione') && S.ok(c.fin)) return c.fin;   // Occasione: finale gratuito e a Concentrazione piena
   if (S.multi) {
     if (S.b('risonanza') && S.ok(c.fin)) return c.fin;
     if (!S.b('risonanza')) return c.f2;
@@ -129,17 +130,18 @@ function rotazione(S, c) {
   return c.f1;
 }
 
-// gcd: scelta a ogni GCD. fuori: tecniche fuori dal GCD, usate appena pronte se la condizione è vera.
+// gcd: scelta a ogni GCD. fuori: tecniche fuori dal GCD, usate appena pronte se la condizione è vera
+// (compresi i potenziamenti di classe e gli scatti che fanno danni; il Passo di Luce del Mistico no: sposta soltanto).
 // distanza: a quanti metri dal bersaglio sta il bot.
 const ROTAZIONI = {
-  fulmine: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'lama_tuono' }), fuori: { carica: (S) => S.res <= S.rmax - 15 } },
-  montagna: { distanza: 1.6, vitalita: 2 / 3, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'martello_monte' }), fuori: { carica: (S) => S.res <= S.rmax - 15 } },
-  pugnali: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'colpo_rapido', f2: 'ventaglio', fin: 'taglio_finale' }), fuori: { passo_ombra: (S) => S.pts <= PTS_MAX - 2, colpo_gola: () => true } },
-  arco: { distanza: 10, gcd: (S) => rotazione(S, { f1: 'colpo_rapido', f2: 'ventaglio', fin: 'freccia_perforante' }), fuori: { occhio_falco: () => true, colpo_gola: () => true } },
-  ferro: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'raffica', ritmo: true }), fuori: { pelle_bronzo: () => true, palmo_chi: () => true } },
-  loto: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'vortice_interiore' }), fuori: { meditazione: () => true, palmo_chi: () => true } },
-  tempesta: { distanza: 12, gcd: (S) => rotazione(S, { f1: 'dardo_luce', f2: 'sfera_celeste', fin: 'giudizio_cielo' }), fuori: { occhio_ciclone: () => true, sigillo_silenzio: () => true } },
-  benedizione: { distanza: 12, gcd: (S) => rotazione(S, { f1: 'dardo_luce', f2: 'sfera_celeste', fin: 'tocco_curativo', cura: true }), fuori: { scudo_giada: () => true, sigillo_silenzio: () => true } },
+  fulmine: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'lama_tuono' }), fuori: { grido_guerra: () => true, carica: (S) => S.res <= S.rmax - 25 } },
+  montagna: { distanza: 1.6, vitalita: 2 / 3, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'martello_monte' }), fuori: { grido_guerra: () => true, radici_monte: () => true, carica: (S) => S.res <= S.rmax - 25 } },
+  pugnali: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'colpo_rapido', f2: 'ventaglio', fin: 'taglio_finale' }), fuori: { velo_ombra: (S) => S.res <= S.rmax - 30, passo_ombra: (S) => S.pts <= PTS_MAX - 2, colpo_gola: () => true } },
+  arco: { distanza: 10, gcd: (S) => rotazione(S, { f1: 'colpo_rapido', f2: 'ventaglio', fin: 'freccia_perforante' }), fuori: { velo_ombra: (S) => S.res <= S.rmax - 30, ala_vento: (S) => S.pts <= PTS_MAX - 2, colpo_gola: () => true } },
+  ferro: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'raffica', ritmo: true }), fuori: { respiro_drago: (S) => S.pts <= PTS_MAX - 2, pelle_bronzo: () => true, calcio_volante: (S) => S.pts < PTS_MAX, palmo_chi: () => true } },
+  loto: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'vortice_interiore' }), fuori: { respiro_drago: (S) => S.pts <= PTS_MAX - 2, meditazione: () => true, calcio_volante: (S) => S.pts < PTS_MAX, palmo_chi: () => true } },
+  tempesta: { distanza: 12, gcd: (S) => rotazione(S, { f1: 'dardo_luce', f2: 'sfera_celeste', fin: 'giudizio_cielo' }), fuori: { benedizione_astri: () => true, occhio_ciclone: () => true, sigillo_silenzio: () => true } },
+  benedizione: { distanza: 12, gcd: (S) => rotazione(S, { f1: 'dardo_luce', f2: 'sfera_celeste', fin: 'tocco_curativo', cura: true }), fuori: { benedizione_astri: () => true, scudo_giada: () => true, sigillo_silenzio: () => true } },
 };
 
 // ------------------------------------------------------------------ bot
@@ -240,7 +242,7 @@ class Bot {
         if (this.attesa && this.attesa.sid === m.s) { this.gcdFino = this.attesa.gcdPrima; this.attesa = null; }
         this.blocco[m.s] = 0;
         break;
-      case 'cd': this.usata(m, ora); break;
+      case 'cd': if (m.rid) { this.cds[m.s] = ora + m.ms; break; } this.usata(m, ora); break;   // rid: ricarica accorciata da un'uccisione
       case 'fx': this.effetto(m, ora); break;
     }
   }
@@ -399,6 +401,7 @@ class Bot {
       if (fino <= ora) continue;
       const d = BUFFS[b];
       if (d.free && d.free.includes(sid)) return 0;
+      if (d.finaleGratis && sk.finale) return 0;
       if (d.costMod && d.costMod[sid]) c += d.costMod[sid];
     }
     c = Math.max(0, c);

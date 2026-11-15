@@ -55,6 +55,11 @@ const MAPPA := {
 	"colpo_rapido": ["ombra", "colpo_rapido"], "ventaglio": ["ombra", "ventaglio"], "taglio_netto": ["ombra", "taglio_netto"],
 	"colpo_gola": ["sangue", "colpo_gola"], "taglio_finale": ["sangue", "taglio_finale"], "passo_ombra": ["ombra", "passo_ombra"],
 	"freccia_perforante": ["luce", "freccia_perf"], "occhio_falco": ["luce", "occhio"],
+	# scatti e mosse della fase «flow», potenziamenti di classe
+	"ala_vento": ["vento", "ala_vento"], "calcio_volante": ["chi", "calcio_volante"], "passo_luce": ["luce", "passo_luce"],
+	"radici_monte": ["terra", "radici"], "occasione": ["luce", "occasione"],
+	"grido_guerra": ["ira", "grido"], "velo_ombra": ["ombra", "velo"], "respiro_drago": ["chi", "respiro"],
+	"benedizione_astri": ["cielo", "astri"],
 	"pugno_ferro": ["chi", "pugno"], "calcio_gru": ["chi", "calcio"], "onda_chi": ["chi", "onda"],
 	"palmo_chi": ["chi", "palmo"], "raffica": ["chi", "raffica"], "pelle_bronzo": ["terra", "bronzo"],
 	"vortice_interiore": ["chi", "vortice"], "meditazione": ["cura", "meditazione"],
@@ -758,6 +763,74 @@ class Pennello:
 				spirale(50, 50, 6, 44, 1.7, 0, 6.0, AZZURRO_C)
 				spirale(50, 50, 6, 44, 1.7, 180, 4.0, BIANCO)
 				ferro(50, 54, 0.6, ACCIAIO, 180)
+			"ala_vento":
+				# folata di vento con tre penne che volano verso il bersaglio
+				for i in 3:
+					arco(30, 50, 22 + i * 12, -60, 60, 5.0, SCURO)
+					arco(30, 50, 22 + i * 12, -60, 60, 3.0, VENTO_COL[i % 2])
+				for q in [[66, 26, 30], [78, 50, 0], [66, 74, -30]]:
+					apri(Vector2(q[0], q[1]), q[2], 0.9)
+					pol([-22, 0, -8, -7, 16, -4, 22, 0, 16, 4, -8, 7], BIANCO, SCURO, 1.4)
+					lin(-24, 0, 20, 0, 1.6, ACCIAIO_O)
+					chiudi()
+				scint(20, 50, 7, BIANCO, 0.0)
+			"calcio_volante":
+				# balzo in volo con la scia di chi infuocato
+				for i in 4:
+					lin(4 + i * 6, 86 - i * 4, 40 + i * 6, 52 - i * 4, 5.0 - i, AMBRA_C if i % 2 == 0 else ROSSO_C)
+				fiamma(28, 74, 0.45, ROSSO, AMBRA_C)
+				corridore(56, 44, 0.9, Color(0.95, 0.92, 0.85), SCURO, -35.0)
+				esplosione(84, 22, 5, 15, 7, AMBRA_C, 0, 1.2)
+				disco(84, 22, 4, BIANCO, 0.0)
+			"passo_luce":
+				# figura che si scioglie in luce e riappare più avanti
+				al = 0.3
+				corridore(26, 56, 0.8, AZZURRO_C, SCURO)
+				al = 1.0
+				for i in 5:
+					scint(34 + i * 7, 40 + (i % 2) * 18, 4.0 + i, AMBRA_C if i % 2 == 0 else BIANCO, 0.0)
+				alone(72, 52, 26, AMBRA_C, 0.9)
+				corridore(72, 54, 0.85, BIANCO, SCURO)
+				arco(72, 54, 34, 0, 360, 2.0, ORO)
+			"radici":
+				# il suolo si spacca e la roccia sale attorno a una figura salda
+				for q in [[14, 92, 60], [86, 92, 60], [30, 94, 46], [70, 94, 46]]:
+					pol([q[0] - 12, 94, q[0] - 3, q[2], q[0] + 5, q[2] - 6, q[0] + 12, 94], PIETRA if q[2] > 50 else PIETRA_C, SCURO, 1.6)
+				crepa(50, 96, 28, 70, ORO, 2.2)
+				crepa(50, 96, 72, 70, ORO, 2.2)
+				busto(50, 54, 0.95, BRONZO)
+				arco(50, 58, 44, 200, 340, 4.0, AMBRA_C)
+			"occasione":
+				# un varco di luce: l'occhio del momento giusto
+				esplosione(50, 50, 18, 46, 8, ORO, 22, 1.4)
+				occhio_forma(50, 50, 36, 20, BIANCO)
+				disco(50, 50, 10, ORO, 1.6)
+				disco(50, 50, 4, SCURO, 0.0)
+			"grido":
+				# urlo di guerra: onde che escono da un volto
+				busto(30, 56, 0.9, Color(0.95, 0.75, 0.6))
+				for i in 3:
+					arco(36, 42, 22 + i * 14, -40, 40, 6.0, SCURO)
+					arco(36, 42, 22 + i * 14, -40, 40, 3.6, ROSSO_C if i % 2 == 0 else AMBRA_C)
+				esplosione(86, 42, 4, 11, 6, ORO, 0, 1.0)
+			"velo":
+				# velo d'ombra che avvolge una lama
+				for i in 3:
+					arco(50, 52, 18 + i * 12, 120 + i * 30, 330 + i * 30, 6.0, VIOLA if i % 2 == 0 else Color(0.25, 0.18, 0.38))
+				lama(24, 84, 76, 18, 10, ACCIAIO, ACCIAIO_O, VIOLA)
+				scint(78, 16, 8, VIOLA_C, 0.0)
+			"respiro":
+				# soffio di drago: spirale di fiamma del chi
+				spirale(50, 52, 6, 40, 1.6, 0.0, 6.0, AMBRA_C)
+				fiamma(50, 60, 0.7, ROSSO, AMBRA_C)
+				disco(50, 50, 6, BIANCO, 1.2)
+			"astri":
+				# benedizione degli astri: stelle in cerchio attorno a una luce
+				alone(50, 50, 36, AZZURRO_C, 0.9)
+				for i in 6:
+					var t := TAU * i / 6.0 - PI / 2.0
+					esplosione(50 + cos(t) * 32, 50 + sin(t) * 32, 2.5, 8, 4, ORO if i % 2 == 0 else BIANCO, 45, 1.0)
+				esplosione(50, 50, 6, 18, 4, BIANCO, 45, 1.4)
 			"scintilla":
 				esplosione(50, 50, 16, 44, 8, ORO, 0, 1.6)
 				scint(50, 50, 30, BIANCO, 0.0)
