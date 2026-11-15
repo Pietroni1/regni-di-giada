@@ -442,8 +442,11 @@ func _disegna_segni() -> void:
 	var cam: Camera3D = gioco.cam
 	var f := ThemeDB.fallback_font
 	var t := Time.get_ticks_msec() * 0.003
-	for e in gioco.ents.values():
-		if not is_instance_valid(e) or e.tipo != "n":
+	for v in gioco.ents.values():
+		if not is_instance_valid(v):
+			continue
+		var e: Entita = v
+		if e.tipo != "n":
 			continue
 		var kd := String(e.info.get("kd", ""))
 		if kd != "" and kd != gioco.regno:
