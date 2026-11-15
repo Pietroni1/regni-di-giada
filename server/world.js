@@ -458,14 +458,14 @@ export class World {
     p.atk = Math.round((watk + prim * 2 + sec * 0.5 + L * 2) * (1 + ((b.atkPct || 0) + (g.atkPct || 0)) / 100));
     p.matk = Math.round((wmatk + s.int * 2.5 + L * 2) * (1 + ((b.matkPct || 0) + (g.matkPct || 0)) / 100));
     p.def = Math.round((def + (g.def || 0) + s.vit * 1.2 + L) * (1 + (b.defPct || 0) / 100));
-    p.crit = Math.min(60, 2 + s.dex * 0.4 + (b.critPct || 0) + (g.crit || 0));
+    p.crit = Math.min(75, 2 + s.dex * 0.4 + (b.critPct || 0) + (g.crit || 0));
     p.critMult = 1.6 + (g.critDmg || 0) / 100;
     p.evade = Math.min(25, s.dex * 0.2 + (g.evade || 0));
     p.haste = (b.hastePct || 0) + (g.haste || 0) + (p.slancio || 0) * SLANCIO.hastePct;
     p.aspd = Math.round(aspd / (1 + p.haste / 100 + s.dex * 0.004));
-    p.speed = 8 * (1 + (spdPct + (g.moveSpd || 0)) / 100) * (p.mounted && p.ch.horse ? HORSE.speed(p.ch.horse.lvl) : 1);
+    p.speed = 8 * (1 + (spdPct + (g.moveSpd || 0) + (b.spdPct || 0)) / 100) * (p.mounted && p.ch.horse ? HORSE.speed(p.ch.horse.lvl) : 1);
     p.monDmg = g.monDmg || 0; p.bossDmg = g.bossDmg || 0; p.aoeDmg = g.aoeDmg || 0;
-    p.lifesteal = g.lifesteal || 0; p.dmgRed = Math.min(50, g.dmgRed || 0);
+    p.lifesteal = (g.lifesteal || 0) + (b.lifesteal || 0); p.dmgRed = Math.min(50, g.dmgRed || 0);
     p.expPct = g.expPct || 0; p.taelPct = g.taelPct || 0; p.dropPct = g.dropPct || 0;
     p.range = range;
     p.hpRegen = b.hpRegen || 0;
@@ -1387,7 +1387,7 @@ export class World {
       if (lanciata && d.instant && d.instant.includes(sid)) return true;
       return !((d.consume && d.consume.includes(sid)) || (sk.spend && d.consumeSpender));
     });
-    const base = sk.dmg === 'magic' ? p.matk : sk.dmg === 'hybrid' ? (p.atk + p.matk) * 0.55 : sk.dmg === 'best' ? Math.max(p.atk, p.matk) : p.atk;
+    const base = (sk.dmg === 'magic' ? p.matk : sk.dmg === 'hybrid' ? (p.atk + p.matk) * 0.55 : sk.dmg === 'best' ? Math.max(p.atk, p.matk) : p.atk) * (sk.mount ? 1 : COMBAT.scalaTecniche || 1);
     const pctFor = (tgt) => {
       let pct = p.dmgPct + bonus + (behind ? sk.behind.dmg : 0) + this.vulnFrom(tgt, p);
       if (sk.bonusVs && tgt.dots.some(d => d.src === p.id && d.sid === sk.bonusVs.dot)) pct += sk.bonusVs.dmg;
@@ -1425,11 +1425,15 @@ export class World {
       case 'strike': {
         if (sk.dash) {
           const ang = Math.atan2(target.x - p.x, target.z - p.z);
-          const off = this.radiusOf(target) + 1.1, sgn = sk.behindDash ? 1 : -1;
+          const off = this.radiusOf(target) + 1.1;
           const from = { x: r1(p.x), z: r1(p.z) };
+          // carica: ci si ferma davanti al bersaglio, sulla linea da cui si arriva;
+          // teletrasporto (behindDash): si riappare alle sue spalle, cioè dalla parte opposta a dove guarda
+          let dx = -Math.sin(ang) * off, dz = -Math.cos(ang) * off;
+          if (sk.behindDash) { dx = -Math.sin(target.r || 0) * off; dz = -Math.cos(target.r || 0) * off; fxd.tp = 1; }
           // arrivo dello scatto: dentro i limiti della zona in cui si è (mondo o istanza della cripta) e, nella cripta,
           // su un punto calpestabile — altrimenti si arretra lungo la traiettoria finché lo è
-          const [ax, az] = this.arrivoScatto(p, target.x + Math.sin(ang) * off * sgn, target.z + Math.cos(ang) * off * sgn);
+          const [ax, az] = this.arrivoScatto(p, target.x + dx, target.z + dz);
           p.x = ax; p.z = az;
           p.r = Math.atan2(target.x - p.x, target.z - p.z);
           if (p.casting) p.casting = null;
@@ -1475,7 +1479,19 @@ export class World {
         fxd.d = target.id; offensive = true;
         break;
       }
-      case 'buff': this.addBuff(p, sk.buff, lvl); break;
+      case 'buff': {
+        this.addBuff(p, sk.buff, lvl);
+        if (sk.gruppo && p.party) {
+          // potenziamenti di gruppo: anche i compagni vivi entro il raggio
+          const party = this.parties.get(p.party);
+          for (const id of (party ? party.members : [])) {
+            const q = this.ents.get(id);
+            if (q && q !== p && !q.dead && this.alleato(p, q) && dist(p, q) <= sk.gruppo) { this.addBuff(q, sk.buff, lvl, true); this.recalc(q); }
+          }
+        }
+        if (sk.manaPct && p.rtype === 'mana') { p.res = Math.min(p.rmax, p.res + p.rmax * sk.manaPct / 100); p.resDirty = true; }
+        break;
+      }
       case 'buff_allies':
         for (const q of this.players) {
           if (this.alleato(p, q) && !q.dead && dist(q, p) <= sk.radius) {

@@ -206,6 +206,20 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   non fa danni); barra Suprema ~53 s. Non misurato a velocità reale né con più ripetizioni; cure e tenuta del difensore
   non sono misurate. Visto a schermo nel client Godot (Lama): Risonanza, finale ad area, lancio di una Lanterna Insonne
   con la barra, interruzione con la Carica e stordimento.
+- **Ritmo raddoppiato, scatti e potenziamenti di classe** (richiesta dell'autore: «dimezza il gcd», «ombra deve
+  teletrasportarsi dietro il bersaglio e il lama charga davanti a lui», «una spell di buff per ogni classe»):
+  `GCD_MS` 500 (minimo 375); per non raddoppiare i danni `COMBAT.scalaTecniche` = 0,62 moltiplica i danni di ogni tecnica
+  (non gli attacchi base né le cure), i lanci del Mistico sono dimezzati (Dardo 0,5 s, Sfera 0,6 s) e la barra Suprema
+  si riempie più piano (`perRes` 0,052, `perManaPct` 0,36). Misura (30 s, velocità 4, una prova): Vie da danno fra
+  1234 e 1496 danni al secondo (−11% … +8%), Montagna 63%, Benedizione 58%, barra Suprema 46-58 s (Tempesta 33 s prima
+  dell'ultimo ritocco a `perManaPct`, non rimisurata). Cure e farming non rimisurati con il ritmo nuovo.
+  Scatti (`resolveSkill`): la carica si ferma davanti al bersaglio sulla linea d'arrivo; con `behindDash` si riappare alle
+  spalle rispetto a dove il bersaglio guarda (`target.r`) e l'effetto porta `tp: 1` (il client lo mostra come teletrasporto).
+  Potenziamenti (livello 8, fuori dal tempo globale, in `baseSkills`): Lama `grido_guerra` (12 s, danni + e danni subiti −,
+  anche ai compagni entro 15 m, +25 Ira), Ombra `velo_ombra` (10 s, critico e velocità, +30 Energia), Monaco
+  `respiro_drago` (12 s, rapidità e furto di vita, +2 Sfere), Mistico `benedizione_astri` (15 s, attacco e rigenerazione,
+  anche ai compagni entro 20 m, +12% Mana). Campi nuovi: `gruppo` (raggio), `manaPct`; statistiche dei buff `lifesteal`,
+  `spdPct`. Provato con un bot: i 4 potenziamenti si attivano, l'Ombra arriva dietro, la Lama sulla linea di carica.
 - **Postura** di élite e boss: fatta (`shared/postura.js`, `colpisciPostura`/`tickPostura` nel server, barre nel client).
 - **Simulazione senza browser**: `npm run sim` (`tools/sim/simula.mjs`). Avvia da sé un server di prova, crea un personaggio
   per Via (livello, arma, punti statistica e abilità), lo porta davanti ai fantocci e gioca una rotazione sensata (tabella
