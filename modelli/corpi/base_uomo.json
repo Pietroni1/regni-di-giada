@@ -1,0 +1,16 @@
+{
+  "nome": "base_uomo",
+  "sesso": "uomo",
+  "muscoli": 0.92,
+  "peso": 0.58,
+  "altezza": 0.6,
+  "proporzioni": 0.85,
+  "etnia": { "asian": 1.0 },
+  "forme": {
+    "# stile eroico": 0,
+    "torso/torso-vshape-incr": 0.5,
+    "armslegs/lr-hand-scale-incr": 0.35,
+    "armslegs/lr-upperarm-shoulder-muscle-incr": 0.5,
+    "armslegs/lr-foot-scale-incr": 0.2
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "nome": "base_donna",
+  "sesso": "donna",
+  "muscoli": 0.62,
+  "peso": 0.45,
+  "altezza": 0.5,
+  "proporzioni": 0.85,
+  "etnia": { "asian": 1.0 },
+  "forme": {
+    "armslegs/lr-hand-scale-incr": 0.15
+  }
+}

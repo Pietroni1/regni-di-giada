@@ -17,9 +17,16 @@
         "sandali",
         "stivali_cuoio",
         "stivali_vento",
-        "stivali_nube"
+        "stivali_nube",
+        "capelli"
       ],
-      "spalle": 1.1
+      "spalle": 1.1,
+      "testa": {
+        "raggio": 0.103,
+        "su": 0.0986,
+        "avanti": 0.0059,
+        "profondo": 0.1308
+      }
     },
     "base_uomo": {
       "file": "base_uomo.glb",
@@ -38,9 +45,16 @@
         "sandali",
         "stivali_cuoio",
         "stivali_vento",
-        "stivali_nube"
+        "stivali_nube",
+        "capelli"
       ],
-      "spalle": 1.22
+      "spalle": 1.22,
+      "testa": {
+        "raggio": 0.0997,
+        "su": 0.1117,
+        "avanti": -0.0042,
+        "profondo": 0.1422
+      }
     }
   },
   "classi": {

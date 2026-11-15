@@ -16,6 +16,7 @@ static var _librerie: Dictionary = {}
 var player: AnimationPlayer
 var scheletro: Skeleton3D
 var altezza := 2.2
+var modello := ""         # nome del modello in indice.json (per le misure della testa)
 var morto := false
 var attacchi: Array = ["spada_1", "spada_2", "spada_3"]
 var _lancio := "magia"
@@ -54,6 +55,7 @@ static func _dipinto(nome: String, c: Color) -> ShaderMaterial:
 ## wear: quali capi mostrare — { "veste": Color, "lamellare": { "stoffa": Color }, "elmo_bronzo": true }
 static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado_arma := 1, pelle := Color(0.86, 0.66, 0.52), ricamo := Color(0.75, 0.6, 0.3)) -> Personaggio:
 	var p := Personaggio.new()
+	p.modello = modello
 	var radice: Node3D = _scena(modello).instantiate()
 	p.add_child(radice)
 	p.scheletro = radice.find_children("*", "Skeleton3D", true, false)[0]
@@ -63,8 +65,12 @@ static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado
 			continue
 		var nome := String(mi.name)
 		if not nome.begins_with("capo_"):
-			# corpo: manichino provvisorio, gli si dà la pelle
-			mi.material_override = _dipinto("pelle", pelle)
+			# corpo: pelle dipinta; gli occhi (superficie «occhi» dei corpi fatti con corpo_base.py) hanno il loro shader
+			var mat_pelle := _dipinto("pelle", pelle)
+			for si in range(mi.mesh.get_surface_count()):
+				var mo := mi.mesh.surface_get_material(si)
+				var e_occhio := mo != null and String(mo.resource_name).begins_with("occhi")
+				mi.set_surface_override_material(si, _dipinto("occhio", Color(0.2, 0.12, 0.07)) if e_occhio else mat_pelle)
 			continue
 		var parti := nome.trim_prefix("capo_").split("__")
 		var capo := parti[0]
@@ -294,6 +300,13 @@ func metti_testa(stile: String, capelli: Color, cappuccio := Color(0.15, 0.15, 0
 	var su := altezza - 0.28 - scheletro.get_bone_global_rest(scheletro.find_bone("head")).origin.y   # 0: l'osso è alla base del cranio
 	var r := 0.135
 	var centro := Vector3(0, 0.125 + su, 0.012)
+	var fronte := 1.0            # quanto la calotta scende sul davanti (1 = come sul manichino)
+	var mis: Dictionary = Dati.indice.get("modelli", {}).get(modello, {}).get("testa", {})
+	if not mis.is_empty():
+		# cranio misurato da corpo_base.py: i capelli lo seguono e lasciano libera la fronte
+		r = float(mis.raggio) * 1.04
+		centro = Vector3(0, float(mis.su), float(mis.avanti) - 0.012)
+		fronte = 0.0
 	if stile == "bald":
 		return
 	if stile == "hood":
@@ -302,19 +315,32 @@ func metti_testa(stile: String, capelli: Color, cappuccio := Color(0.15, 0.15, 0
 		_sfera(ba, centro + Vector3(0, -0.06, -0.05), r * 1.12, stoffa, Vector3(1.05, 1.0, 0.95))
 		return
 	var m := Edifici.mat(capelli, 0.55)
-	_sfera(ba, centro + Vector3(0, 0.012, -0.012), r * 1.07, m, Vector3(1.0, 1.0, 1.06), true)          # calotta
-	_sfera(ba, centro + Vector3(0, -0.02, -0.05), r * 1.0, m, Vector3(1.03, 0.95, 0.9))                 # nuca
-	for sx in [-1.0, 1.0]:
-		Edifici.scatola(Vector3(0.02, 0.1, 0.07), centro + Vector3(sx * r * 0.98, -0.03, 0.01), m, ba)  # basette
+	if fronte < 0.5:
+		# testa vera: la chioma è una mesh del modello (capo_capelli), ricavata dal suo cuoio capelluto
+		for n in scheletro.get_children():
+			if n is MeshInstance3D and String(n.name) == "capo_capelli":
+				n.visible = true
+				n.material_override = m
+	else:
+		_sfera(ba, centro + Vector3(0, 0.012, -0.012), r * 1.07, m, Vector3(1.0, 1.0, 1.06), true)          # calotta
+		_sfera(ba, centro + Vector3(0, -0.02, -0.05), r * 1.0, m, Vector3(1.03, 0.95, 0.9))                 # nuca
+		for sx in [-1.0, 1.0]:
+			Edifici.scatola(Vector3(0.02, 0.1, 0.07), centro + Vector3(sx * r * 0.98, -0.03, 0.01), m, ba)  # basette
 	match stile:
 		"topknot":
 			_sfera(ba, centro + Vector3(0, r * 1.18, -0.03), 0.05, m, Vector3(1, 1.15, 1))
 			Edifici.cilindro(0.028, 0.03, 0.03, centro + Vector3(0, r * 0.98, -0.03), Edifici.mat(Color(0.7, 0.12, 0.1), 0.7), ba, 8)
 		"long":
-			var coda := Edifici.scatola(Vector3(0.2, 0.42, 0.06), centro + Vector3(0, -0.24, -0.115), m, ba)
-			coda.rotation.x = -0.12
-			for sx in [-1.0, 1.0]:
-				Edifici.scatola(Vector3(0.035, 0.26, 0.05), centro + Vector3(sx * r * 0.95, -0.16, 0.03), m, ba)
+			if fronte < 0.5:
+				# chioma lunga sulla schiena: due volumi morbidi che scendono dalla nuca
+				var dietro := float(mis.profondo)
+				_sfera(ba, centro + Vector3(0, -r * 1.3, -dietro * 0.8), r * 0.95, m, Vector3(1.05, 2.1, 0.5))
+				_sfera(ba, centro + Vector3(0, -r * 3.2, -dietro * 0.72), r * 0.8, m, Vector3(0.95, 2.3, 0.4))
+			else:
+				var coda := Edifici.scatola(Vector3(0.2, 0.42, 0.06), centro + Vector3(0, -0.24, -0.115), m, ba)
+				coda.rotation.x = -0.12
+				for sx in [-1.0, 1.0]:
+					Edifici.scatola(Vector3(0.035, 0.26, 0.05), centro + Vector3(sx * r * 0.95, -0.16, 0.03), m, ba)
 
 
 func _sfera(genitore: Node3D, pos: Vector3, raggio: float, m: Material, scala := Vector3.ONE, mezza := false) -> MeshInstance3D:

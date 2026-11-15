@@ -82,8 +82,19 @@ Obiettivo dell'autore: aspetto alla WoW, cioè corpo base + capi separati che ca
   `body` (fascia nel colore del regno), stivali dal pezzo `feet` (il server ora manda anche `f` nelle info del giocatore).
 - In `indice.json` una classe può avere un elenco di modelli (`["base_uomo", "base_donna"]`): per ora sceglie in base
   al sesso scelto alla creazione (salvato dal server).
-- `base_uomo` / `base_donna` sono i manichini Y Bot / X Bot di Mixamo: **provvisori**, non originali e non nello stile
-  del gioco; vanno sostituiti con due corpi base originali (stesso nome di file, stesso scheletro).
+- **Corpi base originali (fatti)**: `base_uomo` / `base_donna` non sono più i manichini di Mixamo. `tools/blender/corpo_base.py`
+  li genera dalla mesh e dalle forme di **MakeHuman** (CC0) secondo i parametri in `modelli/corpi/*.json` (sesso, muscoli,
+  peso, etnia, forme di dettaglio: istruzioni in `modelli/corpi/LEGGIMI.md`), riporta giunti e pesi di MakeHuman sulle ossa
+  di Mixamo, porta gli arti nella posa a T dello scheletro (`modelli/scheletri/manichino_*.fbx`, solo come scheletro) e
+  salva `modelli/mixamo/base_*.blend`, che `importa_mixamo.py` tratta come un personaggio (capi e armature come prima).
+  Aggiunge la seconda UV `Viso` (pelle: x labbra, y sopracciglia; occhi: coordinate sul bulbo → `occhio.gdshader`),
+  la chioma `capo_capelli` dal cuoio capelluto e le misure del cranio (`indice.json` → `testa`), usate da `metti_testa`.
+  Nel container: `pip install bpy` (Blender come modulo Python) e i dati di MakeHuman con `git clone --sparse`; dopo aver
+  cambiato un `.glb` serve `godot --headless --path godot --import` (senza, Godot usa la copia importata vecchia).
+  Visti a schermo nel client Godot: uomo e donna, viso, chioma, vesti, spada e bastone in mano, posa da fermi.
+  Da migliorare: attaccatura dei capelli seghettata, pelle chiara e uniforme (nessuna texture), scollo della veste
+  seghettato, stili di capelli diversi, corporatura ancora poco «eroica». Il client nel browser non è stato riprovato
+  con i corpi nuovi.
 - Da fare: capelli e volti, vesti delle classi con forma propria (hakama, maniche larghe) al posto dei gusci aderenti,
   nascondere il corpo sotto i capi, PNG. Dopo: l'autore vuole lavorare sul sistema di combattimento.
 - Proporzioni: `"spalle": 1.22` nella voce del modello in `indice.json` allontana le braccia dal busto (`skinned.js`).
