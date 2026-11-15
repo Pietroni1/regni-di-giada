@@ -253,18 +253,21 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 			var m: StandardMaterial3D = (mi.material_override as StandardMaterial3D).duplicate()
 			m.emission_enabled = true
 			m.emission = colore
-			m.emission_energy_multiplier = 0.5 if l.is_empty() else (0.9 + 0.2 * (up - 7))
+			m.emission_energy_multiplier = 0.45 if l.is_empty() else (0.7 + 0.1 * (up - 7))     # col bloom oltre ~1,3 diventa bianco
 			mi.material_override = m
 	if l.is_empty():
 		return
 	# particelle lungo la lama, lasciate indietro nel mondo quando l'arma si muove
 	var p := CPUParticles3D.new()
 	var q := QuadMesh.new()
-	var grande := 0.11 if String(l.nome) != "leggenda" else 0.15
+	# armi corte (pugnali, guanti): meno particelle e più piccole, altrimenti coprono l'arma con una macchia bianca
+	var lunga := (punta - base).length()
+	var corta := clampf(lunga / 1.0, 0.35, 1.0)
+	var grande := (0.085 if String(l.nome) != "leggenda" else 0.11) * (0.6 + 0.4 * corta)
 	q.size = Vector2(grande, grande)
 	p.mesh = q
 	p.material_override = mat_particella()
-	p.amount = int(l.quante)
+	p.amount = maxi(8, int(float(l.quante) * 0.85 * corta))
 	p.lifetime = 0.7
 	p.local_coords = false
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
@@ -279,7 +282,7 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 	p.scale_amount_max = 1.2
 	var sf := Gradient.new()
 	sf.offsets = PackedFloat32Array([0.0, 0.2, 1.0])
-	sf.colors = PackedColorArray([Color(l.c1.r, l.c1.g, l.c1.b, 0.0), Color(l.c1.r, l.c1.g, l.c1.b, 0.9), Color(l.c2.r, l.c2.g, l.c2.b, 0.0)])
+	sf.colors = PackedColorArray([Color(l.c1.r, l.c1.g, l.c1.b, 0.0), Color(l.c1.r, l.c1.g, l.c1.b, 0.7), Color(l.c2.r, l.c2.g, l.c2.b, 0.0)])
 	p.color_ramp = sf
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	arma.add_child(p)
@@ -295,7 +298,7 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 	ma.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	ma.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	ma.albedo_texture = alone()
-	ma.albedo_color = Color(l.c1.r, l.c1.g, l.c1.b, (0.3 + 0.05 * (up - 7)) * (0.35 if (punta - base).length() < 0.6 else 1.0))     # armi corte: alone più tenue
+	ma.albedo_color = Color(l.c1.r, l.c1.g, l.c1.b, (0.2 + 0.035 * (up - 7)) * (0.4 if lunga < 0.6 else 1.0))     # armi corte: alone più tenue
 	ma.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
 	ma.billboard_keep_scale = true
 	ma.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
@@ -306,28 +309,28 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 	if con_luce and up >= 9:
 		var luce := OmniLight3D.new()
 		luce.light_color = l.c1
-		luce.light_energy = 0.9 + 0.12 * (up - 9)
+		luce.light_energy = 0.6 + 0.07 * (up - 9)
 		luce.omni_range = 3.5
 		luce.position = centro
 		arma.add_child(luce)
-	if String(l.nome) == "leggenda":
-		# due spirali che salgono lungo la lama
+	if String(l.nome) == "leggenda" and lunga >= 0.6:
+		# due spirali che salgono lungo la lama (solo sulle armi lunghe)
 		for k in range(2):
 			var perno := Node3D.new()
 			perno.position = base
 			arma.add_child(perno)
 			var sfera := CPUParticles3D.new()
 			var q2 := QuadMesh.new()
-			q2.size = Vector2(0.09, 0.09)
+			q2.size = Vector2(0.06, 0.06)
 			sfera.mesh = q2
 			sfera.material_override = mat_particella()
-			sfera.amount = 26
+			sfera.amount = 14
 			sfera.lifetime = 0.5
 			sfera.local_coords = false
 			sfera.gravity = Vector3.ZERO
 			sfera.initial_velocity_max = 0.05
 			var g2 := Gradient.new()
-			g2.colors = PackedColorArray([Color(l.c2.r, l.c2.g, l.c2.b, 1.0), Color(l.c1.r, l.c1.g, l.c1.b, 0.0)])
+			g2.colors = PackedColorArray([Color(l.c2.r, l.c2.g, l.c2.b, 0.6), Color(l.c1.r, l.c1.g, l.c1.b, 0.0)])
 			sfera.color_ramp = g2
 			sfera.position = Vector3(0.13, 0, 0)
 			perno.add_child(sfera)
