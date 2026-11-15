@@ -25,9 +25,9 @@ export const SERIE = { finestraMs: 7000, velPct: 4, velMax: 24, scattoS: 2, potS
 // 1% di Mana, perPt per ogni punto combo/sfera/carica consumato). Piena, sblocca la tecnica `sup` della classe.
 // Taratura (tools/sim/simula.mjs): con i kit "2 accumuli + 4 scarichi" si spendono circa 20-25 punti di risorsa al secondo
 // (Mana: ~3% al secondo), quindi la barra si riempie in 50-58 secondi contro un bersaglio e in 45-55 contro un gruppo.
-export const SUPREMA = { max: 100, perRes: 0.052, perManaPct: 0.36, perPt: 0.2, lvl: 15 };
-export const GCD_MS = 500;        // tempo globale fra due tecniche (dimezzato su richiesta dell'autore: era 1000)
-export const GCD_MIN_MS = 375;
+export const SUPREMA = { max: 100, perRes: 0.082, perManaPct: 0.58, perPt: 0.2, lvl: 15 };
+export const GCD_MS = 1000;       // tempo globale fra due tecniche (provato a 500: l'autore l'ha trovato troppo frenetico)
+export const GCD_MIN_MS = 750;
 export const EQUIP_SLOTS = ['weapon', 'head', 'body', 'feet'];
 export const EQUIP_NAMES = { weapon: 'Arma', head: 'Copricapo', body: 'Armatura', feet: 'Calzari' };
 export const STAT_NAMES = { vit: 'Vitalità', str: 'Forza', dex: 'Destrezza', int: 'Intelletto' };
@@ -187,7 +187,7 @@ export const BUFFS = {
 // MAESTRIA passiva (VIE[via].maestria) che premia il suo modo di giocare.
 // `finoVia: true` — finale di base della classe: vale finché non si sceglie una Via, poi lo sostituisce quello della Via.
 export const COMBAT = {
-  scalaTecniche: 0.62, // con il tempo globale dimezzato si usano quasi il doppio delle tecniche: ognuna fa meno, il ritmo dei combattimenti resta quello di prima
+  scalaTecniche: 1, // moltiplicatore dei danni di tutte le tecniche (0,62 quando il tempo globale era a mezzo secondo)
   concPct: 9,        // +% danni (o cure) del finale per punto di Concentrazione, su bersaglio singolo
   risMin: 3,         // nemici colpiti dal colpo base ad area per accendere la Risonanza
   risDur: 8,         // secondi di durata della Risonanza
@@ -221,7 +221,7 @@ export const SKILLS = {
   taglio_finale: { name: 'Taglio Finale', cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.45, 0.122], cost: 40, behind: { dmg: 20, pts: 0 }, glyph: '終', color: 0xe04a4a, fx: 'slash', desc: 'Colpo finale: +20% alle spalle. Con la Risonanza colpisce tutti i nemici attorno al bersaglio. Richiede pugnali.' },
   passo_ombra: { name: "Passo d'Ombra", cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 7, type: 'strike', dash: true, behindDash: true, scatto: true, offgcd: true, range: 12, pts: 2, cd: 12, glyph: '潜', color: 0x7a5aa8, fx: 'dash', desc: 'Mossa: svanisci e riappari alle spalle del bersaglio; ottieni 2 Punti combo.' },
   // Via dell'Arco
-  freccia_perforante: { name: 'Freccia Perforante', cls: 'ombra', via: 'arco', req: 'bow', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.8, 0.14], cost: 40, ignoreDef: 30, glyph: '貫', color: 0xffc070, fx: 'arrow', desc: 'Colpo finale: una freccia che ignora parte della difesa. Con la Risonanza esplode su tutti i nemici attorno al bersaglio. Richiede un arco.' },
+  freccia_perforante: { name: 'Freccia Perforante', cls: 'ombra', via: 'arco', req: 'bow', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.55, 0.14], cost: 40, ignoreDef: 30, glyph: '貫', color: 0xffc070, fx: 'arrow', desc: 'Colpo finale: una freccia che ignora parte della difesa. Con la Risonanza esplode su tutti i nemici attorno al bersaglio. Richiede un arco.' },
   ala_vento: { name: 'Ala di Vento', cls: 'ombra', via: 'arco', req: 'bow', lvl: 7, type: 'strike', dash: true, dashDist: 9, scatto: true, offgcd: true, range: 20, dmg: 'phys', mult: [0.6, 0.03], slow: { dur: 2 }, pts: 2, buff: 'occhio_falco', cd: 15, glyph: '翼', color: 0xb0e8ff, fx: 'dash', desc: "Mossa e scatto: una folata ti porta a 9 metri dal bersaglio (avanti se sei lontano, indietro se ti sta addosso) e gli scagli contro una raffica di penne che lo rallenta. Ottieni 2 Punti combo e per 6 secondi l'Occhio del Falco (rapidità e rigenerazione dell'Energia)." },
 
   // ======================= MONACO (Chi) — 5 tasti
@@ -238,8 +238,8 @@ export const SKILLS = {
   meditazione: { name: 'Meditazione', cls: 'monaco', via: 'loto', lvl: 7, type: 'hot_self', offgcd: true, heal: [0.035, 0.002], dur: 8, cd: 20, glyph: '禅', color: 0x9fe0c0, fx: 'heal', desc: 'Mossa: rigeneri la vita per 8 secondi.' },
 
   // ======================= MISTICO (Mana) — 5 tasti
-  dardo_luce: { name: 'Dardo di Luce', cls: 'mistico', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 20, dmg: 'magic', mult: [1.95, 0.098], gen: 3, pts: 1, cast: 0.5, mobile: true, glyph: '光', color: 0xfff4b0, fx: 'bolt', desc: 'Colpo base (0,5 s, anche camminando): un dardo su un bersaglio. Rende Mana e 1 Carica celeste.' },
-  sfera_celeste: { name: 'Sfera Celeste', cls: 'mistico', lvl: 1, ruolo: 'accumulo', type: 'aoe_target', range: 20, radius: 4.5, dmg: 'magic', mult: [0.92, 0.046], gen: 3, risonanza: true, cast: 0.6, mobile: true, glyph: '球', color: 0xc0e8ff, fx: 'bolt', desc: 'Colpo base ad area (0,6 s, anche camminando): una sfera esplode sul bersaglio. Se prende 3 o più nemici accende la Risonanza.' },
+  dardo_luce: { name: 'Dardo di Luce', cls: 'mistico', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 20, dmg: 'magic', mult: [1.95, 0.098], gen: 3, pts: 1, cast: 1.0, mobile: true, glyph: '光', color: 0xfff4b0, fx: 'bolt', desc: 'Colpo base (0,5 s, anche camminando): un dardo su un bersaglio. Rende Mana e 1 Carica celeste.' },
+  sfera_celeste: { name: 'Sfera Celeste', cls: 'mistico', lvl: 1, ruolo: 'accumulo', type: 'aoe_target', range: 20, radius: 4.5, dmg: 'magic', mult: [0.92, 0.046], gen: 3, risonanza: true, cast: 1.2, mobile: true, glyph: '球', color: 0xc0e8ff, fx: 'bolt', desc: 'Colpo base ad area (0,6 s, anche camminando): una sfera esplode sul bersaglio. Se prende 3 o più nemici accende la Risonanza.' },
   lancia_luce: { name: 'Lancia di Luce', cls: 'mistico', lvl: 2, ruolo: 'potente', finale: true, finoVia: true, type: 'strike', range: 20, dmg: 'magic', mult: [3.2, 0.16], cost: 9, glyph: '槍', color: 0xffe890, fx: 'lightning', desc: 'Colpo finale istantaneo: scarica Mana e Cariche. Con la Risonanza colpisce tutti i nemici attorno al bersaglio.' },
   passo_luce: { name: 'Passo di Luce', cls: 'mistico', lvl: 4, type: 'blink', dist: 10, scatto: true, offgcd: true, cd: 10, glyph: '閃', color: 0xd8f0ff, fx: 'dash', desc: 'Scatto: ti sciogli in luce e riappari 10 metri più avanti, nella direzione in cui guardi. Non interrompe il lancio in corso.' },
   sigillo_silenzio: { name: 'Sigillo del Silenzio', cls: 'mistico', lvl: 3, type: 'strike', offgcd: true, interrupt: true, range: 20, dmg: 'magic', mult: [0.5, 0.025], gen: 2, stun: [1, 0.02], cd: 14, glyph: '封', color: 0xa0b0ff, fx: 'mark', desc: 'Interruzione a distanza: spezza il lancio del bersaglio e lo stordisce.' },

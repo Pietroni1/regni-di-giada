@@ -301,6 +301,11 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   (e il bottino all'ora con lei); se è troppo, abbassare `SERIE.velMax` o `scattoS` prima dei mostri.
   Non verificati: la resa a vista degli scatti nuovi (gli effetti li disegna `effetti.gd`, `fx: 'dash'`/`'quake'`), il
   Passo di Luce con mouse e tastiera veri, cure e tenuta del difensore con le Radici in un dungeon vero.
+- **Tempo globale riportato a 1 secondo** (l'autore, dopo aver provato il mezzo secondo: «troppo spammoso»): `GCD_MS` 1000
+  (minimo 750), `COMBAT.scalaTecniche` 1, lanci del Mistico 1,0 s (Dardo) e 1,2 s (Sfera), `SUPREMA.perRes` 0,082 e
+  `perManaPct` 0,58 come prima. **Non riproporre il tempo globale dimezzato.** Restano scatti, potenziamenti, Serie e
+  Occasione. Freccia Perforante 2,55 (con il tempo lungo l'Arco era a +14%). Misura (30 s, velocità 4, una prova): Vie da
+  danno 1216-1422 (−7% … +9%), Montagna 63%, Benedizione 52%, barra Suprema 50-63 s (Benedizione ~94 s: da riguardare).
 - **Postura** di élite e boss: fatta (`shared/postura.js`, `colpisciPostura`/`tickPostura` nel server, barre nel client).
 - **Simulazione senza browser**: `npm run sim` (`tools/sim/simula.mjs`). Avvia da sé un server di prova, crea un personaggio
   per Via (livello, arma, punti statistica e abilità), lo porta davanti ai fantocci e gioca una rotazione sensata (tabella
