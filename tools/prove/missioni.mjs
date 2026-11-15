@@ -59,10 +59,11 @@ class Bot {
     this.ws.on('message', (raw) => this.ricevi(JSON.parse(raw)));
     this.manda({ t: 'login', user: this.user, pass: 'prova' });
     const ch = await this.aspetta((m) => m.t === 'chars');
+    const da = this.log.length;
     this.manda({ t: 'play', id: ch.list[0].id });
     const e = await this.aspetta((m) => m.t === 'enter');
     this.id = e.id; this.x = e.x; this.z = e.z; this.gm = !!e.gm;
-    await this.aspetta((m) => m.t === 'mis');
+    await this.trova((m) => m.t === 'mis', da);   // arriva subito dopo `enter`, a volte nello stesso pacchetto
     return e;
   }
   ricevi(m) {
@@ -78,11 +79,12 @@ class Bot {
     if (m.t === 'inv') this.inv = m;
     for (const w of [...this.attese]) if (w.f(m)) { this.attese.splice(this.attese.indexOf(w), 1); w.ok(m); }
   }
-  aspetta(f, ms = 15000) {
+  aspetta(f, ms = 30000) {
+    const dove = (new Error().stack.split('\n')[2] || '').trim();
     return new Promise((ok, no) => {
       const w = { f, ok };
       this.attese.push(w);
-      setTimeout(() => { const i = this.attese.indexOf(w); if (i >= 0) { this.attese.splice(i, 1); no(new Error(`${this.user}: attesa scaduta (ultimo errore: ${(this.log.filter((m) => m.t === "err").pop() || {}).m || "nessuno"})`)); } }, ms);
+      setTimeout(() => { const i = this.attese.indexOf(w); if (i >= 0) { this.attese.splice(i, 1); no(new Error(`${this.user}: attesa scaduta ${dove} (ultimo errore: ${(this.log.filter((m) => m.t === "err").pop() || {}).m || "nessuno"})`)); } }, ms);
     });
   }
   manda(m) { this.ws.send(JSON.stringify(m)); }
@@ -111,6 +113,7 @@ class Bot {
     if (!n) throw new Error(`nessun PNG ${ruolo} in vista`);
     if (this.gm) await this.cmd(`/tp ${n.x} ${n.z + 2}`);
     else await this.cammina(n.x + 1.5, n.z + 1.5);
+    await attesa(500);   // i dialoghi rimasti in viaggio dal passo prima non vanno scambiati per la risposta
     this.manda({ t: 'npc', id: n.id });
     const d = await this.aspetta((m) => m.t === 'mis_png' && m.npc === n.id, serve ? 6000 : 1500).catch(() => null);
     this.npc = n;
@@ -198,7 +201,13 @@ async function main() {
   const cappello = A.inv.inv.find((s) => s && ITEMS[s.id].type === 'head');
   verifica(cappello && cappello.r === 1, `premio c03: ${f3.got.join(', ')} → in borsa ${cappello && cappello.id} (rarità ${cappello && cappello.r})`);
   // --- c04 con /missione fatta: arma del livello 5 della classe (Lama → spada)
-  const dl4 = await A.trova((m) => m.t === 'mis_png' && m.offerte.some((x) => x.id === 'c04'), prima3);
+  let da4 = prima3;
+  if (A.me.lvl < 3) {   // «Il campo devastato» è del livello 3: con poche uccisioni si può essere ancora al 2
+    await A.cmd('/level 3');
+    da4 = A.log.length;
+    await A.parla('erbe');
+  }
+  const dl4 = await A.trova((m) => m.t === 'mis_png' && m.offerte.some((x) => x.id === 'c04'), da4);
   verifica(dl4.offerte.some((x) => x.id === 'c04'), `Nonna Lin offre «Il campo devastato»: premio «${dl4.offerte.find((x) => x.id === 'c04').pr}»`);
   A.manda({ t: 'mis', a: 'accetta', id: 'c04', npc: A.npc.id });
   await A.aspetta((m) => m.t === 'mis_ev' && m.id === 'c04');
@@ -222,7 +231,8 @@ async function main() {
   A.manda({ t: 'mis', a: 'accetta', id: 'c05', npc: A.npc.id });
   await A.aspetta((m) => m.t === 'mis_ev' && m.id === 'c05');
   A.manda({ t: 'via', v: 'fulmine' });
-  await A.aspetta((m) => m.t === 'mis_ev' && m.k === 'pronta' && m.id === 'c05', 4000);
+  await A.aspetta((m) => m.t === 'mis_ev' && m.k === 'pronta' && m.id === 'c05');
+  await A.trova((m) => m.t === 'mis' && m.a.some((x) => x.id === 'c05' && x.ok === 1));
   verifica(A.attiva('c05').ok === 1, 'obiettivo «scegli la Via» completato dalla scelta della Via');
   await A.parla('maestro');
   A.manda({ t: 'mis', a: 'consegna', id: 'c05', npc: A.npc.id });
