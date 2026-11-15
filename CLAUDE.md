@@ -153,8 +153,42 @@ Obiettivo dell'autore: aspetto alla WoW, cioè corpo base + capi separati che ca
   Visti a schermo (vetrina Godot e anteprime Blender): tutte le classi, gradi 0-4, uomo e donna, davanti e dietro; corsa e
   attacco col grado 4. Nel gioco vero (server, copione) visto solo la Lama. **Non verificati**: le altre animazioni
   (morte, sella, arco), elmi e calzari sopra i completi, PNG e mostri con i completi, resa con Forward+.
-  Difetti noti: in corsa le falde del Mistico seguono rigide la coscia; ai lati della fascia al petto della Monaca può
-  affiorare il top dipinto del corpo; sui pantaloni ricavati dalla pelle si vedono righe verticali sottili; le chiome lunghe dell'uomo (Mistico) sono quelle del pacchetto (calvizie in cima).
+  Difetti noti: le chiome lunghe dell'uomo (Mistico) sono quelle del pacchetto (calvizie in cima).
+- **Completi più ricchi (fatto)** — richiesta dell'autore: «più alta qualità e molti più dettagli, ognuno per classe»
+  (le sagome gli piacevano: arricchite, non cambiate). Tre strumenti nuovi in `completi.py`, letti dagli shader:
+  - seconda UV `Orlo` (TEXCOORD_1 → `UV2` in Godot): x = metri lungo l'orlo, y = metri dall'orlo. **Il glTF capovolge
+    la v e Godot no**: negli shader `d = 1.0 - UV2.y` (vale anche per `UV`, vedi `carta.gdshader`). `griglia(orli=…)`:
+    `'bordi'`, `'nastro'` (cinghie, stole), `'file0'`/`'file1'` (file di piastre: ogni fila ha il suo orlo, x della fila
+    presa dall'orlo così le giunture vengono dritte), `None`; `guscio` la calcola dagli orli ritagliati (`_uv_orlo`);
+  - occlusione dipinta nel colore dei vertici `Occl` (COLOR_0; `_occlusione`: 9 raggi entro 8 cm contro corpo, vesti di
+    sotto e capo stesso): incavi e parti sotto le piastre più scuri. Il materiale la usa (nodo Color Attribute) sennò
+    l'esportatore non la scrive;
+  - spessore solo come bordino lungo gli orli (`_solido`, niente seconda pelle): metà dei triangoli di prima.
+  Shader: `ornati.gdshaderinc` (motivo per classe lungo gli orli: Lama onde e nuvole, Ombra denti di sega, Monaco grani,
+  Mistico rombi ricamati; `Personaggio.MOTIVI`), `metallo` (orlo consumato, doppio filetto, ribattini a cupola ogni
+  4,5 cm, fascia incisa, martellatura, patina negli incavi; lamelle laccate con giunture, smusso, tinta per piastrina e
+  allacciature nel colore del regno; `oro` per il riflesso caldo, `grani` per i solchi dei grani), `stoffa` (fascia
+  ricamata lungo gli orli nel colore delle finiture, d'oro sulle finiture e sul regno; cuciture sul cuoio; `ritorto`
+  per i cordoni, `frange` per le nappe, `piume`), `carta` (talismani con segni d'inchiostro inventati e sigillo rosso).
+  Parti nuove in `personaggio.gd`: `cordone` e `nappa` (seta nel colore del regno), `piume`, `carta`.
+  Pezzi nuovi (pochi triangoli): `fila_borchie`, `cordone`, `nodo` (nodo ornamentale a quattro asole), `fibbia`, `placca`
+  (giada intagliata), `fodero`, `borsa`, `spirale` (fasce avvolte), `sonaglio`, `anellino`, `emblema_nuvola`, `denti`,
+  `piume`, `sottoveste` (stoffa che spunta sotto le scarselle). Per classe: **Lama** teste di chiodo su cintura e
+  cinturone, cordone annodato (0), file di chiodi e cinghie con fibbie sul petto (1), emblema della nuvola e cordoni a V
+  con nodo e nappa (2), corona di chiodi attorno allo specchio, nuvole d'oro, cordoni (3), catenella d'oro e nappe al
+  cinturone (4), sottoveste dal 2; **Ombra** fibbia, cinghie sulla coscia con pugnale nel fodero (0; due dal 2), fibbie
+  sulle bandoliere, tasca (1), tasche, denti di sega sullo spallaccio (2), penne scure sulla spalla (3-4); **Monaco**
+  fasce a spirale, cordone ritorto con anelli d'oro e sonagli, cavigliere coi sonagli e giro di grani al polso (2),
+  anelli appesi allo spallaccio (3) e all'aureola (4); **Mistico** cordone e nodo con nappa in vita, nodi sulla stola,
+  placche di giada sopra i talismani (2), pendente di giada (2), placche e nappe alla fascia (3-4).
+  Triangoli per completo indossato (base + grado, uomo): Lama 3,9k / 6,4k / 8,9k / 10,5k / 11,8k (gradi 0-4), Ombra
+  4,7k / 7,0k / 9,6k / 10,6k / 12,4k, Monaco 4,1k / 4,7k / 6,6k / 8,1k / 9,8k, Mistico 5,6k / 6,4k / 8,6k / 9,8k /
+  12,0k (prima, con meno dettagli: grado 4 fra 12,9k e 15,3k). `base_uomo.glb` 11,0 MB, `base_donna.glb` 11,8 MB.
+  Corretti: righe verticali sui pantaloni (erano le pieghe a seno dello shader; da vicino resta qualche filo scuro
+  appena visibile lungo le vecchie cuciture della pelle), top dipinto ai lati della fascia della Monaca
+  (fascia più larga e più alta), falde rigide (`falde`: pesi a curva morbida, i pannelli davanti e dietro divisi fra le
+  due cosce secondo il lato; Mistico `coscia` 0,55). Vetrina: `--zoom=3 --mira=1.4 --fuoco=2` per i primi piani.
+  Non verificati: gioco col server, Forward+, animazioni diverse da fermo/corsa, PNG e mostri con i completi nuovi.
 - Da fare: capelli e volti, nascondere il corpo sotto i capi. Dopo: l'autore vuole lavorare sul sistema di combattimento.
 - Proporzioni: `"spalle": 1.22` nella voce del modello in `indice.json` allontana le braccia dal busto (`skinned.js`).
 - In corsa `SkinAnim.straightFeet` raddrizza i piedi (la corsa scelta li ruota verso l'esterno).

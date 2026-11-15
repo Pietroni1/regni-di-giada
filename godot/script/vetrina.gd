@@ -2,7 +2,7 @@ extends Node3D
 ## Vetrina dei completi: una fila di personaggi della stessa classe, uno per grado d'armatura, senza server.
 ## Serve a guardare (e fotografare) i completi di tools/blender/completi.py con gli shader del gioco.
 ##   godot --path godot res://scene/vetrina.tscn -- --classe=lama --sesso=m --posa=fermo|corsa|attacco
-##         [--gradi=0,1,2,3,4] [--yaw=0] [--foto=cartella/nome.png]
+##         [--gradi=0,1,2,3,4] [--yaw=0] [--foto=cartella/nome.png] [--zoom=3 --mira=1.45 --fuoco=2]
 ## Il grado 4 porta anche gli effetti dell'armatura +15 Leggendaria (aura e cerchio di rune di Equip).
 
 const ARMI := {"lama": "sword", "ombra": "daggers", "monaco": "fists", "mistico": "staff"}
@@ -55,9 +55,15 @@ func _ready() -> void:
 	cam.fov = 26.0
 	var largo := gradi.size() * passo
 	var dist := maxf(5.0, largo * 1.02 / (2.0 * tan(deg_to_rad(cam.fov * 0.5)) * 1.78))
-	cam.position = Vector3(0, 1.3, dist)
+	# primo piano: --zoom=3 (distanza divisa), --mira=1.45 (quota guardata), --fuoco=2 (figura al centro, da 0)
+	var zoom := float(_arg.get("zoom", "1"))
+	var mira := float(_arg.get("mira", "1.2"))
+	var cx := 0.0
+	if _arg.has("fuoco"):
+		cx = (int(_arg.fuoco) - (gradi.size() - 1) / 2.0) * passo
+	cam.position = Vector3(cx, mira + 0.1, dist / zoom)
 	add_child(cam)
-	cam.look_at(Vector3(0, 1.2, 0))
+	cam.look_at(Vector3(cx, mira, 0))
 	cam.current = true
 
 
