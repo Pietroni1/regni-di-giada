@@ -390,7 +390,11 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   «correggere» gli effetti e li avevo abbassati (abbagliavano), poi li ha voluti più ricchi: tenere le forme leggibili.
   **Bastone**: `Equip.Piombo` lo tiene quasi a piombo (85%) anche se la mano si inclina, presa a 1,14 m dalla base, braccio
   lungo il fianco (`POSE.staff`): prima il braccio era piegato sulla pancia e il bastone attraversava manica e veste.
-  Visto a schermo in vetrina: le 4 classi ai 4 passi, da fermi. Non visto: in corsa e in attacco, nel gioco col server.
+  Ritocchi successivi («ritocca il ritoccabile»): saette più sottili con anima chiara e alone nel colore del tema; aura
+  del Mistico con due corone di luci (a terra e sopra la testa) e più stelle in orbita; senza calzari si indossano i
+  `sandali` (prima piedi nudi); sull'uomo crocchia e chioma lunga del pacchetto diventano `capelli_corti`.
+  Visto a schermo in vetrina: le 4 classi ai 4 passi da fermi; Lama in corsa e in attacco, Mistico in attacco (video).
+  Non visto: nel gioco col server.
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 

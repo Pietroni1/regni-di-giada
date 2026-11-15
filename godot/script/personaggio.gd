@@ -320,8 +320,8 @@ func metti_testa(stile: String, capelli: Color, cappuccio := Color(0.15, 0.15, 0
 	if capi_modello.has("capelli_corti"):
 		# capigliature vere del modello (capo_capelli_*): si accende quella dello stile e la si tinge
 		var quale: String = {"short": "capelli_corti", "topknot": "capelli_crocchia", "long": "capelli_lunghi", "hood": "capelli_rasati", "bald": ""}.get(stile, "capelli_corti")
-		if quale == "capelli_crocchia" and modello.ends_with("uomo"):
-			quale = "capelli_corti"       # la crocchia del pacchetto è una pettinatura da donna
+		if quale in ["capelli_crocchia", "capelli_lunghi"] and modello.ends_with("uomo"):
+			quale = "capelli_corti"       # crocchia e chioma lunga del pacchetto sono da donna (sull'uomo: calvizie in cima)
 		for n in scheletro.get_children():
 			var mi := n as MeshInstance3D
 			if mi == null:

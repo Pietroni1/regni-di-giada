@@ -232,6 +232,8 @@ func _giocatore() -> Personaggio:
 			wear[capo] = {"stoffa": regno, "piastre": Dati.colore(look.get("trim", 0x999999))} if grado == 1 else {"stoffa": regno}
 	if info.get("f") != null:
 		wear[String(info.f)] = true
+	else:
+		wear["sandali"] = true          # senza calzari equipaggiati: sandali, non piedi nudi
 	if info.get("h") != null:
 		wear[String(info.h)] = true
 	var tipo_arma := "fists"

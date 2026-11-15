@@ -34,6 +34,7 @@ func _ready() -> void:
 	for i in range(gradi.size()):
 		var g: int = gradi[i]
 		var wear := Entita.completo(classe, g, colori)
+		wear[String(_arg.get("piedi", "sandali"))] = true
 		var p := Personaggio.umano(modello, wear, ARMI.get(classe, "sword"), clampi(g, 1, 4), Color(0.8, 0.56, 0.4), colori.fascia)
 		var stile := String(look.get("hairStyle", "short"))
 		if donna and stile in ["topknot", "bald"]:

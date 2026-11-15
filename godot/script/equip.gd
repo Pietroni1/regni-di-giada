@@ -123,18 +123,23 @@ class Saette:
 	var b := Vector3.UP
 	var quante := 2
 	var ampiezza := 0.07
-	var spessore := 0.012
+	var spessore := 0.006
 	var raggio := 0.0            # > 0: archi verticali in punti a caso su un cerchio (aura del corpo)
+	var tinta := Color.WHITE     # alone attorno all'anima chiara
+	var _anima := Color.WHITE
 	var _t := 0.0
 
-	func _init(colore: Color) -> void:
+	func _init(colore: Color, alone_ := Color(0, 0, 0, 0)) -> void:
+		tinta = alone_ if alone_.a > 0.0 else colore
 		mesh = ImmediateMesh.new()
 		var m := StandardMaterial3D.new()
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		m.cull_mode = BaseMaterial3D.CULL_DISABLED
-		m.albedo_color = Color(colore.r, colore.g, colore.b, 0.85)
+		m.vertex_color_use_as_albedo = true
+		m.albedo_color = Color(1, 1, 1, 1)
+		_anima = Color(colore.r, colore.g, colore.b, 0.9).lightened(0.35)
 		material_override = m
 		cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
@@ -161,14 +166,14 @@ class Saette:
 				var p := da.lerp(verso, float(i) / n)
 				if i < n:
 					p += Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * ampiezza
-				for lato in [Vector3(1, 0.2, 0.3).normalized(), Vector3(-0.3, 0.2, 1).normalized()]:
-					var w: Vector3 = (p - prec).cross(lato).normalized() * spessore
-					im.surface_add_vertex(prec - w)
-					im.surface_add_vertex(prec + w)
-					im.surface_add_vertex(p + w)
-					im.surface_add_vertex(prec - w)
-					im.surface_add_vertex(p + w)
-					im.surface_add_vertex(p - w)
+				# si assottiglia verso la punta; attorno all'anima chiara un alone largo e tenue nel colore del tema
+				var fine := 1.0 - 0.6 * float(i) / n
+				for strato in [[spessore * 3.2 * fine, Color(tinta.r, tinta.g, tinta.b, 0.22)], [spessore * fine, _anima]]:
+					for lato in [Vector3(1, 0.2, 0.3).normalized(), Vector3(-0.3, 0.2, 1).normalized()]:
+						var w: Vector3 = (p - prec).cross(lato).normalized() * float(strato[0])
+						for vv in [prec - w, prec + w, p + w, prec - w, p + w, p - w]:
+							im.surface_set_color(strato[1])
+							im.surface_add_vertex(vv)
 				prec = p
 		im.surface_end()
 
@@ -454,10 +459,10 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool, tipo :
 	# lo strato proprio della classe
 	match stile:
 		"fulmine":
-			var sa := Saette.new(l.c2)
+			var sa := Saette.new(l.c2, l.c1)
 			sa.a = base
 			sa.b = punta
-			sa.quante = 1 + passo
+			sa.quante = 1 + (passo + 1) / 2
 			sa.ampiezza = 0.05 + 0.02 * passo
 			arma.add_child(sa)
 		"ombra":
@@ -570,11 +575,11 @@ static func aura_armatura(corpo: Node3D, bu: int, br: int, tipo := "sword") -> v
 	p.gravity = Vector3(0, 0.25, 0)
 	match String(l.stile):
 		"fulmine":      # archi che risalgono il corpo
-			var sa := Saette.new(c2)
+			var sa := Saette.new(c2, c1)
 			sa.raggio = 0.55
-			sa.quante = 1 + passo
-			sa.ampiezza = 0.1
-			sa.spessore = 0.014
+			sa.quante = 1 + (passo + 1) / 2
+			sa.ampiezza = 0.09
+			sa.spessore = 0.007
 			corpo.add_child(sa)
 			p.lifetime = 0.5
 			p.initial_velocity_max = 2.2
@@ -602,12 +607,22 @@ static func aura_armatura(corpo: Node3D, bu: int, br: int, tipo := "sword") -> v
 			f.initial_velocity_max = 1.8
 			f.gravity = Vector3(0, 1.5, 0)
 		"astrale":      # stelle in orbita attorno al busto
-			for k in range(2 + passo):
+			# corona di luci che brillano a terra e sopra la testa
+			for quota in [0.08, 2.5]:
+				var cor := particelle(corpo, 22 + 10 * passo, 0.11, 1.0, c1, c2, 0.9)
+				cor.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+				cor.emission_ring_axis = Vector3.UP
+				cor.emission_ring_radius = 0.95 if quota < 1.0 else 0.5
+				cor.emission_ring_inner_radius = 0.9 if quota < 1.0 else 0.45
+				cor.emission_ring_height = 0.02
+				cor.position.y = quota
+				cor.initial_velocity_max = 0.03
+			for k in range(3 + passo):
 				var perno := Node3D.new()
-				perno.position.y = 0.9 + 0.3 * k
+				perno.position.y = 0.7 + 0.32 * k
 				corpo.add_child(perno)
-				var st := particelle(perno, 14, 0.09, 0.8, c2, c1, 0.95)
-				st.position = Vector3(0.75, 0, 0)
+				var st := particelle(perno, 14, 0.12, 0.4, c2, c1, 1.0)      # vita breve: una scia corta, non una fascia
+				st.position = Vector3(0.7, 0, 0)
 				st.initial_velocity_max = 0.02
 				var giro := corpo.create_tween().set_loops()
 				giro.tween_property(perno, "rotation:y", TAU * (1.0 if k % 2 == 0 else -1.0), 2.4 + 0.5 * k).from(TAU * k / 4.0)
