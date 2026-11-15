@@ -832,10 +832,15 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 		_firma(c, qui, 2.3, 0.9)
 		bagliore(c.mano, colore, 2.6, 0.25)
 	if c.fx == "dash":
-		if c.cls == "ombra":
-			_teletrasporto(c)
-		else:
-			_carica(c)
+		match String(c.tema):
+			"vento": _folata(c)
+			"fiamma", "loto": _balzo(c)
+			"astrale", "giada": _passo_luce(c)
+			_:
+				if c.cls == "ombra":
+					_teletrasporto(c)
+				else:
+					_carica(c)
 		return
 	match tema:
 		"acciaio": _acciaio(c)
@@ -1280,6 +1285,80 @@ func _teletrasporto(c: Dictionary) -> void:
 		taglio_ombra(p, yaw + 0.5, col, c2, 2.6, 2.0, 0.24, 0.8)
 		gocce(p, col, 8)
 		scuoti(0.3))
+
+
+## Ala di Vento (Arco): una folata porta l'arciere al punto d'arrivo, con scie d'aria e penne; verso il bersaglio parte una
+## raffica di penne.
+func _folata(c: Dictionary) -> void:
+	var pp := _punti_scatto(c, false)
+	var partenza: Vector3 = pp[0]
+	var arrivo: Vector3 = pp[1]
+	var col: Color = c.colore
+	var su: Entita = c.su
+	var alto := Vector3(0, 1.1, 0)
+	for i in range(3):
+		var lato := Vector3(randf_range(-0.5, 0.5), 0.35 * i, randf_range(-0.5, 0.5))
+		scia_aria(partenza + alto + lato, arrivo + alto + lato, col, 0.5, 0.45)
+	spirale(partenza, col, 0.9, 2.2, 0.6)
+	petali(partenza + alto, c.c2, 10, 0.8, 1.0, 0.8)
+	polvere(arrivo, 1.2, 8)
+	_dopo(0.1, petali.bind(arrivo + alto, c.c2, 8, 0.7, 1.0, 0.5))
+	if su != null:
+		for i in range(5):
+			var da := arrivo + Vector3(randf_range(-0.6, 0.6), 1.2 + randf_range(-0.2, 0.5), randf_range(-0.6, 0.6))
+			_dopo(0.08 + 0.04 * i, proiettile.bind(da, su, col, 34.0, 0.1, Callable(), false, 10))
+		_dopo(0.3, func() -> void:
+			if is_instance_valid(su):
+				scintille(su.petto(), c.c2, 10, 4.0, 0.35, -8.0, 0.1))
+
+
+## Calcio Volante (Monaco): balzo ad arco con scia di chi (fiamme, o petali con il Loto) e scoppio all'arrivo.
+func _balzo(c: Dictionary) -> void:
+	var pp := _punti_scatto(c, false)
+	var partenza: Vector3 = pp[0]
+	var arrivo: Vector3 = pp[1]
+	var col: Color = c.colore
+	var su: Entita = c.su
+	var loto := String(c.tema) == "loto"
+	anello(partenza, col, 1.6, 0.35, 0.12)
+	polvere(partenza, 1.0, 8)
+	var prima := partenza + Vector3(0, 0.9, 0)
+	for i in range(1, 7):
+		var t := i / 6.0
+		var p := partenza.lerp(arrivo, t) + Vector3(0, 0.9 + sin(t * PI) * 2.2, 0)
+		_dopo(0.03 * i, scia.bind(prima, p, col, 0.9, 0.4))
+		if loto:
+			_dopo(0.03 * i, petali.bind(p, c.c2, 4, 0.4, 0.9, -0.3))
+		else:
+			_dopo(0.03 * i, fiamme.bind(p - Vector3(0, 0.4, 0), col, 5, 0.25, 0.9, 0.45))
+		prima = p
+	_dopo(0.2, func() -> void:
+		var q := (su.petto() if is_instance_valid(su) else arrivo + Vector3(0, 1.2, 0))
+		var yaw := atan2(arrivo.x - partenza.x, arrivo.z - partenza.z)
+		taglio(q, yaw, col, 2.4, 2.2, 0.26, -0.9)
+		bagliore(q, col.lightened(0.3), 2.6, 0.22)
+		scintille(q, c.c2, 18, 6.5, 0.45, -12.0, 0.14)
+		anello(arrivo, col, 2.6, 0.4, 0.14)
+		scuoti(0.45))
+
+
+## Passo di Luce (Mistico): ci si scioglie in una colonna di stelle e si riappare più avanti in un cerchio di rune.
+func _passo_luce(c: Dictionary) -> void:
+	var pp := _punti_scatto(c, false)
+	var partenza: Vector3 = pp[0]
+	var arrivo: Vector3 = pp[1]
+	var col: Color = c.colore
+	colonna(partenza, col, 0.7, 5.0, 0.6)
+	stelle(partenza + Vector3(0, 1.0, 0), c.c2, 14, 2.5, 0.9, 1.5)
+	anello(partenza, col, 1.4, 0.4, 0.1)
+	for i in range(1, 6):
+		var p := partenza.lerp(arrivo, i / 6.0) + Vector3(0, 1.1, 0)
+		_dopo(0.025 * i, stelle.bind(p, col, 3, 0.8, 0.6, 0.3, 0.2))
+	_dopo(0.14, func() -> void:
+		rune(arrivo, col, 1.6, 0.9)
+		colonna(arrivo, col.lightened(0.3), 0.5, 4.0, 0.45)
+		stelle(arrivo + Vector3(0, 1.0, 0), c.c2, 12, 3.0, 0.8, 0.8)
+		bagliore(arrivo + Vector3(0, 1.2, 0), col, 2.4, 0.25))
 
 
 # ------------------------------------------------------------------ buff di classe

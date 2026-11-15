@@ -1466,7 +1466,7 @@ export class World {
           if (p.casting) p.casting = null;
           this.touch(p);
           this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z), r: r2(p.r) });
-          fxd.fx = from.x; fxd.fz = from.z;
+          fxd.fx = from.x; fxd.fz = from.z; fxd.tx = r1(p.x); fxd.tz = r1(p.z);
         }
         for (let i = 0; i < (sk.hits || 1); i++) strikeOne(target, i, sk.hits || 1);
         if (sk.splash) for (const e of this.hostilesAround(p, target.x, target.z, sk.splash)) if (e !== target) { strikeOne(e); control(e); }
@@ -1493,7 +1493,7 @@ export class World {
         if (p.casting) { p.casting.x = p.x; p.casting.z = p.z; }
         this.touch(p);
         this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z), r: r2(p.r || 0) });
-        fxd.fx = from.x; fxd.fz = from.z; fxd.tp = 1;
+        fxd.fx = from.x; fxd.fz = from.z; fxd.tx = r1(p.x); fxd.tz = r1(p.z); fxd.tp = 1;
         break;
       }
       case 'aoe_target': {
