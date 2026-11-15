@@ -249,6 +249,80 @@ senza_peso = W.sum(axis=1) < 1e-6
 Vn[senza_peso] = V[senza_peso]
 V = Vn
 
+# ------------------------------------------------------------------ stile: proporzioni esagerate «da eroe»
+# MakeHuman resta realistico; qui si gonfiano o si stringono le parti del corpo usando i pesi delle ossa
+# (voce "stile" dei parametri: 1 = com'è; spalle, torace, vita, collo, testa, braccia, avambracci, mani, cosce, polpacci, piedi).
+ST = P.get('stile', {})
+FIGLI_TUTTI = {}
+for b_ in ORDINE:
+    FIGLI_TUTTI.setdefault(PADRE[b_], []).append(b_)
+
+
+def discendenti(b):
+    out, coda = [], [b]
+    while coda:
+        x = coda.pop()
+        out.append(x)
+        coda += FIGLI_TUTTI.get(x, [])
+    return out
+
+
+def peso_di(nomi):
+    return W[:, [IDX[n] for n in nomi]].sum(axis=1, keepdims=True)
+
+
+def radiale(b, s):
+    """Ingrossa (o assottiglia) attorno all'asse dell'osso, senza allungarlo."""
+    if abs(s - 1) < 1e-3:
+        return
+    asse = unita(NUOVO[FIGLIO[b]] - NUOVO[b])
+    d = V - NUOVO[b]
+    V[:] = V + peso_di([b]) * (s - 1) * (d - np.outer(d @ asse, asse))
+
+
+def scala_da(b, s):
+    """Scala uniforme di un pezzo intero (mano, piede, testa) attorno al suo giunto."""
+    if abs(s - 1) < 1e-3:
+        return
+    catena = discendenti(b)
+    c = NUOVO[b].copy()
+    V[:] = V + peso_di(catena) * (s - 1) * (V - c)
+    for j in catena:
+        NUOVO[j] = c + s * (NUOVO[j] - c)
+
+
+if ST:
+    scala_da('Head', ST.get('testa', 1))
+    s = ST.get('collo', 1)
+    if abs(s - 1) > 1e-3:
+        asse = unita(NUOVO['Head'] - NUOVO['Neck'])
+        d = V - NUOVO['Neck']
+        V[:] = V + peso_di(['Neck']) * (s - 1) * (d - np.outer(d @ asse, asse))
+    s = ST.get('spalle', 1)
+    if abs(s - 1) > 1e-3:
+        # busto alto più largo; le braccia si spostano in fuori con lui
+        V[:, 0] += peso_di(['Spine2', 'LeftShoulder', 'RightShoulder'])[:, 0] * (s - 1) * V[:, 0]
+        for lato in ('Left', 'Right'):
+            NUOVO[lato + 'Shoulder'] = NUOVO[lato + 'Shoulder'] * np.array([s, 1, 1])
+            catena = discendenti(lato + 'Arm')
+            sposta_x = np.array([(s - 1) * NUOVO[lato + 'Arm'][0], 0, 0])
+            V[:] = V + peso_di(catena) * sposta_x
+            for j in catena:
+                NUOVO[j] = NUOVO[j] + sposta_x
+    s = ST.get('torace', 1)
+    if abs(s - 1) > 1e-3:
+        V[:, 1] += peso_di(['Spine2', 'Spine1'])[:, 0] * (s - 1) * (V[:, 1] - NUOVO['Spine2'][1])
+    s = ST.get('vita', 1)
+    if abs(s - 1) > 1e-3:
+        V[:, 0] += peso_di(['Spine'])[:, 0] * (s - 1) * V[:, 0]
+    for lato in ('Left', 'Right'):
+        radiale(lato + 'Arm', ST.get('braccia', 1))
+        radiale(lato + 'ForeArm', ST.get('avambracci', 1))
+        scala_da(lato + 'Hand', ST.get('mani', 1))
+        radiale(lato + 'UpLeg', ST.get('cosce', 1))
+        radiale(lato + 'Leg', ST.get('polpacci', 1))
+        scala_da(lato + 'Foot', ST.get('piedi', 1))
+
 # ------------------------------------------------------------------ solo il corpo (e gli occhi), altezza del riferimento
 TENUTI = {'body': 0, 'helper-l-eye': 1, 'helper-r-eye': 1}
 facce = [(TENUTI[g], vi, ti) for g, vi, ti in FACCE if g in TENUTI]
@@ -324,6 +398,25 @@ for nome_mat, colore in (('pelle', (0.86, 0.66, 0.52, 1)), ('occhi', (0.95, 0.95
         bsdf.inputs['Base Color'].default_value = colore
         bsdf.inputs['Roughness'].default_value = 0.75 if nome_mat == 'pelle' else 0.25
     me.materials.append(m)
+# ombreggiatura dipinta: le pieghe fra i muscoli più scure (colore dei vertici, 1 = pelle piena)
+co_ = np.array([v.co for v in me.vertices])
+no_ = np.array([v.normal for v in me.vertices])
+vic = [[] for _ in me.vertices]
+lung = 0.0
+for e in me.edges:
+    i0, i1 = e.vertices
+    vic[i0].append(i1)
+    vic[i1].append(i0)
+    lung += float(np.linalg.norm(co_[i0] - co_[i1]))
+lung /= max(1, len(me.edges))
+conc = np.array([float(np.dot(co_[n].mean(axis=0) - co_[i], no_[i])) / lung if n else 0.0 for i, n in enumerate(vic)])
+for _ in range(2):
+    conc = np.array([0.5 * conc[i] + 0.5 * conc[n].mean() if n else conc[i] for i, n in enumerate(vic)])
+ombra = np.clip(1.0 - float(P.get('ombre', 5.0)) * conc, 0.35, 1.0)
+colori = me.color_attributes.new('Col', 'FLOAT_COLOR', 'POINT')
+for i, o in enumerate(ombra):
+    colori.data[i].color = (float(o), float(o), float(o), 1.0)
+me.color_attributes.active_color = colori
 ob = bpy.data.objects.new('corpo', me)
 ob['testa'] = json.dumps(MISURE)
 bpy.context.scene.collection.objects.link(ob)
@@ -376,7 +469,8 @@ centro_cr = np.array([0.0, (ymin + ymax) / 2, cima - raggio])
 def gonfia(i):
     p = V[i]
     alto_ = max(0.0, (p[2] - alt_occhi) / (cima - alt_occhi))
-    return p + norm[i] * (0.012 + 0.016 * alto_) * ALT_RIF / 1.8
+    ciocche = 0.5 + 0.5 * math.sin(p[0] * 150.0 + p[2] * 40.0) * math.sin(p[1] * 110.0 - p[2] * 70.0)   # ciuffi
+    return p + norm[i] * (0.012 + (0.02 + 0.03 * ciocche) * alto_) * ALT_RIF / 1.8
 mc = bpy.data.meshes.new('capo_capelli')
 mc.from_pydata([tuple(gonfia(i)) for i in v_cap], [], [[i_cap[i] for i in vi] for vi in f_cap])
 for poly in mc.polygons:

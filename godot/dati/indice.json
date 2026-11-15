@@ -6,6 +6,8 @@
       "capi": [
         "pantaloni",
         "veste",
+        "bracciali",
+        "gambali",
         "tunica",
         "lamellare",
         "giada",
@@ -22,10 +24,10 @@
       ],
       "spalle": 1.1,
       "testa": {
-        "raggio": 0.0956,
-        "su": 0.0836,
-        "avanti": 0.0103,
-        "profondo": 0.121
+        "raggio": 0.0892,
+        "su": 0.078,
+        "avanti": 0.0096,
+        "profondo": 0.1129
       }
     },
     "base_uomo": {
@@ -34,6 +36,8 @@
       "capi": [
         "pantaloni",
         "veste",
+        "bracciali",
+        "gambali",
         "tunica",
         "lamellare",
         "giada",
@@ -50,10 +54,10 @@
       ],
       "spalle": 1.22,
       "testa": {
-        "raggio": 0.0884,
-        "su": 0.0842,
-        "avanti": 0.0096,
-        "profondo": 0.1249
+        "raggio": 0.0795,
+        "su": 0.0757,
+        "avanti": 0.0086,
+        "profondo": 0.1124
       }
     }
   },

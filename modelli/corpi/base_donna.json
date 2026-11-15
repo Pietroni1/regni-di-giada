@@ -42,5 +42,16 @@
     "head/head-scale-horiz-decr": 0.2,
     "head/head-scale-vert-decr": 0.15,
     "head/head-scale-depth-decr": 0.15
+  },
+  "stile": {
+    "spalle": 1.04,
+    "vita": 0.93,
+    "testa": 0.93,
+    "braccia": 1.05,
+    "avambracci": 1.12,
+    "mani": 1.08,
+    "cosce": 1.05,
+    "polpacci": 1.1,
+    "piedi": 1.05
   }
 }

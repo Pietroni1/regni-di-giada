@@ -20,6 +20,8 @@ void fragment() {
 	vec3 base = colore * vec3(0.9, 0.84, 0.8);          // incarnato più caldo e abbronzato
 	vec3 col = base * (0.93 + 0.12 * v);
 	col = mix(col, base * vec3(1.0, 0.86, 0.82), smoothstep(0.2, -0.8, nl.y) * 0.35);
+	// ombre dipinte fra i muscoli (colore dei vertici dei corpi base; bianco = nessuna ombra)
+	col = mix(col * vec3(0.5, 0.33, 0.3), col, clamp(COLOR.r, 0.0, 1.0));
 	float labbra = smoothstep(0.55, 0.95, viso.x);
 	col = mix(col, col * vec3(0.92, 0.6, 0.56), labbra * 0.75);
 	float sopra = smoothstep(0.58, 0.8, viso.y + (fbm3(pl * 60.0) - 0.5) * 0.1);

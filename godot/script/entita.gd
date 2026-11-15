@@ -166,6 +166,8 @@ func _giocatore() -> Personaggio:
 	var k: Dictionary = Dati.KINGDOMS.get(String(info.get("kd", "")), {})
 	var regno := Dati.colore(k.get("hex", 0x888888))
 	var wear := {"veste": Dati.colore(look.get("robe", 0x555555)), "pantaloni": Dati.colore(look.get("pants", 0x333333))}
+	wear["bracciali"] = Dati.colore(look.get("trim", 0x8a7a5a)).darkened(0.35)     # fasce agli avambracci
+	wear["gambali"] = Dati.colore(look.get("robe", 0x555555)).darkened(0.25)       # schinieri di stoffa e cuoio
 	var corazza = info.get("b")
 	if corazza != null and Dati.ITEMS.has(corazza):
 		var grado := int(Dati.ITEMS[corazza].get("tier", 0))
@@ -184,7 +186,7 @@ func _giocatore() -> Personaggio:
 		grado_arma = int(Dati.ITEMS[arma].get("tier", 1))
 	var lista: Array = Dati.indice.get("classi", {}).get(String(info.get("cls", "lama")), ["base_uomo", "base_donna"])
 	var modello: String = lista[mini(1 if String(info.get("sx", "m")) == "f" else 0, lista.size() - 1)]
-	var p := Personaggio.umano(modello, wear, tipo_arma, grado_arma, Color(0.86, 0.66, 0.52), Dati.colore(look.get("trim", 0xb8a070)))
+	var p := Personaggio.umano(modello, wear, tipo_arma, grado_arma, Color(0.8, 0.56, 0.4), Dati.colore(look.get("trim", 0xb8a070)))
 	var donna := String(info.get("sx", "m")) == "f"
 	var stile := String(look.get("hairStyle", "short"))
 	if donna and stile in ["topknot", "bald"]:

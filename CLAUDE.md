@@ -99,6 +99,12 @@ Obiettivo dell'autore: aspetto alla WoW, cioè corpo base + capi separati che ca
   Schiena e collo vanno allineati allo scheletro (`FIGLIO` in `corpo_base.py`, testa esclusa): con la postura rilassata
   di MakeHuman i personaggi stavano ingobbiti (l'autore l'ha notato subito). Proporzioni «da eroe»: gambe più lunghe,
   testa più piccola. L'autore cita i personaggi di Metin 2 come riferimento di stile (portamento e fisico), non da copiare.
+  L'autore ha poi mandato due schermate del guerriero di Metin 2 chiedendo «simile a questo» (la versione realistica
+  non gli piaceva per niente): **non si copia quel personaggio**, se ne prende il genere. Fatto: voce `stile` nei
+  parametri (`corpo_base.py`: spalle, torace, vita, collo, testa, braccia, avambracci, mani, cosce, polpacci, piedi —
+  scalature con i pesi delle ossa), ombre fra i muscoli nel colore dei vertici (`Col`, usato da `pelle.gdshader`), pelle
+  abbronzata, `veste` senza maniche, `pantaloni` larghi raccolti sotto il ginocchio, capi nuovi `bracciali` e `gambali`
+  (`crea_capi`, con orli lisciati), chioma a ciuffi.
   Da migliorare: attaccatura dei capelli seghettata, pelle uniforme (nessuna texture, muscoli poco leggibili sotto le
   vesti aderenti), scollo della veste seghettato, stili di capelli diversi. Il client nel browser non è stato riprovato
   con i corpi nuovi.
