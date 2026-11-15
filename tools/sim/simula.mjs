@@ -47,6 +47,7 @@ function leggiOpzioni(argv) {
       case '--senza': o.senza = v(); break;
       case '--dettagli': o.dettagli = true; break;
       case '--json': o.json = v(); break;
+      case '--porta': PORTA_FISSA = parseInt(v(), 10) || 0; break;
       case '--vitalita': o.vitalita = Math.max(0, Math.min(1, parseFloat(v()))); break;
       case '--par': for (const kv of v().split(',')) { const [k, x] = kv.split('='); o.par[k] = Number(x); } break;   // prove sulle soglie della rotazione
       case '--radura': o.radura = v().split(',').map(Number); break;
@@ -67,12 +68,13 @@ function leggiOpzioni(argv) {
 }
 
 // ------------------------------------------------------------------ server di prova
+let PORTA_FISSA = 0;   // --porta N: usa quella porta invece di una qualsiasi libera
 function portaLibera() {
   return new Promise((ok, no) => {
     const s = net.createServer();
     s.unref();
     s.on('error', no);
-    s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => ok(p)); });
+    s.listen(PORTA_FISSA, '127.0.0.1', () => { const p = s.address().port; s.close(() => ok(p)); });
   });
 }
 

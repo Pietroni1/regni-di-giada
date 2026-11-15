@@ -109,6 +109,7 @@ export const VILLAGE_LAYOUT = {
     { role: 'stalliere', x: -31, z: -3.5, face: Math.PI / 2 },
     { role: 'custode', x: 7.5, z: -18.4, face: 0 },
     { role: 'guida', x: 31, z: -3.5, face: -Math.PI / 2 },   // viaggi verso le mappe lontane (shared/mappe.js)
+    { role: 'scrivano', x: -6.5, z: 9, face: Math.PI / 2 },   // incarichi giornalieri (shared/missioni.js)
   ],
   lanterns: [[-4, 18], [4, 18], [-4, 28], [4, 28], [-14, -8], [14, -8], [-14, 8], [14, 8]],
   trees: [[-28, -25], [28, -25], [-12, 25], [12, 25], [-30, 28], [30, 28]],

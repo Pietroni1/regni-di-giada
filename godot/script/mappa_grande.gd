@@ -9,10 +9,10 @@ const MEZZO := 256.0            # si mostra il mondo da -256 a +256 (oltre ci so
 
 ## Zone del mondo aperto: nome, livelli, centro dell'etichetta (coordinate del mondo).
 const ZONE := [
-	{"nome": "Altopiano delle Spade Spezzate", "liv": "liv. 16-25", "x": 0.0, "z": 8.0},
-	{"nome": "Terre di Confine", "liv": "liv. 8-16", "x": 0.0, "z": 150.0},
-	{"nome": "Terre di Confine", "liv": "liv. 8-16", "x": -135.0, "z": -70.0},
-	{"nome": "Terre di Confine", "liv": "liv. 8-16", "x": 135.0, "z": -70.0},
+	{"nome": "Altopiano delle Spade Spezzate", "liv": "liv. 17-28", "x": 0.0, "z": 8.0},
+	{"nome": "Terre di Confine", "liv": "liv. 8-18", "x": 0.0, "z": 150.0},
+	{"nome": "Terre di Confine", "liv": "liv. 8-18", "x": -135.0, "z": -70.0},
+	{"nome": "Terre di Confine", "liv": "liv. 8-18", "x": 135.0, "z": -70.0},
 	{"nome": "Monti Nebbiosi", "liv": "", "x": 0.0, "z": 244.0},
 ]
 const ANELLI := {"fenice": "Piana dei Ciliegi Rossi", "tigre": "Boschi del Sussurro", "drago": "Riva delle Gru"}
@@ -286,6 +286,23 @@ func _draw() -> void:
 	if _rett.has_point(mouse):
 		var w := (mouse - _rett.position) / _rett.size * MEZZO * 2.0 - Vector2(MEZZO, MEZZO)
 		_scritta(mouse + Vector2(0, -12), "%s  (%d, %d)" % [_zona_mondo(w.x, w.y), int(w.x), int(w.y)], 12, Color.WHITE)
+	# obiettivi delle missioni (missioni.gd)
+	if gioco.missioni != null:
+		gioco.missioni.disegna_mappa(self)
+
+
+## Punto sullo schermo di un punto del mondo: nel riquadro dei tre regni o nel disco della sua mappa lontana (null se fuori).
+func punto_mappa(x: float, z: float) -> Variant:
+	var id := Mappe.mappa_a(x, z)
+	if id != "":
+		if not _dischi.has(id):
+			return null
+		var m: Dictionary = Mappe.definizioni()[id]
+		var kk: float = float(_dischi[id][1]) / float(m.raggio)
+		return (_dischi[id][0] as Vector2) + Vector2(x - float(m.cx), z - float(m.cz)) * kk
+	if absf(x) > MEZZO or absf(z) > MEZZO:
+		return null
+	return _su(x, z)
 
 
 func _articolo(corto: String) -> String:

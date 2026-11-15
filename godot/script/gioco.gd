@@ -52,6 +52,7 @@ var _amb_cripta: Environment = null
 var _dentro := false
 var mappa: MappaGrande = null      # mappa grande delle zone (tasto M)
 var viaggi: Viaggi = null           # finestra dei viaggi e classifica dell'arena (viaggi.gd)
+var missioni: Missioni = null       # diario, elenco a lato e segni sopra i PNG (missioni.gd)
 var terra: TerraLontana = null      # la mappa lontana in cui si trova il personaggio (terra_lontana.gd)
 var _zona_amb := "-"                # ambiente in uso: "" mondo dei regni, "cripta" o id della mappa
 var _amb_mappe: Dictionary = {}
@@ -74,6 +75,10 @@ func _ready() -> void:
 	viaggi = Viaggi.new()
 	viaggi.gioco = self
 	hud.radice.add_child(viaggi)
+	missioni = Missioni.new()
+	missioni.gioco = self
+	hud.radice.add_child(missioni)
+	missioni.aggancia()
 	mappa = MappaGrande.new()
 	mappa.gioco = self
 	hud.radice.add_child(mappa)
@@ -760,6 +765,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			hud.finestre.apri_chiudi("personaggio")
 		elif k == KEY_K:
 			hud.finestre.apri_chiudi("abilita")
+		elif k == KEY_L:
+			missioni.apri_chiudi()
 		elif k == KEY_R:
 			Rete.manda({"t": "mount"})
 		elif k == KEY_Z:

@@ -121,6 +121,7 @@ const metodi = {
     if (killer && killer.kind === 'player' && killer !== vittima) {
       ka = voce(killer);
       ka.u++; ka.s++; ka.best = Math.max(ka.best, ka.s);
+      this.missioniEvento(killer, 'arena');
     }
     const nome = (q) => `${q.name} (${KINGDOMS[q.kingdom] ? KINGDOMS[q.kingdom].short : '?'})`;
     let testo = ka ? `${nome(killer)} ha abbattuto ${nome(vittima)}` : `${nome(vittima)} è caduto`;
