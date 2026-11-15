@@ -3,7 +3,6 @@ extends Control
 ## Finestre di gioco: Inventario (I), Personaggio (C), Abilità (K), negozio, fabbro e dialoghi dei PNG.
 ## Ogni azione è un messaggio al server (`use`, `mv`, `stat`, `skup`, `via`, `qb`, `buy`, `sell`, `up`): qui si mostra soltanto.
 
-const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale"}
 
 var gioco
 var inventario: PanelContainer
@@ -187,10 +186,13 @@ func testo_oggetto(s) -> String:
 func testo_tecnica(sid: String, lvl: int) -> String:
 	var sk: Dictionary = Dati.SKILLS[sid]
 	var righe: Array = [String(sk.name) + ("  (livello %d — %s)" % [lvl, Effetti.nome_grado(lvl)] if lvl > 0 else "")]
-	if sk.get("interrupt", false):
-		righe.append("Interruzione")
-	elif NOMI_RUOLO.has(String(sk.get("ruolo", ""))):
-		righe.append(NOMI_RUOLO[String(sk.ruolo)])
+	var ruolo := Hud.ruolo_di(sk)
+	if Hud.NOMI_RUOLO.has(ruolo):
+		righe.append(Hud.NOMI_RUOLO[ruolo])
+	if sk.get("scatto", false):
+		righe.append("Ogni uccisione ne accorcia la ricarica di %d s." % int(Dati.gioco.SERIE.scattoS))
+	elif sk.get("potenziamento", false):
+		righe.append("Ogni uccisione ne accorcia la ricarica di %d s." % int(Dati.gioco.SERIE.potS))
 	if sk.get("finale", false):
 		var C: Dictionary = Dati.gioco.COMBAT
 		var cls: Dictionary = Dati.CLASSES.get(gioco.classe, {})
@@ -465,14 +467,12 @@ func _riempi_abilita() -> void:
 		var testo := VBoxContainer.new()
 		testo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(testo)
-		var ruolo := String(sk.get("ruolo", ""))
+		var ruolo := Hud.ruolo_di(sk)
 		var titolo := String(sk.name)
 		if sk.get("sup", false):
 			titolo += "  ·  Tecnica Suprema"
-		elif sk.get("interrupt", false):
-			titolo += "  ·  Interruzione"
-		elif NOMI_RUOLO.has(ruolo):
-			titolo += "  ·  " + NOMI_RUOLO[ruolo]
+		elif Hud.NOMI_RUOLO.has(ruolo):
+			titolo += "  ·  " + Hud.NOMI_RUOLO[ruolo]
 		_etichetta(testo, titolo, Hud.RUOLI.get(ruolo, Color(0.95, 0.93, 0.88)) if imparata else Color(0.5, 0.5, 0.5), 14)
 		_etichetta(testo, String(sk.get("desc", "")) if imparata else "Si sblocca al livello %d" % int(sk.get("lvl", 1)), Color(0.72, 0.7, 0.65), 11)
 		if imparata:
@@ -742,12 +742,19 @@ WASD o clic sul terreno: muoversi  ·  tasto destro trascinato, Q / E: girare la
 
 COMBATTIMENTO
 Clic su un nemico o Tab: bersaglio e attacco automatico  ·  1-0: barra rapida  ·  V: Tecnica Suprema (dal livello 15)
-Pochi tasti: due COLPI BASE (tacca verde) sempre premibili, un COLPO FINALE (rosso), un'INTERRUZIONE (azzurra) e la mossa di Via.
+Pochi tasti: due COLPI BASE (tacca verde) sempre premibili, un COLPO FINALE (rosso), un'INTERRUZIONE (azzurra),
+uno SCATTO (viola), il POTENZIAMENTO di classe (arancio) e la mossa di Via. L'attacco automatico continua anche camminando.
 Il colpo base singolo dà punti di Concentrazione: il finale fa più danni su un bersaglio per ogni punto.
 Il colpo base ad area, se prende 3 o più nemici, accende la RISONANZA: il prossimo finale colpisce tutti (il tasto lampeggia).
+OCCASIONE (il finale lampeggia): il prossimo finale è gratuito e a Concentrazione piena. Arriva a volte da un colpo base,
+sempre da un'interruzione riuscita e ogni 5 uccisioni di fila.
 Quando un nemico lancia (barra arancione) premi l'Interruzione: spezza il lancio e lo stordisce.
 Ogni Via ha una MAESTRIA passiva che premia il suo stile: la trovi nella finestra Abilità.
 Ogni colpo a segno dà una tacca di SLANCIO (fino a 5): più risorsa e rapidità finché continui a colpire.
+SERIE: uccidi un nemico dopo l'altro (entro 7 s) e corri più veloce (fino a +24%), Slancio e Ira non calano,
+ogni uccisione accorcia di 2 s la ricarica dello scatto e di 1 s quella del potenziamento.
+Scatti: Carica (Lama), Passo d'Ombra o Ala di Vento (Ombra), Calcio Volante (Monaco), Passo di Luce (Mistico, verso dove guardi).
+I lanci del Mistico (Dardo, Sfera) si fanno anche camminando.
 Élite e boss hanno la POSTURA (barra gialla): gli scarichi la abbassano; a zero il nemico è Squilibrato, stordito e fragile.
 Spendendo risorsa si riempie la barra della TECNICA SUPREMA.
 

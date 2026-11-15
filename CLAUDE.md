@@ -220,6 +220,53 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   `respiro_drago` (12 s, rapidità e furto di vita, +2 Sfere), Mistico `benedizione_astri` (15 s, attacco e rigenerazione,
   anche ai compagni entro 20 m, +12% Mana). Campi nuovi: `gruppo` (raggio), `manaPct`; statistiche dei buff `lifesteal`,
   `spdPct`. Provato con un bot: i 4 potenziamenti si attivano, l'Ombra arriva dietro, la Lama sulla linea di carica.
+- **Fase 5 — flow** (richiesta dell'autore: «rendilo fluido, con un flow divertente e rapido, parola chiave FLOW»).
+  Diagnosi: nel farming il bot camminava il 70-77% del tempo (branchi distanti, Slancio e Ira che calavano fra un branco e
+  l'altro); Monaco, Mistico e Ombra con l'arco non avevano modo di avvicinarsi o riposizionarsi; i lanci del Mistico si
+  annullavano muovendosi; dopo uno scatto il client spegneva l'attacco automatico (`_su_pos` azzerava `intento`) e i tasti
+  WASD lo spegnevano sempre; le uccisioni rendevano solo 10 punti di risorsa; l'interruzione riuscita rendeva solo risorsa;
+  l'Arco aveva due potenziamenti quasi uguali (Occhio del Falco e Velo d'Ombra); la Montagna (difensore) non aveva
+  provocazione né difesa attiva. Cambiato (server, dati, client Godot; `DATA_VERSION` resta 5):
+  - **Serie di uccisioni** (`SERIE` in `shared/data.js`, `uccisione` in `server/world.js`, chiamata da `mobDie` per chi ha
+    combattuto il mostro entro 40 m): ogni uccisione entro 7 s dalla precedente allunga la serie; in serie si corre più
+    veloci (+4% a uccisione, max +24%: in `recalc`), Slancio e Ira non calano, ogni uccisione toglie 2 s alle ricariche
+    degli scatti (`scatto: true`) e 1 s a quella del potenziamento (`potenziamento: true`; messaggio `cd` con `rid` e `tot`),
+    ogni 5 uccisioni un'Occasione. Al client arriva in `me`/`r` (`se`, `sems`): scritta «Serie ×N +X%» accanto allo Slancio.
+  - **Occasione** (effetto `occasione`, `finaleGratis`): il prossimo finale non costa risorsa e vale come Concentrazione piena
+    (5 punti). Viene da un colpo base a segno (`COMBAT.occasionePct` = 6%), da ogni interruzione riuscita (`interrompi`) e
+    dalla serie. Il tasto del finale lampeggia come per la Risonanza.
+  - **Scatti per tutti**: Carica (Lama, ora +20 Ira), Passo d'Ombra (Pugnali), **Ala di Vento** (Arco, sostituisce il tasto
+    Occhio del Falco: `dashDist` 9, porta a 9 m dal bersaglio avanti o indietro, raffica di penne che rallenta, 2 Punti
+    combo e l'effetto Occhio del Falco per 6 s), **Calcio Volante** (Monaco, base, livello 4: balzo fino a 12 m, +1 Sfera),
+    **Passo di Luce** (Mistico, base, livello 4: tipo `blink`, 10 m nella direzione `r` mandata dal client con `skill`).
+  - **Radici della Montagna** (Montagna, livello 7, mossa di Via): provoca tutti i nemici entro 8 m (`provoca`, stessa logica
+    della vecchia `taunt`) e dà Pelle di Pietra per 10 s.
+  - **Lanci in movimento**: Dardo e Sfera hanno `mobile: true` (il server non li annulla in `onMove`, il client non manda `cancel`).
+  - Client: attacco automatico che continua camminando con WASD sul bersaglio già ingaggiato (`_attacco_in_movimento`), lo
+    scatto non spegne l'attacco, ruoli «Scatto» (viola) e «Potenziamento» (arancio) sotto i tasti (`Hud.ruolo_di`), icone
+    disegnate per le tecniche nuove, i 4 potenziamenti e l'Occasione (`icone.gd`), aiuto in gioco aggiornato.
+  - Tecniche tolte (Occhio del Falco come tasto): `pulisciTecniche` in `migrate` restituisce i punti spesi e toglie il tasto.
+  - Simulazione: i bot di `npm run sim` ora usano anche i potenziamenti di classe e le mosse nuove (prima no: i numeri
+    vecchi erano un po' più bassi del gioco vero); `npm run farming` usa gli scatti per avvicinarsi (`scatti` nella tabella
+    `ROTAZIONI`) e stampa scatti al minuto e serie massima. Prova funzionale delle meccaniche nuove: 18 verifiche con un bot.
+  Taratura dopo le aggiunte: Occhio del Falco rapidità 15% (era 25%, ora 6 s legato all'Ala di Vento), Freccia
+  Perforante 2,8 (era 2,9), Raffica 3,9 (era 3,75). Misura (60 s, velocità 2, 2 in parallelo, una prova; la macchina era
+  molto carica: contano i rapporti; «prima» = codice precedente con lo stesso bot che usa anche i potenziamenti):
+
+
+  | scenario | prima (min … max delle Vie da danno) | dopo | Montagna | Benedizione |
+  |---|---|---|---|---|
+  | liv. 30, 1 bersaglio | 1313 … 1567 (−9% / +9%) | 1396 … 1629 (−8% / +7%) | 64% → 62% | 56% → 54% |
+  | liv. 30, 5 bersagli | 3274 … 4068 (−9% / +13%) | 3354 … 4016 (−9% / +9%) | 65% → 64% | 39% → 37% |
+  | liv. 15, 1 bersaglio | 574 … 663 (−7% / +7%) | 612 … 690 (−4% / +8%) | 64% → 65% | 58% → 59% |
+
+  Barra Suprema invariata (45-54 s su un bersaglio; Tempesta 36 s su 5 bersagli come prima). Farming (`npm run farming
+  -- --minuti 3 --vie fulmine,arco,ferro,tempesta`, velocità 3; prima → dopo): uccisioni al minuto bassa 64-69 → 85-93,
+  media 51-57 → 65-73; esperienza al minuto +23…+35%; tempo a camminare da 53-78% a 53-67% (Fulmine 76 → 67%, Arco 71 → 57-65%); 7-14 scatti al minuto; la
+  serie in pratica non si spezza mai (massimo 56-128 uccisioni). **Da sapere**: l'esperienza all'ora sale di circa un terzo
+  (e il bottino all'ora con lei); se è troppo, abbassare `SERIE.velMax` o `scattoS` prima dei mostri.
+  Non verificati: la resa a vista degli scatti nuovi (gli effetti li disegna `effetti.gd`, `fx: 'dash'`/`'quake'`), il
+  Passo di Luce con mouse e tastiera veri, cure e tenuta del difensore con le Radici in un dungeon vero.
 - **Postura** di élite e boss: fatta (`shared/postura.js`, `colpisciPostura`/`tickPostura` nel server, barre nel client).
 - **Simulazione senza browser**: `npm run sim` (`tools/sim/simula.mjs`). Avvia da sé un server di prova, crea un personaggio
   per Via (livello, arma, punti statistica e abilità), lo porta davanti ai fantocci e gioca una rotazione sensata (tabella

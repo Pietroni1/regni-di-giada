@@ -4,8 +4,19 @@ extends CanvasLayer
 
 const ORO := Color(0.86, 0.72, 0.40)
 const SFONDO := Color(0.06, 0.05, 0.05, 0.82)
-const RUOLI := {"accumulo": Color(0.35, 0.80, 0.40), "medio": Color(0.90, 0.75, 0.30), "potente": Color(0.90, 0.28, 0.22), "interr": Color(0.40, 0.70, 1.0)}
-const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale", "interr": "Interruzione"}
+const RUOLI := {"accumulo": Color(0.35, 0.80, 0.40), "medio": Color(0.90, 0.75, 0.30), "potente": Color(0.90, 0.28, 0.22), "interr": Color(0.40, 0.70, 1.0), "scatto": Color(0.75, 0.55, 1.0), "pot": Color(1.0, 0.62, 0.25)}
+const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale", "interr": "Interruzione", "scatto": "Scatto", "pot": "Potenziamento"}
+
+
+## Ruolo di una tecnica per l'interfaccia (tacca colorata sotto il tasto, titolo nella finestra Abilità).
+static func ruolo_di(sk: Dictionary) -> String:
+	if sk.get("interrupt", false):
+		return "interr"
+	if sk.get("scatto", false):
+		return "scatto"
+	if sk.get("potenziamento", false):
+		return "pot"
+	return String(sk.get("ruolo", ""))
 
 var gioco                       # Gioco (non tipizzato per evitare il riferimento circolare)
 var radice: Control
@@ -16,6 +27,7 @@ var risorsa: ProgressBar
 var risorsa_txt: Label
 var punti: Label
 var slancio: HBoxContainer
+var serie: Label                # serie di uccisioni: «Serie ×N»
 var suprema: ProgressBar
 var riq_bersaglio: PanelContainer
 var nome_b: Label
@@ -139,6 +151,15 @@ func _ready() -> void:
 	var molla := Control.new()
 	molla.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	riga.add_child(molla)
+	serie = Label.new()
+	serie.add_theme_font_size_override("font_size", 15)
+	serie.add_theme_color_override("font_color", Color(1.0, 0.78, 0.3))
+	serie.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	serie.add_theme_constant_override("outline_size", 4)
+	serie.tooltip_text = "Serie di uccisioni: finché continui a uccidere corri più veloce, Slancio e Ira non calano e le ricariche degli scatti si accorciano"
+	serie.mouse_filter = Control.MOUSE_FILTER_PASS
+	serie.visible = false
+	riga.add_child(serie)
 	slancio = HBoxContainer.new()
 	slancio.add_theme_constant_override("separation", 3)
 	slancio.tooltip_text = "Slancio: ogni colpo a segno dà una tacca (più risorsa, rapidità e rigenerazione)"
@@ -557,6 +578,7 @@ func aggiorna_io(io: Dictionary, nome: String) -> void:
 	var sl := int(io.get("sl", 0))
 	for i in range(slancio.get_child_count()):
 		(slancio.get_child(i) as ColorRect).color = Color(1.0, 0.72, 0.25) if i < sl else Color(0, 0, 0, 0.6)
+	_aggiorna_serie(io)
 	suprema.value = float(io.get("su", 0))
 	suprema.visible = int(io.get("lvl", 1)) >= int(Dati.gioco.SUPREMA.lvl)
 	morte.visible = int(io.get("dead", 0)) == 1
@@ -566,9 +588,24 @@ func aggiorna_io(io: Dictionary, nome: String) -> void:
 	finestre.aggiorna()
 
 
+## «Serie ×N  +X%»: sparisce quando la serie si spezza, sbiadisce negli ultimi due secondi.
+func _aggiorna_serie(io: Dictionary) -> void:
+	var n := int(io.get("se", 0))
+	var resta: float = float(io.get("sems", 0)) - (float(gioco.ora()) - float(io.get("_se_t", gioco.ora())))
+	if n <= 0 or resta <= 0.0:
+		serie.visible = false
+		return
+	var S: Dictionary = Dati.gioco.SERIE
+	serie.visible = true
+	serie.text = "Serie ×%d  +%d%%   " % [n, mini(int(S.velMax), n * int(S.velPct))]
+	serie.modulate.a = clampf(resta / 2000.0, 0.25, 1.0)
+
+
 func _process(dt: float) -> void:
 	if gioco == null:
 		return
+	if serie.visible:
+		_aggiorna_serie(gioco.io)
 	if _avviso_t > 0.0:
 		_avviso_t -= dt
 		avviso.modulate.a = clampf(_avviso_t / 0.6, 0.0, 1.0)
@@ -614,8 +651,8 @@ func _process(dt: float) -> void:
 	var sta_lanciando: bool = b != null and gioco.lanci_nemici.has(b.id) and float(gioco.lanci_nemici[b.id].fine) > ora
 	var risonanza := false
 	for bf in gioco.io.get("buffs", []):
-		if String(bf.b) == "risonanza":
-			risonanza = true
+		if String(bf.b) == "risonanza" or String(bf.b) == "occasione":
+			risonanza = true      # il finale lampeggia: Risonanza (ad area) o Occasione (gratuito e pieno)
 	for t in tasti:
 		var tt := t as Tasto
 		tt.tempo(ora, gioco.ricariche, gioco.gcd_fine, gioco.gcd_durata)
@@ -771,7 +808,7 @@ class Tasto:
 			glifo = String(sk.get("glyph", "?"))
 			icona = String(v.id) if Icone.ha(String(v.id)) else ""
 			nome = String(sk.name)
-			ruolo = "interr" if sk.get("interrupt", false) else String(sk.get("ruolo", ""))
+			ruolo = Hud.ruolo_di(sk)
 			colore = Dati.colore(sk.get("color", 0xcccccc))
 			var costo := float(sk.get("cost", 0))
 			var ho := float(io.get("res", 0))

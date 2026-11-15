@@ -4,7 +4,7 @@ import {
   CLASSES, VIE, SKILLS, BUFFS, RESOURCES, ITEMS, MOBS, UPGRADE, SHOPS, NPC_ROLES, WEAPON_TYPES, GUARD_LINES,
   INV_SIZE, QB_SIZE, STACK_MAX, STAT_MAX, EQUIP_SLOTS, MAX_LEVEL, VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BOOK_CHANCE,
   PTS_MAX, COMBAT, dungeonWalkable, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, weeklyAffixes, trialScale, keyChange, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
-  expToNext, skillVal, upgradedStat, equipSlotOf, SLANCIO, BONUS_RISORSA, SUPREMA,
+  expToNext, skillVal, upgradedStat, equipSlotOf, SLANCIO, BONUS_RISORSA, SUPREMA, SERIE,
 } from '../shared/data.js';
 import {
   KINGDOMS, KINGDOM_IDS, CENTER, heightAt, villageFrame, toWorld, VILLAGE_LAYOUT, safeZoneAt, villageSpawn,
@@ -102,9 +102,21 @@ function defaultQuickbar(ch) {
   ch.qb[QB_SIZE - 1] = { k: 'i', id: c.res === 'mana' ? 'loto_p' : 'pergamena_ritorno' };
 }
 
+// Tecniche tolte o cambiate di classe senza cambiare DATA_VERSION (es. Occhio del Falco → Ala di Vento): si
+// restituiscono i punti spesi (fino al livello 10; i tomi oltre il 10 sono persi) e si toglie il tasto dalla barra.
+function pulisciTecniche(ch) {
+  for (const sid of Object.keys(ch.skills || {})) {
+    if (SKILLS[sid] && SKILLS[sid].cls === ch.cls) continue;
+    ch.skillPts = (ch.skillPts || 0) + Math.max(0, Math.min(ch.skills[sid], SKILL_MAX_POINTS) - 1);
+    delete ch.skills[sid];
+  }
+  if (Array.isArray(ch.qb)) ch.qb = ch.qb.map(q => (q && q.k === 's' && !SKILLS[q.id] ? null : q));
+}
+
 // Adegua i personaggi creati con versioni precedenti dei dati.
 function migrate(ch) {
   if (ch.horse === undefined) ch.horse = null;
+  pulisciTecniche(ch);
   if (ch.v === DATA_VERSION) return;
   ch.skills = {};
   ch.skillPts = Math.max(0, ch.lvl - 1);
@@ -367,6 +379,7 @@ export class World {
       x: ch.x, z: ch.z, r: 0, hp: ch.hp, buffs: [], hots: [], dots: [], debuffs: [], cds: {},
       rtype: CLASSES[ch.cls].res, res: 0, rmax: 100, pts: 0, gcdUntil: 0, casting: null, chainIdx: 0, chainAt: 0,
       shield: 0, shieldUntil: 0, dmgPct: 0, haste: 0, mounted: false, mountUntil: 0, slancio: 0, slancioUntil: 0, sup: 0, waves: [],
+      serie: 0, serieUntil: 0,
       nextAttack: 0, dead: false, known: new Map(), knownVis: new Map(), stunUntil: 0, slowUntil: 0,
       lastMoveAt: NOW(), lastCombat: 0, selfDirty: true, invDirty: true, resDirty: false, gm: !!sess.gm, online: true,
     };
@@ -463,7 +476,8 @@ export class World {
     p.evade = Math.min(25, s.dex * 0.2 + (g.evade || 0));
     p.haste = (b.hastePct || 0) + (g.haste || 0) + (p.slancio || 0) * SLANCIO.hastePct;
     p.aspd = Math.round(aspd / (1 + p.haste / 100 + s.dex * 0.004));
-    p.speed = 8 * (1 + (spdPct + (g.moveSpd || 0) + (b.spdPct || 0)) / 100) * (p.mounted && p.ch.horse ? HORSE.speed(p.ch.horse.lvl) : 1);
+    const spdSerie = Math.min(SERIE.velMax, (p.serie || 0) * SERIE.velPct);   // la serie di uccisioni fa correre
+    p.speed = 8 * (1 + (spdPct + (g.moveSpd || 0) + (b.spdPct || 0) + spdSerie) / 100) * (p.mounted && p.ch.horse ? HORSE.speed(p.ch.horse.lvl) : 1);
     p.monDmg = g.monDmg || 0; p.bossDmg = g.bossDmg || 0; p.aoeDmg = g.aoeDmg || 0;
     p.lifesteal = (g.lifesteal || 0) + (b.lifesteal || 0); p.dmgRed = Math.min(50, g.dmgRed || 0);
     p.expPct = g.expPct || 0; p.taelPct = g.taelPct || 0; p.dropPct = g.dropPct || 0;
@@ -522,7 +536,7 @@ export class World {
     const chain = this.chainOf(p) && t - p.chainAt < 6000 ? p.chainIdx : 0;
     return {
       t: 'me', lvl: p.lvl, exp: ch.exp, need: expToNext(p.lvl), hp: Math.round(p.hp), mhp: p.maxHp,
-      res: Math.floor(p.res), rmax: p.rmax, rt: p.rtype, pts: p.pts, sl: p.slancio, su: Math.floor(p.sup), chain, shield: Math.round(p.shieldUntil > t ? p.shield : 0),
+      res: Math.floor(p.res), rmax: p.rmax, rt: p.rtype, pts: p.pts, sl: p.slancio, su: Math.floor(p.sup), chain, ...this.serieMsg(p, t), shield: Math.round(p.shieldUntil > t ? p.shield : 0),
       atk: p.atk, matk: p.matk, def: p.def, crit: r1(p.crit), ev: r1(p.evade), aspd: p.aspd, spd: r2(p.speed), range: p.range,
       haste: r1(p.haste), gcd: this.gcdMs(p), dmgPct: r1(p.dmgPct),
       sp: ch.statPts, kp: ch.skillPts, st: ch.stats, via: ch.via, sk: ch.skills, tael: ch.tael, qb: ch.qb,
@@ -531,6 +545,9 @@ export class World {
       mounted: p.mounted ? 1 : 0, horse: p.ch.horse ? { lvl: p.ch.horse.lvl, exp: Math.floor(p.ch.horse.exp), need: HORSE.need(p.ch.horse.lvl) } : null,
     };
   }
+
+  // serie di uccisioni per il client: se = uccisioni, sems = millisecondi prima che si spezzi
+  serieMsg(p, t) { return p.serie > 0 ? { se: p.serie, sems: Math.max(0, p.serieUntil - t) } : { se: 0 }; }
 
   partyState(party) {
     return {
@@ -567,7 +584,7 @@ export class World {
       for (const id of p.known.keys()) if (!seen.has(id)) { rms.push(id); p.known.delete(id); p.knownVis.delete(id); }
       if (adds.length || ups.length || rms.length) this.send(p, { t: 'v', a: adds, u: ups, r: rms });
       if (p.selfDirty) { p.selfDirty = false; p.resDirty = false; this.send(p, this.meMsg(p)); }
-      else if (p.resDirty) { p.resDirty = false; this.send(p, { t: 'r', hp: Math.round(p.hp), res: Math.floor(p.res), pts: p.pts, sl: p.slancio, su: Math.floor(p.sup) }); }
+      else if (p.resDirty) { p.resDirty = false; this.send(p, { t: 'r', hp: Math.round(p.hp), res: Math.floor(p.res), pts: p.pts, sl: p.slancio, su: Math.floor(p.sup), ...this.serieMsg(p, NOW()) }); }
       if (p.invDirty) { p.invDirty = false; this.send(p, { t: 'inv', inv: p.ch.inv, eq: p.ch.equip }); }
     }
   }
@@ -628,12 +645,14 @@ export class World {
     }
     // risorsa
     const R = RESOURCES[p.rtype], ooc = t - p.lastCombat > 6000, old = p.res;
+    const inSerie = p.serie > 0 && t <= p.serieUntil;
+    if (p.serie > 0 && !inSerie) { p.serie = 0; this.recalc(p); p.resDirty = true; }
     if (R.regen) p.res = Math.min(p.rmax, p.res + R.regen * dt * (1 + p.haste / 100) * (1 + p.resRegenPct / 100));
-    if (R.decay && ooc) p.res = Math.max(0, p.res - R.decay * dt);
+    if (R.decay && ooc && !inSerie) p.res = Math.max(0, p.res - R.decay * dt);   // in serie l'Ira non cala fra un branco e l'altro
     if (R.regenPct) p.res = Math.min(p.rmax, p.res + p.rmax * (ooc ? R.regenPctOoc : R.regenPct) / 100 * dt);
     if (Math.floor(old) !== Math.floor(p.res)) p.resDirty = true;
     if (ooc && p.pts > 0 && t - p.lastCombat > 20000) { p.pts = 0; p.resDirty = true; }
-    if (p.slancio > 0 && t > p.slancioUntil) { p.slancio--; p.slancioUntil = t + SLANCIO.decayMs; this.recalc(p); p.resDirty = true; }
+    if (p.slancio > 0 && t > p.slancioUntil && !inSerie) { p.slancio--; p.slancioUntil = t + SLANCIO.decayMs; this.recalc(p); p.resDirty = true; }
     if (regen && p.hp < p.maxHp) {
       p.hp = Math.min(p.maxHp, p.hp + p.maxHp * (ooc ? 0.02 : 0.004) + p.maxHp * p.hpRegen / 100);
       p.resDirty = true; this.touch(p);
@@ -979,6 +998,7 @@ export class World {
 
   mobDie(m, killer) {
     if (killer && killer.kind === 'player') this.giveRes(killer, BONUS_RISORSA.kill);
+    this.uccisione(m, killer);
     m.hp = 0; m.removeAt = NOW() + 2500; this.touch(m);
     this.fx(m, { k: 'die', d: m.id });
     const d = m.d;
@@ -1085,7 +1105,7 @@ export class World {
 
   playerDie(p, killer) {
     p.dead = true; p.hp = 0; p.deadAt = NOW();
-    p.buffs = []; p.hots = []; p.dots = []; p.waves = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0;
+    p.buffs = []; p.hots = []; p.dots = []; p.waves = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0; p.serie = 0;
     p.mounted = false; p.mountUntil = 0; p.vis++;
     this.recalc(p);
     this.touch(p); p.selfDirty = true;
@@ -1142,7 +1162,9 @@ export class World {
     switch (msg.t) {
       case 'move': return this.onMove(p, msg);
       case 'atk': return this.onAttack(p, msg.id);
-      case 'skill': return this.onSkill(p, msg.s, msg.id);
+      case 'skill':
+        if (Number.isFinite(+msg.r) && msg.r !== null && !p.dead) p.r = +msg.r;   // direzione del Passo di Luce
+        return this.onSkill(p, msg.s, msg.id);
       case 'chat': return this.onChat(p, msg.m);
       case 'pick': return this.onPickup(p, msg.id);
       case 'use': return this.onUse(p, msg.i | 0);
@@ -1185,7 +1207,7 @@ export class World {
     if (Math.hypot(x - p.x, z - p.z) > maxD) { this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z) }); return; }
     [p.x, p.z] = this.clampPos(p, x, z);
     if (Number.isFinite(+msg.r)) p.r = +msg.r;
-    if (p.casting && Math.hypot(p.x - p.casting.x, p.z - p.casting.z) > 0.35) this.cancelCast(p);
+    if (p.casting && !SKILLS[p.casting.sid].mobile && Math.hypot(p.x - p.casting.x, p.z - p.casting.z) > 0.35) this.cancelCast(p);
     if (p.mountUntil && Math.hypot(p.x - p.mountX, p.z - p.mountZ) > 0.35) { p.mountUntil = 0; this.send(p, { t: 'castend', ok: 0 }); }
     this.touch(p);
   }
@@ -1235,6 +1257,7 @@ export class World {
   costOf(p, sk) {
     if (!sk.cost) return 0;
     if (this.hasBuffWith(p, 'free', sk.id)) return 0;
+    if (sk.finale && p.buffs.some(b => BUFFS[b.id].finaleGratis)) return 0;   // Occasione
     let c = sk.cost;
     for (const b of p.buffs) { const cm = BUFFS[b.id].costMod; if (cm && cm[sk.id]) c += cm[sk.id]; }
     c = Math.max(0, c);
@@ -1367,6 +1390,8 @@ export class World {
     p.res = Math.max(0, p.res - speso);
     let n = 0;
     if ((sk.spend && sk.type !== 'heal_aoe') || sk.finale) { n = p.pts; p.pts = 0; }
+    // Occasione: il finale è gratuito (vedi costOf) e vale come se la Concentrazione fosse piena
+    if (sk.finale && p.buffs.some(b => b.id === 'occasione')) { n = Math.max(n, PTS_MAX); p.buffs = p.buffs.filter(b => b.id !== 'occasione'); }
     // Risonanza: il finale diventa ad area (e la consuma)
     const ris = !!sk.finale && p.buffs.some(b => b.id === 'risonanza');
     if (ris) p.buffs = p.buffs.filter(b => b.id !== 'risonanza');
@@ -1431,6 +1456,8 @@ export class World {
           // teletrasporto (behindDash): si riappare alle sue spalle, cioè dalla parte opposta a dove guarda
           let dx = -Math.sin(ang) * off, dz = -Math.cos(ang) * off;
           if (sk.behindDash) { dx = -Math.sin(target.r || 0) * off; dz = -Math.cos(target.r || 0) * off; fxd.tp = 1; }
+          // riposizionamento (Ala di Vento): si arriva a dashDist metri dal bersaglio, sulla linea fra lui e te
+          if (sk.dashDist) { const l = Math.hypot(p.x - target.x, p.z - target.z) || 1; dx = (p.x - target.x) / l * sk.dashDist; dz = (p.z - target.z) / l * sk.dashDist; }
           // arrivo dello scatto: dentro i limiti della zona in cui si è (mondo o istanza della cripta) e, nella cripta,
           // su un punto calpestabile — altrimenti si arretra lungo la traiettoria finché lo è
           const [ax, az] = this.arrivoScatto(p, target.x + dx, target.z + dz);
@@ -1451,9 +1478,24 @@ export class World {
         break;
       }
       case 'aoe_self':
-        for (const e of this.hostilesAround(p, p.x, p.z, sk.radius)) { strikeOne(e); control(e); if (sk.dot && this.canAttack(p, e)) this.applyDot(p, e, sk, lvl, n, base, pctFor(e)); }
+        for (const e of this.hostilesAround(p, p.x, p.z, sk.radius)) {
+          strikeOne(e); control(e);
+          if (sk.dot && this.canAttack(p, e)) this.applyDot(p, e, sk, lvl, n, base, pctFor(e));
+          if (sk.provoca && e.kind === 'mob') this.provoca(p, e);
+        }
         fxd.x = r1(p.x); fxd.z = r1(p.z); offensive = true;
         break;
+      case 'blink': {
+        // Passo di Luce: dist metri avanti nella direzione in cui si guarda (arretrando se si finisce fuori dalla zona)
+        const from = { x: r1(p.x), z: r1(p.z) };
+        const [ax, az] = this.arrivoScatto(p, p.x + Math.sin(p.r || 0) * sk.dist, p.z + Math.cos(p.r || 0) * sk.dist);
+        p.x = ax; p.z = az;
+        if (p.casting) { p.casting.x = p.x; p.casting.z = p.z; }
+        this.touch(p);
+        this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z), r: r2(p.r || 0) });
+        fxd.fx = from.x; fxd.fz = from.z; fxd.tp = 1;
+        break;
+      }
       case 'aoe_target': {
         const cx = target.x, cz = target.z;
         for (const e of this.hostilesAround(p, cx, cz, sk.radius)) { strikeOne(e); control(e); if (sk.dot && this.canAttack(p, e)) this.applyDot(p, e, sk, lvl, n, base, pctFor(e)); }
@@ -1469,13 +1511,7 @@ export class World {
         break;
       }
       case 'taunt': {
-        if (!target.d.dummy && !target.d.stone) {
-          let max = 0;
-          for (const v of target.aggro.values()) max = Math.max(max, v);
-          target.aggro.set(p.id, max * 1.1 + 100);
-          target.target = p.id;
-          if (target.state === 'return') target.state = 'idle';
-        }
+        this.provoca(p, target);
         fxd.d = target.id; offensive = true;
         break;
       }
@@ -1556,9 +1592,11 @@ export class World {
       if (mae.critPts && crit) p.pts = Math.min(PTS_MAX, p.pts + mae.critPts);
       if (mae.grazia && inflitti > 0) this.heal(this.piuFerito(p, 25), inflitti * mae.grazia / 100 * (1 + p.healPct / 100));
       p.ultimoBase = sid;
+      // a volte un colpo base apre un'Occasione: il prossimo finale è gratuito e a Concentrazione piena
+      if (colpiti.size && Math.random() * 100 < COMBAT.occasionePct) this.addBuff(p, 'occasione', 1);
     }
     if (sk.finale && mae.cura) this.heal(p, p.maxHp * mae.cura / 100);
-    if (sk.buff && sk.type === 'strike') this.addBuff(p, sk.buff, lvl);
+    if (sk.buff && (sk.type === 'strike' || sk.type === 'aoe_self')) this.addBuff(p, sk.buff, lvl);
     const viaOk = (o) => !o.via || o.via === p.ch.via;
     if (crit && sk.onCrit && viaOk(sk.onCrit)) this.addBuff(p, sk.onCrit.buff, 1);
     if (sk.proc && viaOk(sk.proc) && Math.random() < sk.proc.chance) this.addBuff(p, sk.proc.buff, 1);
@@ -1568,6 +1606,39 @@ export class World {
     p.selfDirty = true; this.touch(p);
     this.send(p, { t: 'cd', s: sid, ms: (sk.cd || 0) * 1000, gcd: gcd ?? (sk.offgcd ? 0 : this.gcdMs(p)) });
     this.fx(p, fxd);
+  }
+
+  // Provocazione: il mostro mette p in cima alla sua minaccia (fantocci e pietre non hanno minaccia).
+  provoca(p, m) {
+    if (!m || m.kind !== 'mob' || m.d.dummy || m.d.stone || m.hp <= 0) return;
+    let max = 0;
+    for (const v of m.aggro.values()) max = Math.max(max, v);
+    m.aggro.set(p.id, max * 1.1 + 100);
+    m.target = p.id;
+    if (m.state === 'return') m.state = 'idle';
+  }
+
+  // Serie di uccisioni (SERIE in shared/data.js): la allungano tutti i giocatori che hanno combattuto il mostro, vicini.
+  uccisione(m, killer) {
+    const t = NOW(), chi = new Set();
+    if (killer && killer.kind === 'player') chi.add(killer);
+    for (const pid of m.aggro.keys()) { const q = this.ents.get(pid); if (q && q.kind === 'player') chi.add(q); }
+    for (const q of chi) {
+      if (q.dead || !q.online || dist(q, m) > 40) continue;
+      q.serie = t <= q.serieUntil ? q.serie + 1 : 1;
+      q.serieUntil = t + SERIE.finestraMs;
+      if (q.slancio > 0) q.slancioUntil = Math.max(q.slancioUntil, t + SLANCIO.windowMs);
+      // le uccisioni accorciano le ricariche di scatti e potenziamento (il client riceve la ricarica nuova, `rid`)
+      for (const sid of Object.keys(q.cds)) {
+        const sk = SKILLS[sid], meno = sk && (sk.scatto ? SERIE.scattoS : sk.potenziamento ? SERIE.potS : 0);
+        if (!meno || q.cds[sid] <= t) continue;
+        q.cds[sid] -= meno * 1000;
+        this.send(q, { t: 'cd', s: sid, ms: Math.max(0, q.cds[sid] - t), tot: sk.cd * 1000, rid: 1 });
+      }
+      if (q.serie % SERIE.occasioneOgni === 0) this.addBuff(q, 'occasione', 1);
+      this.recalc(q);
+      q.resDirty = true;
+    }
   }
 
   // Punto d'arrivo valido per uno scatto verso (x, z): rispetta i confini della zona e i muri della cripta.
@@ -1592,11 +1663,13 @@ export class World {
       target.nextCast = NOW() + (target.d.cast ? target.d.cast.cd : 8000);
       this.fx(target, { k: 'mcastend', s: target.id, int: 1 });
       this.giveRes(p, COMBAT.genInterr);
+      this.addBuff(p, 'occasione', 1);       // interruzione riuscita: finestra per un finale gratuito e pieno
       p.resDirty = true;
     } else if (target.kind === 'player' && target.casting) {
       this.cancelCast(target);
       this.fx(target, { k: 'mcastend', s: target.id, int: 1 });
       this.giveRes(p, COMBAT.genInterr);
+      this.addBuff(p, 'occasione', 1);
     }
   }
 

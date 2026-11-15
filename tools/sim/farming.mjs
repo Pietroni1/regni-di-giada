@@ -134,6 +134,7 @@ async function avviaServer(velocita) {
 // Risonanza, poi il finale (che diventa ad area); contro un bersaglio solo colpo base singolo e finale a 3 punti.
 function rotazione(S, c) {
   if (S.ok(S.sup)) return S.sup;
+  if (S.b('occasione') && S.ok(c.fin)) return c.fin;   // Occasione: finale gratuito e a Concentrazione piena
   if (S.multi) {
     if (S.b('risonanza') && S.ok(c.fin)) return c.fin;
     return c.f2;
@@ -142,14 +143,16 @@ function rotazione(S, c) {
   if (c.ritmo && S.ultimoBase === c.f1) return c.f2;
   return c.f1;
 }
+// scatti: tecniche con `scatto` usate per raggiungere prima il bersaglio (Carica, Passo d'Ombra, Ala di Vento,
+// Calcio Volante, Passo di Luce) quando è a più di qualche metro.
 const ROTAZIONI = {
-  fulmine: { distanza: 1.6, arma: 'sword', gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'lama_tuono' }), fuori: {} },
-  montagna: { distanza: 1.6, arma: 'sword', vitalita: 2 / 3, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'martello_monte' }), fuori: {} },
-  pugnali: { distanza: 1.6, arma: 'daggers', gcd: (S) => rotazione(S, { f1: 'colpo_rapido', f2: 'ventaglio', fin: 'taglio_finale' }), fuori: {} },
-  arco: { distanza: 10, arma: 'bow', gcd: (S) => rotazione(S, { f1: 'colpo_rapido', f2: 'ventaglio', fin: 'freccia_perforante' }), fuori: { occhio_falco: () => true } },
-  ferro: { distanza: 1.6, arma: 'fists', gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'raffica', ritmo: true }), fuori: { pelle_bronzo: () => true } },
-  loto: { distanza: 1.6, arma: 'fists', gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'vortice_interiore' }), fuori: { meditazione: () => true } },
-  tempesta: { distanza: 12, arma: 'staff', gcd: (S) => rotazione(S, { f1: 'dardo_luce', f2: 'sfera_celeste', fin: 'giudizio_cielo' }), fuori: { occhio_ciclone: () => true } },
+  fulmine: { distanza: 1.6, arma: 'sword', gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'lama_tuono' }), fuori: { grido_guerra: () => true }, scatti: ['carica'] },
+  montagna: { distanza: 1.6, arma: 'sword', vitalita: 2 / 3, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'martello_monte' }), fuori: { grido_guerra: () => true, radici_monte: (S) => S.multi }, scatti: ['carica'] },
+  pugnali: { distanza: 1.6, arma: 'daggers', gcd: (S) => rotazione(S, { f1: 'colpo_rapido', f2: 'ventaglio', fin: 'taglio_finale' }), fuori: { velo_ombra: () => true }, scatti: ['passo_ombra'] },
+  arco: { distanza: 10, arma: 'bow', gcd: (S) => rotazione(S, { f1: 'colpo_rapido', f2: 'ventaglio', fin: 'freccia_perforante' }), fuori: { velo_ombra: () => true }, scatti: ['ala_vento'] },
+  ferro: { distanza: 1.6, arma: 'fists', gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'raffica', ritmo: true }), fuori: { respiro_drago: () => true, pelle_bronzo: () => true }, scatti: ['calcio_volante'] },
+  loto: { distanza: 1.6, arma: 'fists', gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'vortice_interiore' }), fuori: { respiro_drago: () => true, meditazione: () => true }, scatti: ['calcio_volante'] },
+  tempesta: { distanza: 12, arma: 'staff', gcd: (S) => rotazione(S, { f1: 'dardo_luce', f2: 'sfera_celeste', fin: 'giudizio_cielo' }), fuori: { benedizione_astri: () => true, occhio_ciclone: () => true }, scatti: ['passo_luce'] },
 };
 const BERSAGLIATE = ['strike', 'aoe_target', 'debuff', 'taunt'];
 const dist2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -170,6 +173,7 @@ class Bot {
     this.cds = {}; this.blocco = {}; this.buffs = {};
     this.gcdFino = 0; this.lancio = null; this.attesa = null; this.prossimoAtk = 0;
     this.ultimoBase = null; this.fuoriAttesa = {};
+    this.scatti = 0; this.serieMax = 0; this.serieSomma = 0; this.serieN = 0;
     this.ostili = new Map();        // id del mostro -> istante dell'ultimo colpo subito da lui
     this.primo = 0; this.ondaGiro = 0; this.passoMove = 0; this.pozioneFino = 0; this.rinasciFino = 0;
     this.inCorso = false;
@@ -226,13 +230,14 @@ class Bot {
         if (this.inCorso) {
           if (m.dead && !eraMorto) this.morti++;
           this.minVita = Math.min(this.minVita, m.hp / m.mhp);
+          this.serieMax = Math.max(this.serieMax, m.se || 0);
         }
         break;
       }
       case 'r':
         if (!this.me) break;
         this.me.hp = m.hp; this.me.res = m.res; this.me.pts = m.pts;
-        if (this.inCorso) this.minVita = Math.min(this.minVita, m.hp / this.me.mhp);
+        if (this.inCorso) { this.minVita = Math.min(this.minVita, m.hp / this.me.mhp); this.serieMax = Math.max(this.serieMax, m.se || 0); }
         break;
       case 'v':
         for (const e of m.a || []) {
@@ -255,7 +260,7 @@ class Bot {
         if (this.attesa && this.attesa.sid === m.s) { this.gcdFino = this.attesa.gcdPrima; this.attesa = null; }
         this.blocco[m.s] = 0;
         break;
-      case 'cd': this.usata(m, ora); break;
+      case 'cd': if (m.rid) { this.cds[m.s] = ora + m.ms; break; } this.usata(m, ora); break;   // rid: ricarica accorciata da un'uccisione
       case 'fx': if (m.k === 'hit' && m.d === this.id && m.s !== this.id) { if (this.inCorso) this.subiti += m.v || 0; this.ostili.set(m.s, ora); } break;
       case 'gain':
         if (!this.inCorso) break;
@@ -416,6 +421,7 @@ class Bot {
       if (fino <= ora) continue;
       const d = BUFFS[b];
       if (d.free && d.free.includes(sid)) return 0;
+      if (d.finaleGratis && sk.finale) return 0;
       if (d.costMod && d.costMod[sid]) c += d.costMod[sid];
     }
     c = Math.max(0, c);
@@ -439,12 +445,24 @@ class Bot {
     };
   }
 
-  lancia(sid, ora, id) {
+  // uno scatto verso il bersaglio lontano, se pronto e a portata (Passo di Luce: nella direzione del bersaglio)
+  provaScatti(ora, id, q, d) {
+    for (const sid of this.rot.scatti || []) {
+      const sk = SKILLS[sid];
+      if (!this.conosce(sid) || (this.cds[sid] || 0) > ora || (this.blocco[sid] || 0) > ora) continue;
+      const portata = sk.type === 'blink' ? sk.dist + this.rot.distanza + 2 : sk.range + 1.5;
+      if (d > portata) continue;
+      this.lancia(sid, ora, id, Math.atan2(q.x - this.pos.x, q.z - this.pos.z));
+      this.scatti++;
+    }
+  }
+
+  lancia(sid, ora, id, r) {
     const sk = SKILLS[sid], costo = this.costo(sid);
     const bid = BERSAGLIATE.includes(sk.type) ? id : 0;
     if (sk.offgcd) { this.blocco[sid] = ora + 300; this.fuoriAttesa[sid] = costo; }
     else { this.attesa = { sid, costo, gcdPrima: this.gcdFino, da: ora }; this.gcdFino = ora + (this.me.gcd || 1000); }
-    this.manda({ t: 'skill', s: sid, id: bid });
+    this.manda(r === undefined ? { t: 'skill', s: sid, id: bid } : { t: 'skill', s: sid, id: bid, r: +r.toFixed(2) });
   }
 
   passo(dtMs) {
@@ -479,6 +497,7 @@ class Bot {
       // si ferma a distanza di tiro dal bersaglio
       const k = (d - st) / d;
       this.camminaVerso(this.pos.x + (q.x - this.pos.x) * k, this.pos.z + (q.z - this.pos.z) * k, ora);
+      if (d > st + 4) this.provaScatti(ora, id, q, d);
       if (d > 14) return;                         // troppo lontano per colpire
     } else this.tCombatto += dtMs;
     const lanciando = this.lancio && !this.lancio.finito;
@@ -521,6 +540,7 @@ class Bot {
       tael_min: this.tael / min,
       subiti_min: this.subiti / min, vita_min_pct: this.minVita * 100, morti: this.morti, pozioni: this.pozioni,
       oggetti: this.oggetti, equip_ora: this.oggetti.equip / min * 60, valore_min: this.valore / min, dettaglio: this.dettaglio,
+      scatti_min: this.scatti / min, serie_max: this.serieMax,
       quote: { combatte: this.tCombatto / (T * 1000) * 100, cammina: this.tCammino / (T * 1000) * 100, morto: this.tMorto / (T * 1000) * 100 },
     };
   }
@@ -572,9 +592,10 @@ async function main() {
       morti: media(l, (r) => r.morti), pozioni: media(l, (r) => r.pozioni), equip_ora: media(l, (r) => r.equip_ora), valore_min: media(l, (r) => r.valore_min),
       quote: ['combatte', 'cammina', 'morto'].map((q) => Math.round(media(l, (r) => r.quote[q]))),
       livelli: media(l, (r) => r.livelloFinale - r.livello),
+      scatti_min: media(l, (r) => r.scatti_min || 0), serie_max: Math.max(...l.map((r) => r.serie_max || 0)),
     };
     righe.push(r);
-    console.log(`${k.padEnd(16)} ${String(r.livello).padStart(4)} ${r.ucc_min.toFixed(1).padStart(8)} ${r.exp_min.toFixed(0).padStart(8)} ${r.exp_ora_pct.toFixed(0).padStart(11)}% ${r.tael_min.toFixed(0).padStart(9)} ${r.subiti_s.toFixed(1).padStart(9)} ${r.vita_min.toFixed(0).padStart(9)} ${r.morti.toFixed(1).padStart(6)} ${r.pozioni.toFixed(0).padStart(8)} ${r.equip_ora.toFixed(1).padStart(8)} ${r.valore_min.toFixed(0).padStart(11)}   (${r.quote.join('/')})${r.livelli ? `  +${r.livelli.toFixed(1)} livelli` : ''}`);
+    console.log(`${k.padEnd(16)} ${String(r.livello).padStart(4)} ${r.ucc_min.toFixed(1).padStart(8)} ${r.exp_min.toFixed(0).padStart(8)} ${r.exp_ora_pct.toFixed(0).padStart(11)}% ${r.tael_min.toFixed(0).padStart(9)} ${r.subiti_s.toFixed(1).padStart(9)} ${r.vita_min.toFixed(0).padStart(9)} ${r.morti.toFixed(1).padStart(6)} ${r.pozioni.toFixed(0).padStart(8)} ${r.equip_ora.toFixed(1).padStart(8)} ${r.valore_min.toFixed(0).padStart(11)}   (${r.quote.join('/')})${r.livelli ? `  +${r.livelli.toFixed(1)} livelli` : ''}  scatti/min ${r.scatti_min.toFixed(1)}, serie max ${r.serie_max}`);
   }
   if (opt.json) fs.writeFileSync(opt.json, JSON.stringify({ opzioni: opt, righe, risultati }, null, 1));
   process.exit(0);

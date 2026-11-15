@@ -43,6 +43,7 @@ var gruppo: Dictionary = {}        # ultimo messaggio `party`
 var effetti_bersagli: Dictionary = {}   # id → { nome effetto: millisecondi di fine } (ferite, veleni, marchi, stordimenti)
 var lanci_nemici: Dictionary = {}  # id → { nome, fine, durata }: lanci in corso di mostri e giocatori nemici (da interrompere)
 var coda: Dictionary = {}          # tecnica premuta poco prima che fosse pronta: { sid, quando }
+var attacco_auto_id := 0           # nemico su cui l'attacco automatico continua anche camminando (WASD)
 var morto_da := 0.0
 var _alberi_vicini: Array = []
 var _alberi_t := 0.0
@@ -135,6 +136,7 @@ func nome_zona() -> String:
 func _su_me(m: Dictionary) -> void:
 	io = m
 	io["_t"] = ora()
+	io["_se_t"] = io["_t"]
 	if me != null:
 		me.hp = float(m.hp)
 		me.mhp = float(m.mhp)
@@ -154,9 +156,11 @@ func _su_me(m: Dictionary) -> void:
 
 
 func _su_r(m: Dictionary) -> void:
-	for k in ["hp", "res", "pts", "sl", "su"]:
+	for k in ["hp", "res", "pts", "sl", "su", "se", "sems"]:
 		if m.has(k):
 			io[k] = m[k]
+	if m.has("se"):
+		io["_se_t"] = ora()
 	if me != null:
 		me.hp = float(io.get("hp", 0))
 		hud.aggiorna_io(io, me.nome)
@@ -343,8 +347,9 @@ func _su_fx(m: Dictionary) -> void:
 func _su_cd(m: Dictionary) -> void:
 	var t := ora()
 	var ms := float(m.get("ms", 0))
-	if ms > 0.0:
-		ricariche[String(m.s)] = {"fine": t + ms, "durata": ms}
+	if ms > 0.0 or m.has("rid"):
+		# rid: ricarica accorciata da un'uccisione (serie); tot = durata piena, per il quadrante del tasto
+		ricariche[String(m.s)] = {"fine": t + ms, "durata": float(m.get("tot", ms))}
 	var g := float(m.get("gcd", 0))
 	if g > 0.0:
 		gcd_fine = t + g
@@ -354,7 +359,7 @@ func _su_cd(m: Dictionary) -> void:
 func _su_cast(m: Dictionary) -> void:
 	var sk: Dictionary = Dati.SKILLS.get(String(m.get("s", "")), {})
 	var ms := float(m.get("ms", 0))
-	lancio = {"nome": sk.get("name", "In sella..."), "fine": ora() + ms, "durata": ms}
+	lancio = {"nome": sk.get("name", "In sella..."), "fine": ora() + ms, "durata": ms, "mobile": sk.get("mobile", false)}
 	var g := float(m.get("gcd", 0))
 	if g > 0.0:
 		gcd_fine = ora() + g
@@ -375,7 +380,9 @@ func _su_pos(m: Dictionary) -> void:
 	if m.has("r"):
 		me.r = float(m.r)
 	inviata = Vector3(me.x, 0, me.z)
-	intento = {}
+	# uno scatto (Carica, Calcio Volante...) non deve spegnere l'attacco al bersaglio: si continua a colpire
+	if String(intento.get("tipo", "")) != "attacco":
+		intento = {}
 
 
 func _su_dead(m: Dictionary) -> void:
@@ -705,6 +712,10 @@ func usa_tecnica(sid: String) -> void:
 		intento = {"tipo": "attacco", "id": bersaglio.id}
 	elif bersaglio != null:
 		id_b = bersaglio.id
+	if tipo == "blink":
+		# Passo di Luce: nella direzione in cui guarda il personaggio (quella in cui corre, se si muove)
+		Rete.manda({"t": "skill", "s": sid, "id": id_b, "r": snappedf(me.r, 0.01)})
+		return
 	Rete.manda({"t": "skill", "s": sid, "id": id_b})
 
 
@@ -850,6 +861,7 @@ func _segui_intento(t: float) -> Vector2:
 		return Vector2.ZERO
 	var d := Vector2(e.x - me.x, e.z - me.z).length() - e.raggio
 	if intento.tipo == "attacco":
+		attacco_auto_id = e.id
 		if d > float(io.get("range", 2.5)) - 0.25:
 			return _verso(e.x, e.z, 0.0)
 		me.guarda(e)
@@ -866,6 +878,21 @@ func _segui_intento(t: float) -> Vector2:
 		intento = {"tipo": "attacco", "id": e.id}
 		usa_tecnica(sid)
 	return Vector2.ZERO
+
+
+## Attacco automatico che non si spegne camminando: se si è già ingaggiato il bersaglio e lo si ha a portata,
+## si continua a colpirlo anche muovendosi con i tasti (il colpo prende solo la parte alta del corpo).
+func _attacco_in_movimento(t: float) -> void:
+	if bersaglio == null or bersaglio.id != attacco_auto_id or not ostile(bersaglio) or not lancio.is_empty():
+		return
+	if t < prossimo_attacco:
+		return
+	var d := Vector2(bersaglio.x - me.x, bersaglio.z - me.z).length() - bersaglio.raggio
+	if d > float(io.get("range", 2.5)) - 0.25:
+		return
+	Rete.manda({"t": "atk", "id": bersaglio.id})
+	prossimo_attacco = t + float(io.get("aspd", 1000))
+	me.corpo.attacca()
 
 
 func _process(dt: float) -> void:
@@ -899,11 +926,13 @@ func _process(dt: float) -> void:
 		if avanti != 0.0 or lato != 0.0:
 			intento = {}
 			dir = Vector2(-sin(yaw) * avanti + cos(yaw) * lato, -cos(yaw) * avanti - sin(yaw) * lato).normalized()
+			_attacco_in_movimento(t)
 		else:
 			dir = _segui_intento(t)
 	var vel := float(io.get("spd", 6.0)) * (0.5 if lento_fino > t else 1.0)
 	if dir != Vector2.ZERO:
-		if not lancio.is_empty():
+		# i lanci brevi del Mistico (Dardo, Sfera) si fanno anche camminando; gli altri si interrompono
+		if not lancio.is_empty() and not lancio.get("mobile", false):
 			Rete.manda({"t": "cancel"})
 			lancio = {}
 		var passo := vel * minf(dt, 0.1)        # con pochi fotogrammi al secondo non si scavalca il bersaglio
