@@ -484,6 +484,39 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   Control di ogni ramo). Una classe nuova (`class_name`) dà errori al primo avvio senza editor finché la cache delle
   classi non è rigenerata: rilanciare una volta. Visti a schermo: mappa nel mondo aperto, font, icone in barra e finestra
   Abilità. Non visti: mappa da dentro le mappe lontane, icone degli effetti attivi, trascinamento.
+- **Icone degli oggetti e oggetti a terra riconoscibili** (richiesta dell'autore: «quando droppano gli oggetti che si capisca cosa
+  sono, in piccolo»). `icone_oggetti.gd` (`IconeOggetti`): icone di TUTTI gli oggetti disegnate da codice (stesso `Icone.Pennello` delle
+  tecniche, niente kanji). `IconeOggetti.disegna(ci, id, rett, spento, rarita, potenziamento)` dentro un `_draw()`; `IconeOggetti.Vista`
+  è il controllo pronto (id, rarità, `up`, `n`), `IconeOggetti.tooltip` la descrizione con l'icona grande, `IconeOggetti.texture` l'icona come
+  texture (righe di chat). Il disegno si ricava dal TIPO, non da un elenco di id, quindi vale anche per gli oggetti nuovi: `weapon` → sagoma
+  per `wt` (spada, pugnali incrociati, arco incoccato, guanto, bastone) e per `tier` 1-4 come in `forme_armi.gd` (ferro largo / sciabola con
+  guardia a mezzaluna / giada con guardia cornuta e uncini / «Cento Gru» con ali; zanna / dentato / serpentino / eclissi; bambù / corno /
+  airone / autunno con penne; bende / artigli / guanti della Tigre / guanti del Sole; salice / mezzaluna / anello / nubi); `body`, `head`,
+  `feet` → corazza, elmo, calzari del `tier` (tunica / lamellare / giada / nubi, ecc.); `potion` (fiala del colore o tazza di tè), `scroll`,
+  `book`, `seal`, `key`, `mod` (cote, rotolo con frecce, sigillo con freccia in su, scalpello), `gem` (sagoma per `gem`: rubino brillante,
+  zaffiro esagonale, giada a disco forato, ambra ovale, onice ottagonale, perla; `grade` 0 = tre schegge, 1 = gemma, 2 = grande con alone e
+  scintille, nel `color` dell'oggetto) e `material` (sagoma dalle parole dell'id/nome: zanna, pelle, benda, coccio, minerale, cristallo,
+  essenza, osso, erba, lingotto, polvere; altrimenti sacchetto nel `color`). Id sconosciuti: runa generica. Fondo e cornice seguono la
+  **rarità** (`IconeOggetti.rarita(id, voce)`: `r` dell'esemplare per l'equipaggiamento; per gli altri il `tier` o un valore dedotto dal prezzo),
+  il «+N» del potenziamento sta in alto a sinistra. Usate in inventario, equipaggiamento, negozio (il fabbro usa l'inventario), barra rapida,
+  trascinamento, tooltip (`Casella._make_custom_tooltip`), righe di chat del bottino e delle ricompense delle Prove (`hud.riga_chat_oggetto`;
+  il server manda solo il nome dell'oggetto, l'id si ricava con `IconeOggetti.id_da_nome`). Gli effetti attivi e le tecniche restano in `icone.gd`.
+  `oggetto_terra.gd` (`OggettoTerra`): l'entità di tipo «d» è ora un modellino da codice (0,3-0,8 m) che gira piano — le armi sono le stesse
+  forme in mano (`Forme.spada/pugnale/arco/pugni/bastone`) infilzate o appoggiate, poi corazza, elmo, calzari, fiala, rotolo, tomo, sigillo,
+  chiave, gemme (coni a doppia punta, anello di giada, perla), materiali per forma, pila di monete per `tael` — con alone sul terreno e una
+  sottile colonna di luce (`shader/oggetto_colonna.gdshader`) nel colore della rarità, più alta dal Raro in su; dall'Epico qualche scintilla,
+  dal Raro un lampo della colonna alla caduta (e un piccolo suono in `gioco._su_v`). L'etichetta col nome (colore della rarità, «+N», «×n»)
+  la disegna `Hud._etichetta_oggetto` solo da vicino (12 m, un po' di più per le rarità alte), col bersaglio o col puntatore sopra. Nessuna
+  luce dinamica e nessun campo nuovo dal server (il messaggio `v` dei «drop» portava già `it`, `n`, `up`, `r`).
+  Prove: nel copione `butta id...` (getta una copia a terra, aspetta che sia nell'inventario), `raccogli`, `ricompense` (simula la riga delle
+  ricompense di una Prova), `chiudi`, `reale N` (secondi veri), `aspetta_oggetto id`, `finche_oggetti N raggio`, `finche_vuoto raggio` e
+  l'argomento `--attesa_comandi=N` (fotogrammi di attesa dopo ogni comando di chat, predefinito 3). Con la macchina sotto carico un fotogramma
+  costa secondi e il server risponde dopo 2-3 fotogrammi, mentre gli oggetti buttati a terra durano solo 60 s: conviene aspettare le
+  condizioni (`finche_*`) invece di contare i fotogrammi, e scattare subito. Corretto un errore che c'era già: `Entita.da_info` faceva
+  `String(i.n)` con `n` intero (la quantità degli oggetti a terra) e l'entità non nasceva; ora `str()`.
+  Visti a schermo: griglia di tutte le icone a 44 e 88 px e varianti di rarità, inventario, personaggio, negozio, oggetti a terra da vicino e
+  da lontano. Non verificati: etichette degli oggetti con molti oggetti vicini, prestazioni con decine di oggetti, il tael a terra nel gioco
+  (il server oggi non lo getta: è il bottino che va direttamente alla borsa), suoni all'ascolto.
 - **Armi rifatte «cattive» e sempre più epiche col grado** (`forme_armi.gd`, geometria da codice nel sistema della presa;
   `equip.gd` le monta; `posa_arma.gd` è un `SkeletonModifier3D`): lame a sezione esagonale con filo chiaro, sagome estruse,
   tubi curvi. Spada: ferro largo → sciabola con guardia a mezzaluna → giada a due mani con guardia cornuta e uncini sul

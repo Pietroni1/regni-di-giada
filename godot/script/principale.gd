@@ -203,7 +203,7 @@ func _foto(nome: String) -> void:
 
 
 ## Copione: voci separate da «;». Una voce che inizia con «/» è un comando di chat; le altre:
-## attendi N · foto nome · tecnica id · suprema · bersaglio · visuale yaw pitch distanza · attacca · guarda
+## attendi N · reale N · aspetta_oggetto id · finche_vuoto raggio · finche_oggetti N raggio · foto nome · tecnica id · suprema · bersaglio · visuale yaw pitch distanza · attacca · guarda · butta id...
 func _prova_automatica() -> void:
 	await _attendi(1.5)
 	for voce in String(_arg.get("comandi", "attendi 2;foto prova")).split(";"):
@@ -213,7 +213,7 @@ func _prova_automatica() -> void:
 		var p := v.split(" ")
 		if v.begins_with("/"):
 			Rete.manda({"t": "chat", "m": v})
-			for i in range(3):
+			for i in range(int(_arg.get("attesa_comandi", "3"))):
 				await get_tree().process_frame
 			continue
 		match p[0]:
@@ -267,6 +267,63 @@ func _prova_automatica() -> void:
 							scelta = j
 				if scelta >= 0:
 					Rete.manda({"t": "use", "i": scelta})
+			"chiudi": gioco.hud.finestre.chiudi_tutto()
+			"raccogli": gioco._raccogli()
+			"ricompense": gioco._su_dg_reward({"got": ["Essenza Celeste x3", "Gemma Perfetta di Rubino", "Pietra dell'Affinamento x2", "Tomo della Tecnica", "9.000 tael"]})
+			"reale":
+				# reale N: aspetta N secondi veri (il server, sotto carico, risponde con molto ritardo rispetto ai fotogrammi)
+				var fine := Time.get_ticks_msec() + int(float(p[1]) * 1000.0)
+				while Time.get_ticks_msec() < fine:
+					await get_tree().process_frame
+			"finche_vuoto":
+				# finche_vuoto raggio: aspetta (fino a 3 minuti veri) che non resti nessun oggetto a terra entro il raggio (raccolti)
+				var lim3 := Time.get_ticks_msec() + 180000
+				while Time.get_ticks_msec() < lim3:
+					var restano := 0
+					for e: Entita in gioco.ents.values():
+						if e != null and e.tipo == "d" and Vector2(e.x - gioco.me.x, e.z - gioco.me.z).length() <= float(p[1]):
+							restano += 1
+					if restano == 0:
+						break
+					await get_tree().process_frame
+			"aspetta_oggetto":
+				# aspetta_oggetto id: aspetta (fino a 3 minuti veri) che l'oggetto sia nell'inventario
+				var lim2 := Time.get_ticks_msec() + 180000
+				while Time.get_ticks_msec() < lim2:
+					var trovato := false
+					for q in gioco.inv.get("inv", []):
+						if q is Dictionary and String(q.id) == p[1]:
+							trovato = true
+					if trovato:
+						break
+					await get_tree().process_frame
+			"finche_oggetti":
+				# finche_oggetti N raggio: aspetta (fino a 3 minuti veri) che N oggetti a terra siano visibili entro il raggio dal personaggio
+				var lim := Time.get_ticks_msec() + 180000
+				while Time.get_ticks_msec() < lim:
+					var quanti := 0
+					for e: Entita in gioco.ents.values():
+						if e != null and e.tipo == "d" and Vector2(e.x - gioco.me.x, e.z - gioco.me.z).length() <= float(p[2]):
+							quanti += 1
+					if quanti >= int(p[1]):
+						break
+					await get_tree().process_frame
+			"butta":
+				# butta id [id ...]: getta a terra una copia (la più potenziata) di ciascun oggetto, per provare gli oggetti caduti.
+				# Aspetta (fino a 3 minuti) che l'oggetto compaia nell'inventario.
+				for k in range(1, p.size()):
+					var sc := -1
+					var limite := Time.get_ticks_msec() + 180000
+					while sc < 0 and Time.get_ticks_msec() < limite:
+						var lis: Array = gioco.inv.get("inv", [])
+						for j in range(lis.size()):
+							if lis[j] is Dictionary and String(lis[j].id) == p[k]:
+								if sc < 0 or int(lis[j].get("up", 0)) > int(lis[sc].get("up", 0)):
+									sc = j
+						if sc < 0:
+							await get_tree().process_frame
+					if sc >= 0:
+						Rete.manda({"t": "drop", "i": sc})
 			"togli":
 				# togli body|head|feet|weapon: rimette nel primo posto libero dell'inventario quel pezzo dell'equipaggiamento
 				var libero: int = (gioco.inv.get("inv", []) as Array).find(null)

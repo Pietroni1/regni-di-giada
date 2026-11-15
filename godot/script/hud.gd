@@ -375,6 +375,14 @@ func riga_chat(testo: String, colore := Color(0.9, 0.9, 0.85)) -> void:
 	chat.append_text("[color=#%s]%s[/color]\n" % [colore.to_html(false), testo.replace("[", "[lb]")])
 
 
+## Riga di chat con la piccola icona dell'oggetto davanti (bottino, ricompense).
+func riga_chat_oggetto(testo: String, colore: Color, id: String, rar: int, up := 0) -> void:
+	if id == "tael" or Dati.ITEMS.has(id):
+		chat.add_image(IconeOggetti.texture(chat, id, rar, up, 20), 20, 20)
+		chat.append_text(" ")
+	riga_chat(testo, colore)
+
+
 func invito(da: String) -> void:
 	txt_invito.text = "%s ti invita nel suo gruppo" % da
 	riq_invito.visible = true
@@ -718,6 +726,27 @@ func _disegna_minimappa() -> void:
 	minimappa.draw_arc(c, lato * 0.5 - 1.0, 0.0, TAU, 48, ORO.darkened(0.3), 2.0)
 
 
+## Etichetta di un oggetto caduto. Vicino (entro 12 m), scelto come bersaglio o col puntatore sopra: compare il nome nel
+## colore della rarità (le rarità alte si vedono un po' più da lontano).
+func _etichetta_oggetto(e: Entita, cam: Camera3D, f: Font) -> bool:
+	var p3 := e.global_position + Vector3(0, 0.62, 0)
+	if cam.is_position_behind(p3):
+		return false
+	var p := cam.unproject_position(p3)
+	var vicino := gioco.me != null and e.global_position.distance_to(gioco.me.global_position) < 12.0 + 4.0 * e.rarita
+	var sopra := p.distance_to(get_viewport().get_mouse_position()) < 46.0
+	if not (vicino or sopra or e == gioco.bersaglio):
+		return false
+	var misura := 11
+	var larg := f.get_string_size(e.nome, HORIZONTAL_ALIGNMENT_LEFT, -1, misura).x
+	var c := e.colore_nome.lightened(0.1)
+	var fondo := Rect2(p + Vector2(-larg * 0.5 - 4, -misura - 1), Vector2(larg + 8, misura + 5))
+	targhette.draw_rect(fondo, Color(0, 0, 0, 0.45))
+	targhette.draw_string_outline(f, p + Vector2(-larg * 0.5, 0), e.nome, HORIZONTAL_ALIGNMENT_LEFT, -1, misura, 3, Color(0, 0, 0, 0.9))
+	targhette.draw_string(f, p + Vector2(-larg * 0.5, 0), e.nome, HORIZONTAL_ALIGNMENT_LEFT, -1, misura, c)
+	return true
+
+
 func _disegna_targhette() -> void:
 	if gioco == null or gioco.cam == null:
 		return
@@ -727,7 +756,9 @@ func _disegna_targhette() -> void:
 	if gioco.me != null:
 		tutti.append(gioco.me)
 	for e: Entita in tutti:
-		if e.tipo == "d" and e.global_position.distance_to(cam.global_position) > 30.0:
+		if e.tipo == "d":
+			# oggetti a terra: etichetta piccola nel colore della rarità, solo da vicino o col bersaglio/puntatore sopra
+			_etichetta_oggetto(e, cam, f)
 			continue
 		var p3 := e.testa() + Vector3(0, 0.3, 0)
 		var dist := p3.distance_to(cam.global_position)
@@ -783,6 +814,7 @@ class Tasto:
 	var voce = null                # { k: "s"|"i", id }
 	var glifo := ""
 	var icona := ""                # id dell'icona disegnata (vuoto: si usa il glifo)
+	var ogg := ""                  # id dell'oggetto sulla barra: ne disegna l'icona
 	var nome := ""
 	var ruolo := ""
 	var colore := Color(0.8, 0.8, 0.8)
@@ -799,6 +831,7 @@ class Tasto:
 		voce = v
 		glifo = ""
 		icona = ""
+		ogg = ""
 		nome = ""
 		ruolo = ""
 		spento = false
@@ -818,8 +851,7 @@ class Tasto:
 			tooltip_text = "%s%s\n%s%s" % [nome, ("  —  " + Hud.NOMI_RUOLO[ruolo]) if Hud.NOMI_RUOLO.has(ruolo) else "", sk.get("desc", ""), ("\nCosto: %d" % int(sk.cost)) if sk.has("cost") else ""]
 		elif v is Dictionary and v.get("k") == "i" and Dati.ITEMS.has(v.id):
 			var it: Dictionary = Dati.ITEMS[v.id]
-			glifo = String(it.get("glyph", "?"))
-			icona = String(v.id) if Icone.ha(String(v.id)) else ""
+			ogg = String(v.id)
 			nome = String(it.name)
 			colore = Color(0.85, 0.85, 0.8)
 			tooltip_text = nome
@@ -866,7 +898,9 @@ class Tasto:
 		_giu = false
 		if not (voce is Dictionary):
 			return null
-		if not icona.is_empty():
+		if not ogg.is_empty():
+			set_drag_preview(IconeOggetti.Vista.new(ogg, 44.0))
+		elif not icona.is_empty():
 			set_drag_preview(Icone.Vista.new(icona, 44.0))
 		else:
 			var l := Label.new()
@@ -894,7 +928,9 @@ class Tasto:
 		var r := Rect2(Vector2.ZERO, size)
 		draw_style_box(Hud.stile(Color(0.08, 0.07, 0.06, 0.9), Hud.ORO.darkened(0.45), 5, 2), r)
 		var f := ThemeDB.fallback_font
-		if not icona.is_empty():
+		if not ogg.is_empty():
+			IconeOggetti.disegna(self, ogg, Rect2(3, 3, size.x - 6, size.y - 6), spento)
+		elif not icona.is_empty():
 			Icone.disegna(self, icona, Rect2(3, 3, size.x - 6, size.y - 6), spento)
 		elif not glifo.is_empty():
 			var c := colore if not spento else colore.darkened(0.6)

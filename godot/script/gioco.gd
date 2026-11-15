@@ -191,6 +191,9 @@ func _su_v(m: Dictionary) -> void:
 		var e := Entita.da_info(i)
 		ents[id] = e
 		add_child(e)
+		if e.tipo == "d" and e.rarita >= 2 and me != null and Vector2(e.x - me.x, e.z - me.z).length() < 30.0:
+			# un oggetto raro o migliore è caduto qui vicino: piccolo suono (il lampo della colonna lo fa l'oggetto stesso)
+			Suoni.suona("aura" if e.rarita >= 4 else ("magia" if e.rarita == 3 else "raccolta"), -11.0 if e.rarita >= 3 else -14.0, 1.0 if e.rarita >= 3 else 1.5)
 	for u in m.get("u", []):
 		var e2: Entita = ents.get(int(u[0]))
 		if e2 != null:
@@ -433,7 +436,9 @@ func _su_gain(m: Dictionary) -> void:
 			testo += " ×%d" % int(m.n)
 		if int(m.get("r", 0)) > 0:
 			testo += " (%s)" % rar.name
-		hud.riga_chat(testo, Color(String(rar.color)))
+		var id_ogg := IconeOggetti.id_da_nome(String(m.item))
+		var rr := IconeOggetti.rarita(id_ogg, m) if id_ogg != "" else int(m.get("r", 0))
+		hud.riga_chat_oggetto(testo, IconeOggetti.colore_rarita(rr), id_ogg, rr, int(m.get("up", 0)))
 		Suoni.suona("raccolta", -6.0)
 
 
@@ -485,7 +490,18 @@ func _su_dg_end(_m: Dictionary) -> void:
 
 
 func _su_dg_reward(m: Dictionary) -> void:
-	hud.riga_chat("Ricompense della Prova: " + ", ".join(PackedStringArray(m.get("got", []))), Hud.ORO)
+	hud.riga_chat("Ricompense della Prova:", Hud.ORO)
+	for voce in m.get("got", []):
+		# «Essenza Celeste x3»: il nome senza la quantità dà l'icona dell'oggetto
+		var nome := String(voce)
+		var q := nome.rfind(" x")
+		var id_ogg := IconeOggetti.id_da_nome(nome.substr(0, q) if q > 0 else nome)
+		if id_ogg == "" and nome.ends_with("tael"):
+			id_ogg = "tael"
+		if id_ogg == "tael":
+			hud.riga_chat_oggetto("  " + nome, Hud.ORO, "tael", 0)
+		else:
+			hud.riga_chat_oggetto("  " + nome, IconeOggetti.colore_rarita(IconeOggetti.rarita(id_ogg)), id_ogg, IconeOggetti.rarita(id_ogg))
 
 
 func _su_party(m: Dictionary) -> void:

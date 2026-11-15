@@ -150,14 +150,14 @@ func testo_oggetto(s) -> String:
 	if not (s is Dictionary) or not Dati.ITEMS.has(s.id):
 		return ""
 	var it: Dictionary = Dati.ITEMS[s.id]
-	var rar: Dictionary = Dati.gioco.RARITIES[clampi(int(s.get("r", 0)), 0, 4)]
+	var ri := IconeOggetti.rarita(String(s.id), s)
 	var righe: Array = []
 	var nome := String(it.name)
 	if int(s.get("up", 0)) > 0:
 		nome += " +%d" % int(s.up)
 	righe.append(nome)
-	if it.has("atk") or it.has("def"):
-		righe.append(String(rar.name))
+	if it.has("atk") or it.has("def") or ri > 0:
+		righe.append(IconeOggetti.nome_rarita(ri))
 	if it.has("atk"):
 		righe.append("Attacco %d" % int(it.atk))
 	if it.has("def"):
@@ -520,9 +520,10 @@ func _su_negozio(m: Dictionary) -> void:
 		var it: Dictionary = Dati.ITEMS[id]
 		var h := HBoxContainer.new()
 		_corpo_neg.add_child(h)
-		var g := _etichetta(h, String(it.get("glyph", "?")), Color(it.color) if it.has("color") else Color(0.9, 0.88, 0.8), 22)
-		g.autowrap_mode = TextServer.AUTOWRAP_OFF
-		g.custom_minimum_size = Vector2(32, 0)
+		var ico := IconeOggetti.Vista.new(String(id), 40.0)
+		ico.mouse_filter = Control.MOUSE_FILTER_STOP
+		ico.tooltip_text = testo_oggetto({"id": id})
+		h.add_child(ico)
 		var n := _etichetta(h, String(it.name))
 		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		n.tooltip_text = testo_oggetto({"id": id})
@@ -815,11 +816,13 @@ class Casella:
 	func _get_drag_data(_p: Vector2) -> Variant:
 		if not (voce is Dictionary) or not Dati.ITEMS.has(voce.id):
 			return null
-		var l := Label.new()
-		l.text = String(Dati.ITEMS[voce.id].get("glyph", "?"))
-		l.add_theme_font_size_override("font_size", 26)
-		set_drag_preview(l)
+		set_drag_preview(IconeOggetti.Vista.new(String(voce.id), 44.0, IconeOggetti.rarita(String(voce.id), voce), int(voce.get("up", 0))))
 		return {"tipo": "ogg", "i": indice, "id": voce.id, "eq": spazio}
+
+	func _make_custom_tooltip(for_text: String) -> Object:
+		if for_text.is_empty() or not (voce is Dictionary) or not Dati.ITEMS.has(voce.id):
+			return null
+		return IconeOggetti.tooltip(for_text, String(voce.id), IconeOggetti.rarita(String(voce.id), voce), int(voce.get("up", 0)))
 
 	func _can_drop_data(_p: Vector2, d: Variant) -> bool:
 		return d is Dictionary and String(d.get("tipo", "")) == "ogg"
@@ -848,24 +851,16 @@ class Casella:
 		var it: Dictionary = {}
 		if voce is Dictionary and Dati.ITEMS.has(voce.id):
 			it = Dati.ITEMS[voce.id]
-			var r := int(voce.get("r", 0))
-			if r > 0:
-				bordo = Color(String(Dati.gioco.RARITIES[clampi(r, 0, 4)].color))
-		if scelta:
-			bordo = Color(1.0, 0.9, 0.5)
-		draw_style_box(Hud.stile(Color(0.1, 0.09, 0.08, 0.95), bordo, 4, 3 if scelta else 2), Rect2(Vector2.ZERO, size))
+		draw_style_box(Hud.stile(Color(0.1, 0.09, 0.08, 0.95), Color(1.0, 0.9, 0.5) if scelta else bordo, 4, 3 if scelta else 2), Rect2(Vector2.ZERO, size))
 		if it.is_empty():
 			return
 		var f := ThemeDB.fallback_font
-		var glifo := String(it.get("glyph", "?"))
-		var col := Color(String(it.color)) if it.has("color") else Color(0.92, 0.9, 0.82)
-		var larg := f.get_string_size(glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
-		draw_string(f, Vector2((size.x - larg) * 0.5, 32), glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, col)
+		# icona disegnata: fondo e cornice seguono la rarità, in alto a sinistra il potenziamento
+		IconeOggetti.disegna(self, String(voce.id), Rect2(3, 3, size.x - 6, size.y - 6), false, IconeOggetti.rarita(String(voce.id), voce), int(voce.get("up", 0)))
+		if scelta:
+			draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color(1.0, 0.9, 0.5), false, 2.5)
 		if int(voce.get("n", 1)) > 1:
 			var t := str(int(voce.n))
 			var lt := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 			draw_string_outline(f, Vector2(size.x - lt - 4, size.y - 4), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 3, Color.BLACK)
 			draw_string(f, Vector2(size.x - lt - 4, size.y - 4), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color.WHITE)
-		if int(voce.get("up", 0)) > 0:
-			draw_string_outline(f, Vector2(4, 13), "+%d" % int(voce.up), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 3, Color.BLACK)
-			draw_string(f, Vector2(4, 13), "+%d" % int(voce.up), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.85, 0.4))

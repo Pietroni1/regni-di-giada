@@ -25,6 +25,8 @@ var velocita := 0.0
 var ostile_base := false
 var sella := 0            # grado del destriero su cui è in sella (0 = a piedi)
 var cavallo: Personaggio = null
+var colore_nome := Color(0.95, 0.9, 0.6)     # oggetti a terra: colore della rarità
+var rarita := 0
 
 const MANTELLI := [Color(0.54, 0.37, 0.22), Color(0.54, 0.37, 0.22), Color(0.29, 0.18, 0.11), Color(0.12, 0.1, 0.11)]
 
@@ -54,7 +56,7 @@ static func da_info(i: Dictionary, mio := false) -> Entita:
 	e.id = int(i.id)
 	e.info = i
 	e.tipo = String(i.get("k", "p"))
-	e.nome = String(i.get("n", ""))
+	e.nome = str(i.get("n", ""))
 	e.io = mio
 	e.x = float(i.x)
 	e.z = float(i.z)
@@ -172,15 +174,14 @@ func _costruisci() -> void:
 			corpo = Personaggio.umano("base_donna" if ruolo == "erbe" else "base_uomo", veste, arma, 1)
 			corpo.metti_testa("long" if ruolo == "erbe" else ("short" if veste.has("elmo_bronzo") or veste.has("cappello_paglia") else "topknot"), Color(0.75, 0.75, 0.72) if ruolo in ["maestro", "erbe"] else Color(0.1, 0.08, 0.07))
 		"d":
+			# oggetto caduto: modellino riconoscibile, alone e colonna di luce della rarità (oggetto_terra.gd)
 			corpo = Personaggio.new()
-			var rar := int(info.get("r", 0))
-			var c: Color = [Color(0.9, 0.9, 0.85), Color(0.4, 0.9, 0.4), Color(0.4, 0.6, 1.0), Color(0.8, 0.4, 1.0), Color(1.0, 0.7, 0.2)][clampi(rar, 0, 4)]
-			var cassa := Edifici.scatola(Vector3(0.36, 0.36, 0.36), Vector3(0, 0.3, 0), Edifici.mat(c, 0.5, 0.0, 1.5), corpo)
-			cassa.rotation = Vector3(0.6, 0.8, 0)
-			# colonna di luce del colore della rarità, per vedere il bottino da lontano
-			var raggio := Edifici.cilindro(0.03, 0.06, 3.2 + rar * 0.8, Vector3(0, 1.8 + rar * 0.4, 0), Edifici.mat(c, 0.5, 0.0, 3.0 + rar), corpo, 6)
-			raggio.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			corpo.altezza = 0.8
+			var og := OggettoTerra.crea(info)
+			corpo.add_child(og)
+			nome = OggettoTerra.nome_di(info)
+			colore_nome = og.colore
+			rarita = og.rar
+			corpo.altezza = 0.75
 	if corpo != null:
 		add_child(corpo)
 		if corpo.has_method("stato"):
