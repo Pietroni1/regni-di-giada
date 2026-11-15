@@ -329,6 +329,25 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   Control di ogni ramo). Una classe nuova (`class_name`) dà errori al primo avvio senza editor finché la cache delle
   classi non è rigenerata: rilanciare una volta. Visti a schermo: mappa nel mondo aperto, font, icone in barra e finestra
   Abilità. Non visti: mappa da dentro le mappe lontane, icone degli effetti attivi, trascinamento.
+- **Armi rifatte «cattive» e sempre più epiche col grado** (`forme_armi.gd`, geometria da codice nel sistema della presa;
+  `equip.gd` le monta; `posa_arma.gd` è un `SkeletonModifier3D`): lame a sezione esagonale con filo chiaro, sagome estruse,
+  tubi curvi. Spada: ferro largo → sciabola con guardia a mezzaluna → giada a due mani con guardia cornuta e uncini sul
+  dorso → «Cento Gru» (1,5 m, ali di gru, uncini, incisioni luminose). Pugnali: zanna d'osso → acciaio dentato → lama
+  serpentina con testa di serpe → eclissi scura con filo luminoso. Arco: bambù → corno → airone/autunno con ali di penne e
+  punte a lama; corda in due tratti (`Equip.Corda`) e freccia incoccata. Pugni (ora costruiti, prima il Monaco non aveva
+  nulla in mano): bende → artigli di ferro → guanti della Tigre → guanti del Sole con disco. Bastone: salice → mezzaluna →
+  anello → corona di nubi con gemma sospesa che ruota; fino a 2,95 m.
+  **Presa**: la lama sta ruotata di 90° (filo verso le dita, facce piatte all'esterno); `Equip.INCLINA` (spada 48°, bastone −12°,
+  arco −60°), `Equip.RZ.staff` = −52° e `Equip.POSE` (chiusura delle dita, rotazione del polso, gomito) applicati da `PosaArma`
+  dopo l'animazione. **Arco**: `Personaggio.tira_arco()` porta `tiro` a 1: cinematica inversa a due ossa (braccio sinistro
+  teso con il telaio verticale, destro alla guancia, corda e freccia seguono la mano). Pugnali: attacchi `pugnali`, `pugni`,
+  `pugni_2` (affondi). Gli effetti per potenziamento accendono solo le parti con metadato `accendi` (alone più tenue sulle
+  armi corte). Visto a schermo (scena di prova + gioco): tutti i tipi e gradi, uomo e donna, da fermi, corsa, camminata,
+  spada_1..3, pugni, calcio, magia, tiro con l'arco, +15 Leggendaria; il bastone anche in gioco col server.
+  **Non verificato**: pugni a metà colpo (visti solo carica e calcio), la sella con le armi nuove, vecchi corpi Mixamo
+  (la posa dita/polso è tarata sugli eroi), arco in gioco col bersaglio, prestazioni con molti giocatori (mesh da codice non
+  condivise), scia dei colpi sulle forme nuove, aura dell'armatura. Difetti: lame con facce piatte senza texture, penne
+  dell'arco un po' fitte, artigli dei pugni sottili, a riposo il bastone sfiora la gamba.
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 

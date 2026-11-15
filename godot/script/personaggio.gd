@@ -5,9 +5,10 @@ extends Node3D
 
 const CICLICHE := ["fermo", "camminata", "corsa", "sella", "passo"]
 const ATTACCHI := {
-	"sword": ["spada_1", "spada_2", "spada_3"], "daggers": ["pugnali"], "bow": ["arco"],
+	"sword": ["spada_1", "spada_2", "spada_3"], "daggers": ["pugnali", "pugni", "pugni_2"], "bow": ["arco"],
 	"fists": ["pugni", "calcio"], "staff": ["magia"],
 }
+const PosaArmaScript := preload("res://script/posa_arma.gd")
 const SPECIE := {"wolf": "lupo", "boar": "cinghiale", "bear": "orso", "tiger": "tigre", "horse": "cavallo"}
 
 static var _scene: Dictionary = {}
@@ -28,6 +29,10 @@ var _att_i := 0
 var armi: Array = []
 var _scie: Array = []
 var _piedi: PiediDritti = null
+var _tiro := 0.0
+var _tipo_arma := ""
+var _tween_tiro: Tween = null
+var _posa: SkeletonModifier3D = null    # chiude le dita sull'arma, ruota il polso, piega il gomito (posa_arma.gd)
 var _albero: AnimationTree = null      # solo umani: movimento sotto, colpi sulla parte alta del corpo
 var _nodo_colpo: AnimationNodeAnimation
 var _nodo_singola: AnimationNodeOneShot
@@ -390,11 +395,38 @@ func _sfera(genitore: Node3D, pos: Vector3, raggio: float, m: Material, scala :=
 # ------------------------------------------------------------------ armi ed effetti dell'equipaggiamento
 func _metti_arma(tipo: String, grado: int) -> void:
 	armi = Equip.metti(scheletro, tipo, grado)
+	_tipo_arma = tipo
+	_posa = PosaArmaScript.new()
+	_posa.braccia = Equip.POSE.get(tipo, {}).duplicate(true)
+	_posa.arco = tipo == "bow"
+	if _posa.arco and not armi.is_empty():
+		_posa.presa_arco = (armi[0] as Node3D).get_parent().transform
+	scheletro.add_child(_posa)
 	for a in armi:
 		var sc := Equip.Scia.new()
 		sc.arma = a
 		add_child(sc)
 		_scie.append(sc)
+
+
+## Tensione dell'arco (0 = a riposo, 1 = teso alla guancia): muove le braccia e la corda.
+func imposta_tiro(v: float) -> void:
+	_tiro = v
+	if _posa != null:
+		_posa.tiro = v
+	for a in armi:
+		if a.has_meta("corda"):
+			(a.get_meta("corda") as Equip.Corda).tiro = v
+
+
+## Tiro con l'arco: si tende in fretta, si rilascia di colpo, poi le braccia tornano alla posa libera.
+func tira_arco() -> void:
+	if _tween_tiro != null and _tween_tiro.is_valid():
+		_tween_tiro.kill()
+	_tween_tiro = create_tween()
+	_tween_tiro.tween_method(imposta_tiro, _tiro, 1.0, 0.22)
+	_tween_tiro.tween_interval(0.12)
+	_tween_tiro.tween_method(imposta_tiro, 1.0, 0.0, 0.2)
 
 
 ## Effetti per livello di potenziamento e rarità: wu/wr dell'arma, bu/br dell'armatura. mio = è il proprio personaggio.
@@ -498,6 +530,8 @@ func attacca() -> void:
 		return
 	_singola(attacchi[_att_i % attacchi.size()])
 	_att_i += 1
+	if _tipo_arma == "bow":
+		tira_arco()
 
 
 func lancia() -> void:

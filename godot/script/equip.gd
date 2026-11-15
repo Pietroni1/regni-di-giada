@@ -78,114 +78,156 @@ static func impugna(sk: Skeleton3D, osso: String, inclina := 0.0) -> Node3D:
 
 
 # ------------------------------------------------------------------ armi
-static func _metallo(grado: int) -> StandardMaterial3D:
-	var c: Color = [Color(0.78, 0.79, 0.82), Color(0.80, 0.68, 0.42), Color(0.55, 0.88, 0.70), Color(0.90, 0.94, 1.0)][clampi(grado - 1, 0, 3)]
-	var m := StandardMaterial3D.new()
-	m.albedo_color = c
-	m.metallic = 0.9
-	m.roughness = 0.22
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	return m
+## Forme delle armi (geometria da codice): vedi forme_armi.gd.
+const Forme := preload("res://script/forme_armi.gd")
+
+## Inclinazione della presa per tipo (gradi attorno all'asse del palmo): positivo = la lama scende verso le dita.
+static var RZ := {"staff": -52.0}      # rotazione extra dell'arma attorno all'asse delle dita (gradi)
+static var INCLINA := {"sword": 48.0, "daggers": 18.0, "bow": -60.0, "staff": -12.0, "fists": 0.0}
+
+## Posa delle braccia per tipo di arma (vedi posa_arma.gd): dita chiuse, polso ruotato, gomito piegato (gradi).
+static var POSE := {
+	"sword": {"R": {"curl": 1.0}},
+	"daggers": {"R": {"curl": 1.0}, "L": {"curl": 1.0}},
+	"fists": {"R": {"curl": 1.0}, "L": {"curl": 1.0}},
+	"bow": {"L": {"curl": 1.0, "roll": 60.0, "flex": 30.0}, "R": {"curl": 0.7}},
+	"staff": {"R": {"curl": 1.0, "roll": 70.0, "flex": 40.0}},
+}
 
 
-## Lama curva a sezione piatta lungo +y, con il filo verso -x. Restituisce la mesh.
-static func _lama(lunga: float, larga: float, curva: float, m: Material, genitore: Node3D, y0: float) -> MeshInstance3D:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var n := 10
-	for k in range(2):                       # due facce leggermente bombate, così prende la luce
-		var lato := 1.0 if k == 0 else -1.0
-		for i in range(n + 1):
-			var t := float(i) / n
-			var w := larga * (1.0 - pow(t, 3.0) * 0.85)
-			var cx := -curva * t * t
-			var y := y0 + lunga * t
-			st.set_normal(Vector3(-0.35, 0, lato).normalized())
-			st.add_vertex(Vector3(cx - w * 0.5, y, 0.0))                 # filo
-			st.set_normal(Vector3(0.0, 0, lato))
-			st.add_vertex(Vector3(cx, y, lato * 0.006))                  # costa centrale
-			st.set_normal(Vector3(0.35, 0, lato).normalized())
-			st.add_vertex(Vector3(cx + w * 0.5, y, 0.0))                 # dorso
-		for i in range(n):
-			var a := k * (n + 1) * 3 + i * 3
-			for j in range(2):
-				st.add_index(a + j); st.add_index(a + j + 1); st.add_index(a + j + 3)
-				st.add_index(a + j + 1); st.add_index(a + j + 4); st.add_index(a + j + 3)
-	var mi := MeshInstance3D.new()
-	mi.mesh = st.commit()
-	mi.material_override = m
-	genitore.add_child(mi)
-	return mi
+## Corda dell'arco: due tratti che si incontrano nel punto d'incocco; con «tiro» > 0 il punto segue la mano che tira.
+class Corda:
+	extends Node3D
+	var alto := Vector3.ZERO
+	var basso := Vector3.ZERO
+	var mano: Node3D = null            # nodo della mano destra (la corda va lì quando si tira)
+	var arco: Node3D = null
+	var tiro := 0.0
+	var _su: MeshInstance3D
+	var _giu: MeshInstance3D
+	var _freccia: Node3D
+
+	func _init() -> void:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(0.92, 0.9, 0.8)
+		m.roughness = 0.7
+		for i in range(2):
+			var mi := MeshInstance3D.new()
+			var b := BoxMesh.new()
+			b.size = Vector3(0.006, 0.006, 1.0)
+			mi.mesh = b
+			mi.material_override = m
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mi)
+			if i == 0:
+				_su = mi
+			else:
+				_giu = mi
+		# freccia incoccata: asta lungo +z dal punto d'incocco, punta e penne
+		_freccia = Node3D.new()
+		var asta := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.006
+		cm.bottom_radius = 0.006
+		cm.height = 0.9
+		asta.mesh = cm
+		asta.rotation.x = PI / 2
+		asta.position.z = 0.45
+		asta.material_override = Forme.opaco(Color(0.7, 0.55, 0.3), 0.6)
+		_freccia.add_child(asta)
+		var punta := MeshInstance3D.new()
+		var pc := CylinderMesh.new()
+		pc.top_radius = 0.0
+		pc.bottom_radius = 0.016
+		pc.height = 0.07
+		punta.mesh = pc
+		punta.rotation.x = PI / 2
+		punta.position.z = 0.935
+		punta.material_override = Forme.acciaio(Color(0.8, 0.82, 0.86), 0.3)
+		_freccia.add_child(punta)
+		for k in range(3):
+			var penna := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.002, 0.04, 0.1)
+			penna.mesh = bm
+			penna.position = Vector3(0, 0, 0.07)
+			penna.rotation.z = k * TAU / 3.0
+			penna.material_override = Forme.opaco(Color(0.85, 0.2, 0.15), 0.8)
+			_freccia.add_child(penna)
+		_freccia.visible = false
+		add_child(_freccia)
+
+	func _process(_dt: float) -> void:
+		var riposo := (alto + basso) * 0.5
+		var p := riposo
+		if tiro > 0.001 and mano != null and arco != null and mano.is_inside_tree():
+			p = riposo.lerp(arco.to_local(mano.global_position), tiro)
+		_segmento(_su, alto, p)
+		_segmento(_giu, p, basso)
+		_freccia.visible = tiro > 0.05
+		_freccia.position = p
+
+	func _segmento(mi: MeshInstance3D, a: Vector3, b: Vector3) -> void:
+		var d := b - a
+		var l := d.length()
+		if l < 0.001:
+			return
+		var su := Vector3.UP if absf(d.normalized().dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
+		mi.transform = Transform3D(Basis.looking_at(d / l, su) * Basis.from_scale(Vector3(1, 1, l)), (a + b) * 0.5)
 
 
 ## Costruisce le armi in mano. Restituisce i nodi delle armi (ognuno con meta «lama»: [base, punta] in coordinate sue).
 static func metti(sk: Skeleton3D, tipo: String, grado: int) -> Array:
 	var armi: Array = []
-	if sk == null or tipo == "fists":
+	if sk == null:
 		return armi
-	var metallo := _metallo(grado)
-	var oro := Edifici.mat(Color(0.85, 0.66, 0.26) if grado >= 3 else Color(0.5, 0.4, 0.2), 0.35, 0.85)
-	var fascia := Edifici.mat(Color(0.12, 0.1, 0.12) if grado >= 2 else Color(0.35, 0.12, 0.1), 0.85)
-	var corda := Edifici.mat(Color(0.88, 0.85, 0.78) if grado >= 2 else Color(0.5, 0.16, 0.1), 0.8)
-	var legno := Edifici.mat(Color(0.32, 0.2, 0.11), 0.8)
+	grado = clampi(grado, 1, 4)
 	match tipo:
 		"sword":
-			var a := impugna(sk, "hand_R", 28.0)
-			Edifici.cilindro(0.021, 0.023, 0.3, Vector3(0, -0.02, 0), fascia, a, 8)                 # impugnatura
-			for i in range(4):
-				Edifici.cilindro(0.025, 0.025, 0.018, Vector3(0, -0.12 + i * 0.065, 0), corda, a, 8)
-			Edifici.cilindro(0.027, 0.024, 0.035, Vector3(0, -0.185, 0), oro, a, 8)                  # pomolo
-			Edifici.cilindro(0.062, 0.062, 0.016, Vector3(0, 0.14, 0), oro, a, 14)                   # guardia tonda
-			Edifici.cilindro(0.026, 0.024, 0.03, Vector3(0, 0.162, 0), oro, a, 8)
-			var lunga := 1.05 + grado * 0.07
-			_lama(lunga, 0.062, 0.085, metallo, a, 0.175)
-			a.set_meta("lama", [Vector3(0, 0.2, 0), Vector3(-0.085, 0.175 + lunga, 0)])
-			armi.append(a)
+			var a := impugna(sk, "hand_R", INCLINA.sword)
+			var p := Node3D.new()
+			a.add_child(p)
+			p.rotation.y = PI / 2.0                    # il filo guarda verso le dita (in basso a braccio lungo il fianco), le facce piatte verso l'esterno
+			Forme.spada(p, grado)
+			armi.append(p)
 		"daggers":
 			for osso in ["hand_R", "hand_L"]:
-				var d := impugna(sk, osso, 20.0)
-				Edifici.cilindro(0.019, 0.02, 0.15, Vector3(0, -0.005, 0), fascia, d, 8)
-				Edifici.cilindro(0.045, 0.045, 0.014, Vector3(0, 0.075, 0), oro, d, 12)
-				_lama(0.42, 0.05, 0.03, metallo, d, 0.085)
-				d.set_meta("lama", [Vector3(0, 0.1, 0), Vector3(-0.03, 0.5, 0)])
-				armi.append(d)
+				var d := impugna(sk, osso, INCLINA.daggers)
+				var p := Node3D.new()
+				d.add_child(p)
+				p.rotation.y = PI / 2.0
+				Forme.pugnale(p, grado)
+				armi.append(p)
+		"fists":
+			for osso in ["hand_R", "hand_L"]:
+				var d := impugna(sk, osso, 0.0)
+				var p := Node3D.new()
+				d.add_child(p)
+				Forme.pugni(p, grado, 1.0 if osso == "hand_R" else -1.0)
+				armi.append(p)
 		"bow":
-			var b := impugna(sk, "hand_L")
-			# arco ricurvo: due flettenti ad arco lungo y, la corda dietro (verso -z, dalla parte di chi tira)
-			for s in [-1.0, 1.0]:
-				for k in range(5):
-					var t0 := float(k) / 5.0
-					var t1 := float(k + 1) / 5.0
-					var p0 := Vector3(0, s * (0.06 + 0.66 * t0), -0.2 * t0 * t0)
-					var p1 := Vector3(0, s * (0.06 + 0.66 * t1), -0.2 * t1 * t1)
-					var pezzo := Edifici.cilindro(0.016 - 0.008 * t1, 0.018 - 0.008 * t0, p0.distance_to(p1) * 1.08, (p0 + p1) * 0.5, legno if grado < 3 else metallo, b, 6)
-					pezzo.rotation.x = atan2(p1.z - p0.z, absf(p1.y - p0.y)) * s
-			Edifici.cilindro(0.024, 0.024, 0.16, Vector3.ZERO, fascia, b, 8)
-			Edifici.scatola(Vector3(0.004, 1.44, 0.004), Vector3(0, 0, -0.2), Edifici.mat(Color(0.92, 0.92, 0.86), 0.6), b)
-			b.set_meta("lama", [Vector3(0, -0.7, -0.1), Vector3(0, 0.7, -0.1)])
-			armi.append(b)
+			var b := impugna(sk, "hand_L", INCLINA.bow)
+			var p := Node3D.new()
+			b.add_child(p)
+			var punte: Array = Forme.arco(p, grado)
+			var corda := Corda.new()
+			corda.arco = p
+			corda.alto = punte[0]
+			corda.basso = punte[1]
+			corda.mano = impugna(sk, "hand_R", 0.0)
+			p.add_child(corda)
+			p.set_meta("corda", corda)
+			armi.append(p)
 		"staff":
-			var s2 := impugna(sk, "hand_R", -78.0)
-			Edifici.cilindro(0.02, 0.026, 1.95, Vector3(0, 0.42, 0), legno, s2, 8)
-			for i in range(3):
-				Edifici.cilindro(0.031, 0.031, 0.025, Vector3(0, 1.1 + i * 0.07, 0), oro, s2, 8)
-			var colore: Color = [Color(1.0, 0.94, 0.6), Color(0.6, 0.85, 1.0), Color(0.6, 1.0, 0.75), Color(1.0, 0.65, 0.95)][clampi(grado - 1, 0, 3)]
-			# gemma in cima fra tre artigli
-			var gemma := MeshInstance3D.new()
-			var sm := SphereMesh.new()
-			sm.radius = 0.085
-			sm.height = 0.19
-			sm.radial_segments = 12
-			sm.rings = 6
-			gemma.mesh = sm
-			gemma.material_override = Edifici.mat(colore, 0.2, 0.0, 3.5)
-			gemma.position.y = 1.5
-			s2.add_child(gemma)
-			for i in range(3):
-				var art := Edifici.cilindro(0.004, 0.014, 0.2, Vector3(cos(i * TAU / 3.0) * 0.07, 1.46, sin(i * TAU / 3.0) * 0.07), oro, s2, 5)
-				art.rotation = Vector3(sin(i * TAU / 3.0) * -0.35, 0, cos(i * TAU / 3.0) * 0.35)
-			s2.set_meta("lama", [Vector3(0, 1.3, 0), Vector3(0, 1.62, 0)])
-			armi.append(s2)
+			var s2 := impugna(sk, "hand_R", INCLINA.staff)
+			var p := Node3D.new()
+			s2.add_child(p)
+			p.rotation.z = deg_to_rad(RZ.staff)
+			var gira: Node3D = Forme.bastone(p, grado)
+			if gira != null and grado >= 2:
+				var tw := p.create_tween().set_loops()
+				tw.tween_property(gira, "rotation:y", TAU, 9.0 - grado).from(0.0)
+			armi.append(p)
 	return armi
 
 
@@ -205,13 +247,13 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 	if colore.a <= 0.0:
 		return
 	# la lama si accende
-	for n in arma.get_children():
+	for n in arma.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
-		if mi != null and mi.mesh is ArrayMesh:
+		if mi != null and mi.has_meta(Forme.ACCENDI) and mi.material_override is StandardMaterial3D:
 			var m: StandardMaterial3D = (mi.material_override as StandardMaterial3D).duplicate()
 			m.emission_enabled = true
 			m.emission = colore
-			m.emission_energy_multiplier = 0.6 if l.is_empty() else (1.2 + 0.25 * (up - 7))
+			m.emission_energy_multiplier = 0.5 if l.is_empty() else (0.9 + 0.2 * (up - 7))
 			mi.material_override = m
 	if l.is_empty():
 		return
@@ -226,7 +268,7 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 	p.lifetime = 0.7
 	p.local_coords = false
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	p.emission_box_extents = Vector3(0.03, (punta - base).length() * 0.5, 0.03)
+	p.emission_box_extents = Vector3(0.03, 0.03, 0.03) + (punta - base).abs() * 0.5
 	p.position = centro
 	p.direction = Vector3.UP
 	p.spread = 180.0
@@ -244,14 +286,16 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 	# alone attorno alla lama
 	var al := MeshInstance3D.new()
 	var qa := QuadMesh.new()
-	qa.size = Vector2(0.5, (punta - base).length() * 1.25)
+	var largo: float = arma.get_meta("largo", 0.5)
+	var lungo_y := absf(punta.y - base.y) > absf(punta.z - base.z)
+	qa.size = Vector2(largo, (punta - base).length() * 1.25) if lungo_y else Vector2(largo, largo)
 	al.mesh = qa
 	var ma := StandardMaterial3D.new()
 	ma.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	ma.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	ma.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	ma.albedo_texture = alone()
-	ma.albedo_color = Color(l.c1.r, l.c1.g, l.c1.b, 0.3 + 0.05 * (up - 7))
+	ma.albedo_color = Color(l.c1.r, l.c1.g, l.c1.b, (0.3 + 0.05 * (up - 7)) * (0.35 if (punta - base).length() < 0.6 else 1.0))     # armi corte: alone più tenue
 	ma.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
 	ma.billboard_keep_scale = true
 	ma.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
