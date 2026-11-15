@@ -395,6 +395,19 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   `sandali` (prima piedi nudi); sull'uomo crocchia e chioma lunga del pacchetto diventano `capelli_corti`.
   Visto a schermo in vetrina: le 4 classi ai 4 passi da fermi; Lama in corsa e in attacco, Mistico in attacco (video).
   Non visto: nel gioco col server.
+- **Mondo più leggero e terreno con texture dipinte** (l'autore: «la mappa principale è molto pesante… più bello con
+  texture migliori ma non più pesanti»). Misura con il comando `stat nome` del copione (disegni, triangoli, ms): nel
+  container da ~3600-4000 disegni e ~4,2 milioni di triangoli a fotogramma a ~1200-2200 disegni e ~0,7-0,9 milioni; tempo
+  del fotogramma (resa software, senza GPU: vale solo come rapporto) da ~1,3-1,6 s a ~0,76-1,0 s. Cosa è cambiato:
+  `terreno.gdshader` campiona 8 materiali dipinti (`godot/texture/terreno.png`, atlante 4×2 da 512 px con altezza in
+  alfa, generato da `python3 tools/godot/texture_terreno.py`; caricato come file in una `Texture2DArray` da
+  `Mondo.strati_terreno`) al posto del rumore calcolato a ogni punto, con incastro per altezza ai confini e
+  `texture/variazione.png` contro la ripetizione; piante divise in zolle di 64 m con distanza di vista (`_semina`);
+  edifici dei villaggi fusi per materiale (`Edifici.fondi`); ombre del sole a 2 fasce fino a 95 m, atlante 2048, MSAA 2x
+  in Alta e FXAA in Media; luci di lanterne e fucina che si spengono oltre 45-60 m; `Personaggio.sfoltisci` toglie i
+  capi non indossati (erano un centinaio di mesh nascoste per personaggio); visuale fino a 620 m, nebbia un po' più fitta.
+  Visti a schermo: villaggio, strada, campagna, altopiano. Non visti: altri due villaggi, neve e sabbia da vicino, mappe
+  lontane (usano ancora `terreno_mappa` con il rumore). Restano ~1200 disegni nel villaggio: personaggi, PNG e obelischi.
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 

@@ -218,6 +218,17 @@ func _prova_automatica() -> void:
 			continue
 		match p[0]:
 			"attendi": await _attendi(float(p[1]))
+			"stat":
+				# misura del peso: media su 12 fotogrammi di chiamate di disegno, triangoli e tempo del fotogramma
+				var t0 := Time.get_ticks_usec()
+				for _k in range(12):
+					await get_tree().process_frame
+				var ms := (Time.get_ticks_usec() - t0) / 12000.0
+				print("STAT %s: %.0f ms/fotogramma, %d disegni, %d triangoli, %d oggetti, %d nodi" % [p[1] if p.size() > 1 else "",
+						ms, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),
+						int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)),
+						int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)),
+						int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))])
 			"foto": await _foto(p[1])
 			"tecnica": gioco.usa_tecnica(p[1])
 			"mappa": gioco.mappa.apri_chiudi()

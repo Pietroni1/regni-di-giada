@@ -23,6 +23,8 @@ func _terreno() -> void:
 	_mat_terreno.set_shader_parameter("pesi_a", ImageTexture.create_from_image(Dati.pesi_a))
 	_mat_terreno.set_shader_parameter("pesi_b", ImageTexture.create_from_image(Dati.pesi_b))
 	_mat_terreno.set_shader_parameter("meta", Dati.meta)
+	_mat_terreno.set_shader_parameter("strati", strati_terreno())
+	_mat_terreno.set_shader_parameter("variazione", _immagine("res://texture/variazione.png"))
 	var n := Dati.lato_h - 1
 	var passo := Dati.passo_h
 	var pezzi := int(ceil(float(n) / CELLE_PER_PEZZO))
@@ -62,6 +64,31 @@ func _terreno() -> void:
 			mi.mesh = mesh
 			mi.material_override = _mat_terreno
 			add_child(mi)
+
+
+## Immagine letta come file (non come risorsa importata): funziona anche senza passare dall'editor.
+static func _immagine(percorso: String) -> ImageTexture:
+	var img := Image.new()
+	img.load_png_from_buffer(FileAccess.get_file_as_bytes(percorso))
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
+## Gli 8 materiali dipinti del terreno: l'atlante 4 x 2 di texture/terreno.png diventa una pila di texture con mipmap.
+static var _strati: Texture2DArray = null
+static func strati_terreno() -> Texture2DArray:
+	if _strati == null:
+		var atl := Image.new()
+		atl.load_png_from_buffer(FileAccess.get_file_as_bytes("res://texture/terreno.png"))
+		var lato := atl.get_width() / 4
+		var lista: Array[Image] = []
+		for k in range(8):
+			var im := atl.get_region(Rect2i((k % 4) * lato, (k / 4) * lato, lato, lato))
+			im.generate_mipmaps()
+			lista.append(im)
+		_strati = Texture2DArray.new()
+		_strati.create_from_images(lista)
+	return _strati
 
 
 func _acqua() -> void:
@@ -109,20 +136,36 @@ func _vegetazione() -> void:
 		var arr: Array = liste.get(specie, [])
 		if arr.is_empty():
 			continue
-		_semina(forme.get(specie + "_tronco"), corteccia, arr, 1.0, 0.0, [], specie != "cespuglio")
-		_semina(forme.get(specie + "_chioma"), chioma, arr, 1.0, 0.0, TINTE[specie], true)
+		var vista := 130.0 if specie == "cespuglio" else 240.0
+		_semina(forme.get(specie + "_tronco"), corteccia, arr, 1.0, 0.0, [], specie != "cespuglio", minf(vista, 170.0))
+		_semina(forme.get(specie + "_chioma"), chioma, arr, 1.0, 0.0, TINTE[specie], true, vista)
 	var rocce: Array = liste.get("roccia", [])
 	for v in range(3):
 		var parte := []
 		for i in range(rocce.size()):
 			if i % 3 == v:
 				parte.append(rocce[i])
-		_semina(forme.get("roccia_%d" % (v + 1)), roccia, parte, 1.1, 0.15, [], true)
+		_semina(forme.get("roccia_%d" % (v + 1)), roccia, parte, 1.1, 0.15, [], true, 190.0)
 
 
-func _semina(forma: Mesh, materiale: Material, arr: Array, scala: float, alza: float, tinte: Array, ombra: bool) -> void:
-	if forma == null or arr.is_empty():
+## Le piante si dividono in zolle di ZOLLA metri: così quelle fuori vista o lontane non vengono disegnate
+## (prima ogni specie era un blocco unico, disegnato sempre per intero anche nelle ombre).
+const ZOLLA := 64.0
+
+func _semina(forma: Mesh, materiale: Material, tutte: Array, scala: float, alza: float, tinte: Array, ombra: bool, vista := 240.0) -> void:
+	if forma == null or tutte.is_empty():
 		return
+	var zolle := {}
+	for e in tutte:
+		var chiave := Vector2i(int(floor(float(e[0]) / ZOLLA)), int(floor(float(e[2]) / ZOLLA)))
+		if not zolle.has(chiave):
+			zolle[chiave] = []
+		zolle[chiave].append(e)
+	for chiave in zolle:
+		_semina_zolla(forma, materiale, zolle[chiave], scala, alza, tinte, ombra, vista)
+
+
+func _semina_zolla(forma: Mesh, materiale: Material, arr: Array, scala: float, alza: float, tinte: Array, ombra: bool, vista: float) -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = not tinte.is_empty()
@@ -139,6 +182,8 @@ func _semina(forma: Mesh, materiale: Material, arr: Array, scala: float, alza: f
 	mi.multimesh = mm
 	mi.material_override = materiale
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if ombra else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = vista
+	mi.visibility_range_end_margin = 12.0
 	add_child(mi)
 
 
@@ -206,6 +251,8 @@ func _villaggio(kid: String) -> void:
 	for sx in [-1.0, 1.0]:
 		var asta := Edifici.cilindro(0.07, 0.09, 6.0, Vector3(sx * 10.5, 3.0, 36.5), Edifici.legno(Edifici.LEGNO), radice, 8)
 		Edifici.scatola(Vector3(0.9, 2.6, 0.04), Vector3(0.52, 1.5, 0), Edifici.mat(accento, 0.85), asta)
+	# centinaia di pezzi (travi, muri, coppi) diventano poche mesh, una per materiale
+	Edifici.fondi(radice, 330.0)
 
 
 # ------------------------------------------------------------------ altopiano centrale

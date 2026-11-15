@@ -123,6 +123,7 @@ static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado
 	p.attacchi = ATTACCHI.get(tipo_arma, ATTACCHI.sword)
 	p._metti_arma(tipo_arma, grado_arma)
 	p._crea_albero(radice)
+	p.sfoltisci.call_deferred()       # dopo che chi lo crea ha scelto capelli e accessori
 	if not dipinto:
 		p._piedi = PiediDritti.new()      # la corsa di Mixamo ruota i piedi in fuori; le animazioni dei corpi dipinti no
 		p.scheletro.add_child(p._piedi)
@@ -446,6 +447,17 @@ func metti_effetti(wu: int, wr: int, bu: int, br: int, mio: bool) -> void:
 	for sc in _scie:
 		(sc as Equip.Scia).colore = l.c1.lightened(0.3) if not l.is_empty() else Color(1.0, 0.96, 0.88)
 	Equip.aura_armatura(self, bu, br, _tipo_arma)
+
+
+## Toglie i capi non indossati: ogni modello ne porta un centinaio nascosti (tutti i completi di tutte le classi);
+## tenerli costa memoria e tempo a ogni personaggio in vista. Quando cambia l'equipaggiamento il personaggio viene rifatto.
+func sfoltisci() -> void:
+	if scheletro == null or not is_instance_valid(scheletro):
+		return
+	for n in scheletro.get_children():
+		var mi := n as MeshInstance3D
+		if mi != null and not mi.visible and String(mi.name).begins_with("capo_"):
+			mi.queue_free()
 
 
 # ------------------------------------------------------------------ animazioni

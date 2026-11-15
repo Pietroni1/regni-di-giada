@@ -197,6 +197,9 @@ static func fucina(w: float, d: float, tetto_col: Color) -> Node3D:
 	l.light_color = Color(1.0, 0.55, 0.2)
 	l.light_energy = 2.5
 	l.omni_range = 9.0
+	l.distance_fade_enabled = true
+	l.distance_fade_begin = 45.0
+	l.distance_fade_length = 15.0
 	l.position = Vector3(w * 0.5 - 1.2, 1.8, d * 0.5 + 1.4)
 	g.add_child(l)
 	return g
@@ -244,6 +247,9 @@ static func lanterna(con_luce: bool) -> Node3D:
 		l.light_color = Color(1.0, 0.7, 0.35)
 		l.light_energy = 1.6
 		l.omni_range = 8.0
+		l.distance_fade_enabled = true       # le luci lontane si spengono: ogni luce accesa costa
+		l.distance_fade_begin = 45.0
+		l.distance_fade_length = 15.0
 		l.position = Vector3(0, 1.8, 0)
 		g.add_child(l)
 	return g
@@ -274,3 +280,88 @@ static func porta(luce: float, tetto_col: Color, accento: Color) -> Node3D:
 	t.position.y = 6.4
 	g.add_child(t)
 	return g
+
+
+# ------------------------------------------------------------------ fusione
+## Firma di un materiale: due materiali con la stessa firma si disegnano insieme.
+static func _firma(m: Material) -> String:
+	if m is ShaderMaterial:
+		var sm := m as ShaderMaterial
+		var t := sm.shader.resource_path
+		for u in sm.shader.get_shader_uniform_list():
+			t += "|%s=%s" % [u.name, var_to_str(sm.get_shader_parameter(u.name))]
+		return t
+	if m is StandardMaterial3D:
+		var b := m as StandardMaterial3D
+		return "std|%s|%.2f|%.2f|%s|%.2f|%d|%d" % [b.albedo_color, b.roughness, b.metallic, b.emission if b.emission_enabled else Color.BLACK,
+				b.emission_energy_multiplier, b.transparency, b.cull_mode]
+	return str(m.get_instance_id()) if m != null else "nullo"
+
+
+## Fonde tutte le mesh ferme sotto «radice» in poche mesh, una per materiale (e per ombra sì/no): meno disegni.
+## Restano fuori i nodi con figli (luci appese), quelli trasparenti e ciò che non è fatto di triangoli.
+## vista: oltre questa distanza (metri) il gruppo non si disegna.
+static func fondi(radice: Node3D, vista := 0.0) -> void:
+	var gruppi := {}
+	for n in radice.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null or mi.get_child_count() > 0 or not mi.visible or mi.get_script() != null:
+			continue
+		# trasformazione rispetto alla radice
+		var rel := Transform3D.IDENTITY
+		var p: Node = mi
+		while p != null and p != radice:
+			if p is Node3D:
+				rel = (p as Node3D).transform * rel
+			p = p.get_parent()
+		var nb := rel.basis.inverse().transposed()
+		var tolte := true
+		for si in range(mi.mesh.get_surface_count()):
+			var mat: Material = mi.material_override if mi.material_override != null else mi.mesh.surface_get_material(si)
+			var arr := mi.mesh.surface_get_arrays(si)
+			if mat == null or arr.is_empty() or arr[Mesh.ARRAY_VERTEX] == null:
+				tolte = false
+				continue
+			if mat is BaseMaterial3D and (mat as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+				tolte = false
+				continue
+			var chiave := "%s#%d" % [_firma(mat), mi.cast_shadow]
+			if not gruppi.has(chiave):
+				gruppi[chiave] = {"mat": mat, "ombra": mi.cast_shadow, "v": PackedVector3Array(), "n": PackedVector3Array(), "uv": PackedVector2Array(), "i": PackedInt32Array()}
+			var g: Dictionary = gruppi[chiave]
+			var vv: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var base: int = (g.v as PackedVector3Array).size()
+			var nn = arr[Mesh.ARRAY_NORMAL]
+			var uu = arr[Mesh.ARRAY_TEX_UV]
+			for k in range(vv.size()):
+				g.v.append(rel * vv[k])
+				g.n.append((nb * (nn[k] as Vector3)).normalized() if nn != null else Vector3.UP)
+				g.uv.append(uu[k] if uu != null else Vector2.ZERO)
+			var ii = arr[Mesh.ARRAY_INDEX]
+			if ii != null:
+				for k in ii:
+					g.i.append(base + int(k))
+			else:
+				for k in range(vv.size()):
+					g.i.append(base + k)
+		if tolte:
+			mi.get_parent().remove_child(mi)
+			mi.free()
+	for chiave in gruppi:
+		var g: Dictionary = gruppi[chiave]
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = g.v
+		arr[Mesh.ARRAY_NORMAL] = g.n
+		arr[Mesh.ARRAY_TEX_UV] = g.uv
+		arr[Mesh.ARRAY_INDEX] = g.i
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var mi := MeshInstance3D.new()
+		mi.name = "Fuso"
+		mi.mesh = mesh
+		mi.material_override = g.mat
+		mi.cast_shadow = g.ombra
+		if vista > 0.0:
+			mi.visibility_range_end = vista
+		radice.add_child(mi)

@@ -46,12 +46,17 @@ func applica() -> void:
 		if DisplayServer.window_get_mode() != modo and not OS.has_feature("movie"):
 			DisplayServer.window_set_mode(modo)
 	var vp := get_viewport()
-	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][clampi(qualita, 0, 2)]
-	vp.scaling_3d_scale = [0.75, 1.0, 1.0][clampi(qualita, 0, 2)]
-	RenderingServer.directional_shadow_atlas_set_size([1024, 2048, 4096][clampi(qualita, 0, 2)], true)
+	var q := clampi(qualita, 0, 2)
+	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_DISABLED, Viewport.MSAA_2X][q]
+	vp.screen_space_aa = [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_DISABLED][q]
+	vp.scaling_3d_scale = [0.75, 1.0, 1.0][q]
+	RenderingServer.directional_shadow_atlas_set_size([1024, 2048, 2048][q], true)
 	var sole: DirectionalLight3D = get_tree().current_scene.get_node_or_null("Sole") if get_tree().current_scene != null else null
 	if sole != null:
-		sole.directional_shadow_max_distance = [70.0, 120.0, 160.0][clampi(qualita, 0, 2)]
+		# ombre: due fasce invece di quattro e più vicine (ogni fascia ridisegna tutto ciò che fa ombra)
+		sole.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if q == 0 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+		sole.directional_shadow_blend_splits = false
+		sole.directional_shadow_max_distance = [45.0, 70.0, 95.0][q]
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(volume, 0.0001)))
 	AudioServer.set_bus_mute(0, volume <= 0.001)
 

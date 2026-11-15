@@ -64,7 +64,7 @@ func _ready() -> void:
 	fx = Effetti.new()
 	add_child(fx)
 	cam = Camera3D.new()
-	cam.far = 900.0
+	cam.far = 620.0
 	cam.fov = 60.0
 	add_child(cam)
 	cam.make_current()
