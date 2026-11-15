@@ -74,6 +74,16 @@ for im, nm in enumerate(('minmuscle', 'averagemuscle', 'maxmuscle')):
         prop = P.get('proporzioni', 0.5) * 2 - 1
         if prop:
             somma_forma(V, f'macrodetails/proportions/{SESSO}-{ETA}-{nm}-{npeso}-{"ideal" if prop > 0 else "uncommon"}proportions', w * abs(prop))
+if SESSO == 'female':
+    # seno: misura e tonicità (0..1, 0,5 = medio) come i cursori di MakeHuman
+    coppa, tono = tre(P.get('seno', 0.5)), tre(P.get('tonicita', 0.5))
+    for im, nm in enumerate(('minmuscle', 'averagemuscle', 'maxmuscle')):
+        for ip, npeso in enumerate(('minweight', 'averageweight', 'maxweight')):
+            for ic, nc in enumerate(('mincup', 'averagecup', 'maxcup')):
+                for it, nt in enumerate(('minfirmness', 'averagefirmness', 'maxfirmness')):
+                    w = muscoli[im] * peso[ip] * coppa[ic] * tono[it]
+                    if (ic, it) != (1, 1) and w > 1e-4:
+                        somma_forma(V, f'breast/female-{ETA}-{nm}-{npeso}-{nc}-{nt}', w)
 for etnia, w in P.get('etnia', {'asian': 1.0}).items():
     somma_forma(V, f'macrodetails/{etnia}-{SESSO}-{ETA}', w)
 for nome, w in P.get('forme', {}).items():
@@ -281,8 +291,9 @@ def uv_viso(i):
     for c, r, _ in occhi.values():
         # fascia arcuata sopra l'occhio, solo sul davanti del viso
         dx, dz = (p[0] - c[0]) / r, (p[2] - c[2]) / r
-        arco = 1.5 - 0.14 * dx * dx
-        if p[1] < c[1] + r * 0.9:
+        fuori = dx * (1 if c[0] > 0 else -1)                # verso la tempia
+        arco = 1.42 + 0.13 * fuori - 0.1 * dx * dx        # sopracciglio che sale verso l'esterno
+        if p[1] < c[1] + r * 0.9 and p[0] * c[0] > 0 and abs(dx) < 1.9 and 0.8 < dz < 2.2:
             sopra = max(sopra, math.exp(-((dz - arco) / 0.2) ** 2) * (1.0 if abs(dx) < 1.3 else math.exp(-((abs(dx) - 1.3) / 0.25) ** 2)))
     return (labbra, sopra)
 
@@ -339,6 +350,21 @@ def nel_cuoio(i):
     return p[2] > soglia
 cuoio = {i for i in del_corpo if nel_cuoio(i)}
 f_cap = [vi for mat_i, vi, _ in facce if mat_i == 0 and sum(i in cuoio for i in vi) >= len(vi) - 1]
+# solo il pezzo più grande: niente isolette di capelli sulla fronte
+gruppo_di = {}
+def radice(i):
+    while gruppo_di.setdefault(i, i) != i:
+        gruppo_di[i] = gruppo_di[gruppo_di[i]]
+        i = gruppo_di[i]
+    return i
+for vi in f_cap:
+    for i in vi[1:]:
+        gruppo_di[radice(i)] = radice(vi[0])
+conta = {}
+for vi in f_cap:
+    conta[radice(vi[0])] = conta.get(radice(vi[0]), 0) + 1
+grande = max(conta, key=conta.get)
+f_cap = [vi for vi in f_cap if radice(vi[0]) == grande]
 v_cap = sorted({i for vi in f_cap for i in vi})
 i_cap = {v: n for n, v in enumerate(v_cap)}
 me.calc_loop_triangles()

@@ -17,11 +17,12 @@ void vertex() {
 
 void fragment() {
 	float v = fbm3(pl * 9.0);
-	vec3 col = colore * (0.93 + 0.12 * v);
-	col = mix(col, colore * vec3(1.0, 0.86, 0.82), smoothstep(0.2, -0.8, nl.y) * 0.35);
+	vec3 base = colore * vec3(0.9, 0.84, 0.8);          // incarnato più caldo e abbronzato
+	vec3 col = base * (0.93 + 0.12 * v);
+	col = mix(col, base * vec3(1.0, 0.86, 0.82), smoothstep(0.2, -0.8, nl.y) * 0.35);
 	float labbra = smoothstep(0.55, 0.95, viso.x);
 	col = mix(col, col * vec3(0.92, 0.6, 0.56), labbra * 0.75);
-	float sopra = smoothstep(0.45, 0.75, viso.y + (fbm3(pl * 60.0) - 0.5) * 0.25);
+	float sopra = smoothstep(0.45, 0.75, viso.y + (fbm3(pl * 60.0) - 0.5) * 0.1);
 	col = mix(col, capelli, sopra * 0.9);
 	ALBEDO = col;
 	ROUGHNESS = 0.62;

@@ -92,8 +92,12 @@ Obiettivo dell'autore: aspetto alla WoW, cioè corpo base + capi separati che ca
   Nel container: `pip install bpy` (Blender come modulo Python) e i dati di MakeHuman con `git clone --sparse`; dopo aver
   cambiato un `.glb` serve `godot --headless --path godot --import` (senza, Godot usa la copia importata vecchia).
   Visti a schermo nel client Godot: uomo e donna, viso, chioma, vesti, spada e bastone in mano, posa da fermi.
-  Da migliorare: attaccatura dei capelli seghettata, pelle chiara e uniforme (nessuna texture), scollo della veste
-  seghettato, stili di capelli diversi, corporatura ancora poco «eroica». Il client nel browser non è stato riprovato
+  **Gusto dell'autore** (dopo aver visto la prima versione, orientale e snella: non gli è piaciuta): niente lineamenti
+  orientali marcati (al più qualche tratto), fisici forti e muscolosi «da eroe», uomo e donna belli. I parametri attuali
+  vanno in quella direzione (etnia 0,8 caucasica / 0,2 asiatica, muscoli al massimo, torso a V, spalle larghe, mascella
+  forte; donna atletica a clessidra con `seno` e `tonicita`).
+  Da migliorare: attaccatura dei capelli seghettata, pelle uniforme (nessuna texture, muscoli poco leggibili sotto le
+  vesti aderenti), scollo della veste seghettato, stili di capelli diversi. Il client nel browser non è stato riprovato
   con i corpi nuovi.
 - Da fare: capelli e volti, vesti delle classi con forma propria (hakama, maniche larghe) al posto dei gusci aderenti,
   nascondere il corpo sotto i capi, PNG. Dopo: l'autore vuole lavorare sul sistema di combattimento.

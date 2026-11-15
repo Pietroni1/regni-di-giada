@@ -31,6 +31,7 @@ Dopo, apri una volta il progetto `godot/` nell'editor di Godot (reimporta i mode
 | `sesso` | `uomo` / `donna` | corporatura di partenza |
 | `muscoli`, `peso` | da 0 a 1 (0,5 = medio) | massa muscolare e grasso |
 | `altezza`, `proporzioni` | da 0 a 1 | statura (il gioco riporta poi tutti alla stessa altezza) e proporzioni «ideali» |
+| `seno`, `tonicita` | da 0 a 1 (solo donna) | misura e tonicità del seno |
 | `etnia` | `asian`, `caucasian`, `african` (pesi, somma 1) | lineamenti di base |
 | `forme` | nome della forma → peso (di solito da 0 a 1) | dettagli: naso, occhi, mento, bocca, spalle, mani... |
 
