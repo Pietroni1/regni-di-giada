@@ -361,6 +361,34 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   Perfetta (20) — e `_arricchisci` aggiunge strati (rune, eco del colpo, più saette/proiettili, crepe e onda, sigillo
   d'oro e tinta dorata al 20); le forme principali crescono dell'8% a grado. Il grado compare nella finestra Abilità e nel
   tooltip. Comando GM `/abilita id livello` per provarli. Visto a schermo: Lama del Tuono ai livelli 1, 10 e 20.
+- **Temi visivi per classe e Via** (richiesta dell'autore: «il tema delle abilità è molto tutto fulmini, diversifichiamolo per
+  classe»): `Effetti.tema_di(sk)` ricava il tema dalla Via (`sk.via`), altrimenti dalla classe (`sk.cls`); `PALETTE` dà i tre
+  colori del tema (il colore della tecnica non conta più, salvo la virata all'oro del grado Perfetta). Temi: **acciaio** (Lama
+  base: fendenti netti, scintille di metallo), **fulmine** (Via del Fulmine: le uniche saette), **roccia** (Montagna: `lastre`
+  che spuntano, `schegge`, crepe, polvere), **ombra** (Ombra base e Pugnali: `fumo` e `nube` viola, `taglio_ombra` scuro col
+  bordo acido, `gocce`, `sagoma` = copie d'ombra), **vento** (Arco: scie d'aria, `petali` usati come penne, mirino dorato),
+  **fiamma** (Monaco base e Ferro: impronte di palmo, onde calde, `fiamme`), **loto** (petali e fiori che sbocciano, onde
+  verde giada), **astrale** (Mistico base e Tempesta: costellazioni, `stelle`, `raggio_luce`, vento stellato), **giada**
+  (Benedizione: colonne verde-oro, sigilli, `cupola`). Ogni tema ha la sua funzione (`_acciaio`, `_roccia`, `_ombra`, `_vento`,
+  `_fiamma`, `_loto`, `_astrale`, `_giada`) che sceglie per `fx`; le cavalcature (tema `neutro`) e ogni `fx` non previsto
+  ricadono su `_generico` e, per le aure, su `_aura` (un `fx` sconosciuto non dà errori). `_arricchisci` (gradi), `_risonanza` e
+  `_firma` (segno a terra di annuncio/Affinata) seguono il tema; le 4 Supreme (`_suprema`) hanno una regia per classe nel
+  loro tema. Nuovi shader: `fx_forma` (mirino, loto, costellazione, sigillo di giada, palmo, vento, stella: `forma(pos, F_*, ...)`),
+  `fx_ombra` (taglio scuro, fusione normale), `fx_cupola`; `fx_fendente` ha il parametro `bianco`. Texture di particelle
+  (stella, petalo/penna) generate da codice. Leggerezza: particelle poche, `proiettile`/`fulmine` hanno `luce := false` quando
+  ce ne sono molti (niente luci dinamiche in serie).
+  **Scatti** (`fx: 'dash'`): `_carica` (Lama: scia a terra, polvere lungo il percorso, saette se Via del Fulmine, lastre se
+  Montagna, impatto frontale) e `_teletrasporto` (Ombra: sbuffo di fumo alla partenza e un altro alle spalle del bersaglio,
+  nessuna scia). Partenza da `fx`/`fz` del messaggio; l'arrivo da `tx`/`tz` se il server li manda, altrimenti si ricava dal
+  bersaglio (davanti, o alle spalle per l'Ombra) perché chi scatta può non essere ancora stato spostato nel client.
+  **Buff di classe** (`fx: 'buff_lama'`, `'buff_ombra'`, `'buff_monaco'`, `'buff_mistico'`: Grido di Guerra, Velo d'Ombra,
+  Respiro del Drago, Benedizione degli Astri; `_buff_classe`): con `ally: 1` (effetto mandato agli alleati) la versione è ridotta.
+  Prova senza server: `godot --path godot res://scene/prova_fx.tscn --fixed-fps 30 -- --classe=lama --lista=squarcio,carica@fulmine
+  --cartella=/percorso --t=0.15,0.5 [--l=20] [--ris=1] [--dist=10]` (`id@via` forza la Via; `#polvere`, `#nube`, `#fumo`, `#forma`
+  provano i mattoni; `base` fotografa la scena vuota); la scena di prova non è nel repository.
+  Visti a schermo (scena di prova, Compatibilità): tutte le tecniche di base e di Via delle 4 classi, le 4 Supreme, i 2 scatti,
+  i 4 buff, gradi 10/15/20 e Risonanza su alcune. **Non visti**: in gioco col server (solo la scena di prova), il rendering
+  Forward+, i buff sugli alleati, `tx`/`tz` dello scatto, prestazioni con molti giocatori che lanciano insieme.
 - **Kit a pochi tasti nel client Godot**: finale con Risonanza mostrato ad area (`Effetti._risonanza`), barra di lancio
   del bersaglio e barretta sulle targhette (`gioco.lanci_nemici`), cerchio a terra per i lanci ad area, scritta
   «INTERROTTO», il tasto dell'Interruzione lampeggia quando il bersaglio lancia e quello del finale quando c'è la

@@ -5,6 +5,7 @@ uniform vec4 colore : source_color = vec4(1.0);
 uniform float fase = 0.0;
 uniform float arco = 2.6;       // ampiezza in radianti
 uniform float interno = 0.55;   // raggio interno della lama (0..1)
+uniform float bianco = 1.0;     // quanto il filo vira al bianco (1 = come sempre, 0 = resta del colore)
 void fragment() {
 	vec2 p = (UV - 0.5) * 2.0;
 	float d = length(p);
@@ -19,6 +20,6 @@ void fragment() {
 	float fibra = 0.55 + 0.45 * sin(d * 46.0 + sin(ang * 5.0) * 2.0) * sin(d * 17.0 + 1.3);
 	float sfrangia = smoothstep(0.0, 0.25, lungo + (sin(d * 60.0) * 0.5 + 0.5) * 0.25 - 0.12);
 	float a = dentro * (radiale * pow(lungo, 1.5) * fibra * sfrangia + filo * lungo * 1.8);
-	ALBEDO = mix(colore.rgb, vec3(1.0), filo * 0.7 + pow(lungo, 6.0) * 0.5) * 1.8;
+	ALBEDO = mix(colore.rgb, vec3(1.0), (filo * 0.7 + pow(lungo, 6.0) * 0.5) * bianco) * 1.8;
 	ALPHA = clamp(a, 0.0, 1.0) * colore.a * (1.0 - smoothstep(0.75, 1.0, fase));
 }
