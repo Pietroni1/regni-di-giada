@@ -121,9 +121,41 @@ Obiettivo dell'autore: aspetto alla WoW, cioè corpo base + capi separati che ca
   I corpi generati con MakeHuman (`corpo_base.py`, `modelli/corpi/`) restano come strumento ma non sono più usati.
   Visti a schermo: uomo e donna da fermi, viso, profilo, schiena. Non visti: corsa e attacchi con le animazioni nuove
   (l'arco usa un'animazione di tiro con la pistola, la sella una seduta), armature ed elmi sul corpo nuovo, PNG, cavallo.
-  Le vesti sono ancora i gusci ricavati dal corpo (pantaloni e pannelli della tunica con bordi irregolari).
-- Da fare: capelli e volti, vesti delle classi con forma propria (hakama, maniche larghe) al posto dei gusci aderenti,
-  nascondere il corpo sotto i capi, PNG. Dopo: l'autore vuole lavorare sul sistema di combattimento.
+  Le vesti di prima (gusci ricavati dal corpo) restano nel `.glb` solo per il client nel browser.
+- **Completi per classe e grado (fatto, client Godot)** — richiesta dell'autore: «rifacciamo le armature, mantieni gli
+  effetti, sempre più epiche col livello, una particolarità per classe». `tools/blender/completi.py` (chiamato da
+  `importa_eroi.py`, ~40 s per tutto) costruisce su entrambi i corpi `capo_<classe>_base__<parte>` (vesti di sotto, sempre
+  indossate) e `capo_<classe>_<g>__<parte>` con g = 0 (senza armatura) … 4 (grado `tier` del pezzo `body`).
+  Strumenti (classe `Sarto`): `guscio` (pelle ritagliata su una linea esatta campo = 0 → orli puliti, gonfiata, lisciata,
+  ridotta al 40%), `busto`/`arto` (anelli campionati con raggi dall'interno, rientri riempiti, file di lamelle a gradino),
+  `falde` (pannelli appesi in vita, pesi bacino → coscia), `spallaccio`, `striscia` (cinghie, stole, colletti), `tubo`,
+  `sfera`, `gemma`, `borchia`, `lama`, `aureola`, `mantello`. Pesi: punto del corpo più vicino; pezzi duri pesi rigidi.
+  Parti: `stoffa` (robe), `stoffa2` (pants), `fascia` (trim), `regno` (colore del regno), `cuoio`, `piastre`, `lamelle`
+  (giunture disegnate da `metallo.gdshader`, parametro `lamelle`), `bordo`, `grani`, `gemma` (`gemma.gdshader`, luce
+  bassa che pulsa), `carta`. Le UV non arrivano nel glTF (nessuna texture): gli shader usano le coordinate del modello.
+  Identità: **Lama** veste incrociata senza maniche → cuoio → lamelle laccate rosse → acciaio con specchio sul petto e
+  gorgiera → nero e oro con ali sugli spallacci, gemme e mantello del regno; **Ombra** aderente scuro, sciarpa rossa,
+  gilet di cuoio, un solo spallaccio (sinistro), cinghie a croce con lame da lancio, poi lame sugli avambracci, code della
+  sciarpa, borse; al 4 mezza maschera e ventaglio di lame sulla schiena; **Monaco** busto nudo (la donna ha una fascia al
+  petto, `donna=True`), pantaloni larghi con fasce, grani grossi, tracolla, cordone con nappe, bracciali e cavigliere
+  d'oro, spallaccio d'oro e giada, al 4 anelli fluttuanti dietro la schiena; **Mistico** veste lunga a 8 falde con spacchi,
+  maniche a campana, colletto alto, stola con talismani, mantellina del regno, spallacci di giada, al 4 aureola dietro la
+  testa, talismani sospesi e seconda falda.
+  Client: `Entita.completo(classe, grado, colori)` sceglie i capi; `_giocatore` (colori del `look` + regno), PNG
+  (abitanti `lama_0`, guardie `lama_2`, araldo `lama_3`, maestri/guide/erboriste veste del Mistico) e mostri umani
+  (banditi `ombra_0/1`, generale e custode `lama_4`, terracotta `lama_2` d'argilla) li usano se il modello li ha
+  (`Entita.ha_completi`), altrimenti i capi di prima. Effetti `Equip.aura_armatura`/`cerchio_rune` invariati.
+  Prove: `godot --path godot res://scene/vetrina.tscn -- --classe=lama --sesso=m --posa=fermo|corsa|attacco
+  [--gradi=0,1,2,3,4] [--yaw=3.14] --foto=x.png` (vetrina senza server, con `--fixed-fps 30`); copione: comando `togli body`,
+  `usa` prende la copia più potenziata. Nota: nel copione `/level` fa ripartire il copione (si rientra in gioco).
+  Corretto: `Hair_SimpleParted` portava una sfera d'aiuto di 2 m (`capo_capelli_corti__2`), ora scartata.
+  Dimensioni: `base_uomo.glb` ~10 MB, `base_donna.glb` ~11 MB (i capi vecchi per il browser ne pesano ~1).
+  Visti a schermo (vetrina Godot e anteprime Blender): tutte le classi, gradi 0-4, uomo e donna, davanti e dietro; corsa e
+  attacco col grado 4. Nel gioco vero (server, copione) visto solo la Lama. **Non verificati**: le altre animazioni
+  (morte, sella, arco), elmi e calzari sopra i completi, PNG e mostri con i completi, resa con Forward+.
+  Difetti noti: in corsa le falde del Mistico seguono rigide la coscia; ai lati della fascia al petto della Monaca può
+  affiorare il top dipinto del corpo; sui pantaloni ricavati dalla pelle si vedono righe verticali sottili; le chiome lunghe dell'uomo (Mistico) sono quelle del pacchetto (calvizie in cima).
+- Da fare: capelli e volti, nascondere il corpo sotto i capi. Dopo: l'autore vuole lavorare sul sistema di combattimento.
 - Proporzioni: `"spalle": 1.22` nella voce del modello in `indice.json` allontana le braccia dal busto (`skinned.js`).
 - In corsa `SkinAnim.straightFeet` raddrizza i piedi (la corsa scelta li ruota verso l'esterno).
 - L'autore vuole animazioni ed effetti "epici/possenti": armi +15 con alone, cerchio di rune, spirali e scariche

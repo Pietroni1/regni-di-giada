@@ -91,14 +91,23 @@ static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado
 		# colore e lucentezza di partenza: quelli del modello, se il capo non ne impone uno
 		var orig := mi.mesh.surface_get_material(0) as BaseMaterial3D
 		var colore: Color = c if c != null else (orig.albedo_color if orig != null else Color(0.5, 0.5, 0.5))
-		if parte in ["piastre", "bordo"]:
+		# parti dei completi (tools/blender/completi.py): metalli, cuoio, stoffe tinte dal gioco, pietre luminose
+		if parte in ["piastre", "bordo", "lamelle", "grani"]:
 			var met := _dipinto("metallo", colore)
 			met.set_shader_parameter("metallico", orig.metallic if orig != null else 0.3)
 			met.set_shader_parameter("ruvido", orig.roughness if orig != null else 0.5)
+			if parte == "lamelle":
+				met.set_shader_parameter("lamelle", 0.12)
 			mi.material_override = met
+		elif parte == "gemma":
+			var gm := _dipinto("gemma", colore)
+			mi.material_override = gm
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		else:
 			var st := _dipinto("stoffa", colore)
 			st.set_shader_parameter("ricamo", ricamo)
+			if parte == "cuoio":
+				st.set_shader_parameter("cuoio", 1.0)
 			mi.material_override = st
 	var testa := p.scheletro.find_bone("head")
 	if testa >= 0:
