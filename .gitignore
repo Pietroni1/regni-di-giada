@@ -8,3 +8,4 @@ screenshots/
 __pycache__/
 .claude/worktrees/
 esporta/
+modelli/corpi/generati/

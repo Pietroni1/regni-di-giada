@@ -59,11 +59,15 @@ static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado
 	var radice: Node3D = _scena(modello).instantiate()
 	p.add_child(radice)
 	p.scheletro = radice.find_children("*", "Skeleton3D", true, false)[0]
+	# «dipinto»: corpo con le sue texture dipinte a mano (modelli/eroi): non gli si mette la pelle da shader
+	var dipinto := bool(Dati.indice.get("modelli", {}).get(modello, {}).get("dipinto", false))
 	for n in p.scheletro.get_children():
 		var mi := n as MeshInstance3D
 		if mi == null:
 			continue
 		var nome := String(mi.name)
+		if dipinto and not nome.begins_with("capo_"):
+			continue
 		if not nome.begins_with("capo_"):
 			# corpo: pelle dipinta; gli occhi (superficie «occhi» dei corpi fatti con corpo_base.py) hanno il loro shader
 			var mat_pelle := _dipinto("pelle", pelle)
@@ -105,8 +109,9 @@ static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado
 	p.attacchi = ATTACCHI.get(tipo_arma, ATTACCHI.sword)
 	p._metti_arma(tipo_arma, grado_arma)
 	p._crea_albero(radice)
-	p._piedi = PiediDritti.new()
-	p.scheletro.add_child(p._piedi)
+	if not dipinto:
+		p._piedi = PiediDritti.new()      # la corsa di Mixamo ruota i piedi in fuori; le animazioni dei corpi dipinti no
+		p.scheletro.add_child(p._piedi)
 	return p
 
 
@@ -115,11 +120,14 @@ static func _libreria_umani(modello: String, sk: Skeleton3D) -> AnimationLibrary
 	if _librerie.has(modello):
 		return _librerie[modello]
 	var lib := AnimationLibrary.new()
-	var sorgente: Node = _scena("mixamo_anim").instantiate()
+	var file_anim := String(Dati.indice.get("modelli", {}).get(modello, {}).get("anim", "mixamo_anim.glb")).trim_suffix(".glb")
+	var sorgente: Node = _scena(file_anim).instantiate()
 	var ap: AnimationPlayer = sorgente.find_children("*", "AnimationPlayer", true, false)[0]
 	var sk_src: Skeleton3D = sorgente.find_children("*", "Skeleton3D", true, false)[0]
-	var h_src := sk_src.get_bone_rest(sk_src.find_bone("hips")).origin.y
-	var h_dst := sk.get_bone_rest(sk.find_bone("hips")).origin.y
+	# stesso scheletro della libreria (bacino sotto un osso «root»): il movimento del bacino si tiene intero, solo riscalato
+	var intero := sk_src.find_bone("root") >= 0
+	var h_src := sk_src.get_bone_rest(sk_src.find_bone("hips")).origin.length() if intero else sk_src.get_bone_rest(sk_src.find_bone("hips")).origin.y
+	var h_dst := sk.get_bone_rest(sk.find_bone("hips")).origin.length() if intero else sk.get_bone_rest(sk.find_bone("hips")).origin.y
 	var fatt := h_dst / h_src if absf(h_src) > 1e-6 else 1.0
 	for nome in ap.get_animation_list():
 		var a: Animation = ap.get_animation(nome).duplicate(true)
@@ -131,7 +139,7 @@ static func _libreria_umani(modello: String, sk: Skeleton3D) -> AnimationLibrary
 			elif tipo == Animation.TYPE_POSITION_3D:
 				for k in range(a.track_get_key_count(i)):
 					var v: Vector3 = a.track_get_key_value(i, k)
-					a.track_set_key_value(i, k, Vector3(0.0, v.y * fatt, 0.0))
+					a.track_set_key_value(i, k, v * fatt if intero else Vector3(0.0, v.y * fatt, 0.0))
 		a.loop_mode = Animation.LOOP_LINEAR if nome in CICLICHE else Animation.LOOP_NONE
 		lib.add_animation(nome, a)
 	sorgente.free()
@@ -293,6 +301,26 @@ static func fantoccio() -> Personaggio:
 ## Acconciatura agganciata all'osso della testa (i volti arriveranno con i corpi base veri: sul manichino non rendono). stile: topknot, long, hood, bald, short.
 func metti_testa(stile: String, capelli: Color, cappuccio := Color(0.15, 0.15, 0.2)) -> void:
 	if scheletro == null or scheletro.find_bone("head") < 0:
+		return
+	var capi_modello: Array = Dati.indice.get("modelli", {}).get(modello, {}).get("capi", [])
+	if capi_modello.has("capelli_corti"):
+		# capigliature vere del modello (capo_capelli_*): si accende quella dello stile e la si tinge
+		var quale: String = {"short": "capelli_corti", "topknot": "capelli_crocchia", "long": "capelli_lunghi", "hood": "capelli_rasati", "bald": ""}.get(stile, "capelli_corti")
+		if quale == "capelli_crocchia" and modello.ends_with("uomo"):
+			quale = "capelli_corti"       # la crocchia del pacchetto è una pettinatura da donna
+		for n in scheletro.get_children():
+			var mi := n as MeshInstance3D
+			if mi == null:
+				continue
+			var nome := String(mi.name)
+			if nome == "sopracciglia" or (quale != "" and nome.begins_with("capo_" + quale)):
+				mi.visible = true
+				var orig := mi.mesh.surface_get_material(0) as BaseMaterial3D
+				if orig != null:
+					var tinta: BaseMaterial3D = orig.duplicate()
+					tinta.albedo_color = capelli.lightened(0.12)             # la texture è chiara: il colore la tinge
+					tinta.albedo_color.a = 1.0
+					mi.material_override = tinta
 		return
 	var ba := BoneAttachment3D.new()
 	ba.bone_name = "head"

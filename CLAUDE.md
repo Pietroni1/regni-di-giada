@@ -108,6 +108,20 @@ Obiettivo dell'autore: aspetto alla WoW, cioè corpo base + capi separati che ca
   Da migliorare: attaccatura dei capelli seghettata, pelle uniforme (nessuna texture, muscoli poco leggibili sotto le
   vesti aderenti), scollo della veste seghettato, stili di capelli diversi. Il client nel browser non è stato riprovato
   con i corpi nuovi.
+- **Corpi base attuali: modelli di terzi CC0** (decisione dell'autore dopo aver bocciato tutte le versioni generate da
+  codice: «trovane di buoni online e usiamo quelli come base»). `modelli/eroi/` contiene i corpi «Superhero» uomo e donna,
+  le capigliature e la Universal Animation Library di **Quaternius** (CC0, nota in `modelli/eroi/LEGGIMI.md`; presi da una
+  copia su GitHub perché il sito dell'autore non è raggiungibile dal container). `tools/blender/importa_eroi.py` rinomina
+  le ossa (stile Unreal → nomi del gioco), sceglie le animazioni (tabella `ANIMAZIONI`: fermo, guardia, camminata, corsa,
+  spada_1..3, pugni, calcio, arco, magia, colpito, morte, sella…) in `eroe_anim.glb`, lega le capigliature alla testa
+  (`capo_capelli_corti|crocchia|lunghi|rasati__N`, `capo_barba`) e ricostruisce capi e armature con le funzioni di
+  `importa_mixamo.py`. In `indice.json`: `"dipinto": true` (il corpo tiene le sue texture; niente `pelle.gdshader` né
+  `PiediDritti`), `"anim": "eroe_anim.glb"` (`_libreria_umani` legge il file dall'indice; con l'osso `root` il movimento
+  del bacino resta intero). `metti_testa` accende la capigliatura dello stile e la tinge insieme alle sopracciglia.
+  I corpi generati con MakeHuman (`corpo_base.py`, `modelli/corpi/`) restano come strumento ma non sono più usati.
+  Visti a schermo: uomo e donna da fermi, viso, profilo, schiena. Non visti: corsa e attacchi con le animazioni nuove
+  (l'arco usa un'animazione di tiro con la pistola, la sella una seduta), armature ed elmi sul corpo nuovo, PNG, cavallo.
+  Le vesti sono ancora i gusci ricavati dal corpo (pantaloni e pannelli della tunica con bordi irregolari).
 - Da fare: capelli e volti, vesti delle classi con forma propria (hakama, maniche larghe) al posto dei gusci aderenti,
   nascondere il corpo sotto i capi, PNG. Dopo: l'autore vuole lavorare sul sistema di combattimento.
 - Proporzioni: `"spalle": 1.22` nella voce del modello in `indice.json` allontana le braccia dal busto (`skinned.js`).

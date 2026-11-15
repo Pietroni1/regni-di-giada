@@ -2,7 +2,7 @@
   "modelli": {
     "base_donna": {
       "file": "base_donna.glb",
-      "anim": "mixamo_anim.glb",
+      "anim": "eroe_anim.glb",
       "capi": [
         "pantaloni",
         "veste",
@@ -20,19 +20,16 @@
         "stivali_cuoio",
         "stivali_vento",
         "stivali_nube",
-        "capelli"
+        "capelli_corti",
+        "capelli_crocchia",
+        "capelli_lunghi",
+        "capelli_rasati"
       ],
-      "spalle": 1.1,
-      "testa": {
-        "raggio": 0.0892,
-        "su": 0.078,
-        "avanti": 0.0096,
-        "profondo": 0.1129
-      }
+      "dipinto": true
     },
     "base_uomo": {
       "file": "base_uomo.glb",
-      "anim": "mixamo_anim.glb",
+      "anim": "eroe_anim.glb",
       "capi": [
         "pantaloni",
         "veste",
@@ -50,15 +47,13 @@
         "stivali_cuoio",
         "stivali_vento",
         "stivali_nube",
-        "capelli"
+        "barba",
+        "capelli_corti",
+        "capelli_crocchia",
+        "capelli_lunghi",
+        "capelli_rasati"
       ],
-      "spalle": 1.22,
-      "testa": {
-        "raggio": 0.0795,
-        "su": 0.0757,
-        "avanti": 0.0086,
-        "profondo": 0.1124
-      }
+      "dipinto": true
     }
   },
   "classi": {
