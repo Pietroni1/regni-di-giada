@@ -156,6 +156,7 @@ class Sarto:
             bm = bmesh.new()
             bm.verts.layers.int.new('spec')
             bm.loops.layers.uv.new('UVMap')
+            bm.loops.layers.uv.new('Orlo')          # seconda UV: (lungo l'orlo, distanza dall'orlo) in metri → shader
             self.parti[k] = bm
             self.colori[k] = colore
         return self.parti[k]
@@ -167,24 +168,63 @@ class Sarto:
         return len(self.specifiche)
 
     def griglia(self, capo, parte, righe, colore=(1, 1, 1), chiusa=False, spessore=0.0, pesi='corpo', fuori=None,
-                uv=None, chiudi_fondo=False):
+                uv=None, chiudi_fondo=False, orli='bordi'):
         """Superficie da righe di punti (tutte lunghe uguali). spessore > 0: guscio solido verso l'interno.
-        fuori(p) → verso esterno (di base: lontano dal corpo). uv: righe di (u, v); di base in metri lungo righe e colonne."""
+        fuori(p) → verso esterno (di base: lontano dal corpo). uv: righe di (u, v); di base in metri lungo righe e colonne.
+        orli: come si calcola la seconda UV «Orlo» (x lungo l'orlo, y distanza dall'orlo), letta dagli shader per
+        filetti, ribattini, ricami e usura: 'bordi' = prima e ultima riga (e prima e ultima colonna se aperta);
+        'nastro' = i lati di un nastro (righe = sezioni); 'file0' / 'file1' = righe a coppie (una fila di piastre per coppia), l'orlo esposto è la prima / la seconda della
+        coppia; None = nessun orlo (y grande)."""
         bm = self._bm(capo, parte, colore)
         spec = bm.verts.layers.int['spec']
         uvl = bm.loops.layers.uv['UVMap']
+        orl = bm.loops.layers.uv['Orlo']
         s = self._spec(pesi)
         n = len(righe[0])
+        m = len(righe)
+        # misure lungo righe (uu) e colonne (vv), in metri
+        UU, VV = [], []
+        vv = [0.0] * n
+        for j, r in enumerate(righe):
+            if j:
+                vv = [vv[i] + (r[i] - righe[j - 1][i]).length for i in range(n)]
+            uu = [0.0]
+            for i in range(1, n):
+                uu.append(uu[-1] + (r[i] - r[i - 1]).length)
+            UU.append(uu)
+            VV.append(vv)
         if uv is None:
-            uv = []
-            vv = [0.0] * n
-            for j, r in enumerate(righe):
-                if j:
-                    vv = [vv[i] + (r[i] - righe[j - 1][i]).length for i in range(n)]
-                uu = [0.0]
-                for i in range(1, n):
-                    uu.append(uu[-1] + (r[i] - r[i - 1]).length)
-                uv.append(list(zip(uu, vv)))
+            uv = [list(zip(UU[j], VV[j])) for j in range(m)]
+        # distanza dall'orlo per vertice
+        D = [[1.0] * n for _ in range(m)]
+        X = [list(r) for r in UU]          # coordinata lungo l'orlo
+        if orli == 'bordi':
+            for j in range(m):
+                for i in range(n):
+                    d = min(VV[j][i] - VV[0][i], VV[-1][i] - VV[j][i])
+                    if not chiusa:
+                        d = min(d, UU[j][i], UU[j][-1] - UU[j][i])
+                    D[j][i] = d
+        elif orli == 'nastro':
+            # nastri (cinghie, stole): le righe sono sezioni, l'orlo corre lungo i lati
+            for j in range(m):
+                for i in range(n):
+                    D[j][i] = min(UU[j][i], UU[j][-1] - UU[j][i])
+                    X[j][i] = VV[j][i]
+        elif orli in ('file0', 'file1'):
+            lip = 0 if orli == 'file0' else 1
+            for j0 in range(0, m - 1, 2):
+                jl, jo = j0 + lip, j0 + 1 - lip
+                for i in range(n):
+                    D[jl][i] = 0.0
+                    D[jo][i] = abs(VV[jo][i] - VV[jl][i])
+                X[jo] = list(UU[jl])           # la fila intera usa le misure del suo orlo: giunture dritte
+            if m % 2:
+                D[-1] = [0.0] * n
+            if not chiusa:
+                for j in range(m):
+                    for i in range(n):
+                        D[j][i] = min(D[j][i], UU[j][i], UU[j][-1] - UU[j][i])
         vs = []
         for r in righe:
             riga = []
@@ -206,8 +246,12 @@ class Sarto:
                     continue
                 cu = [uv[j][i], uv[j][i2] if i2 else (uv[j][i][0] + (righe[j][i2] - righe[j][i]).length, uv[j][i][1]),
                       uv[j + 1][i2] if i2 else (uv[j + 1][i][0] + (righe[j + 1][i2] - righe[j + 1][i]).length, uv[j + 1][i][1]), uv[j + 1][i]]
-                for l, c in zip(f.loops, cu):
+                co = [(X[j][i], D[j][i]), (X[j][i2] if i2 else X[j][i] + (righe[j][i2] - righe[j][i]).length, D[j][i2]),
+                      (X[j + 1][i2] if i2 else X[j + 1][i] + (righe[j + 1][i2] - righe[j + 1][i]).length, D[j + 1][i2]),
+                      (X[j + 1][i], D[j + 1][i])]
+                for l, c, o in zip(f.loops, cu, co):
                     l[uvl].uv = c
+                    l[orl].uv = o                      # (Godot la legge così com'è)
                 facce.append(f)
         if chiudi_fondo and chiusa:
             for riga in (vs[0], vs[-1]):
@@ -233,13 +277,35 @@ class Sarto:
             bmesh.ops.reverse_faces(bm, faces=facce)
 
     def _solido(self, bm, facce, spessore):
+        """Spessore leggero: solo il bordino lungo gli orli (verso l'interno), senza la seconda pelle di dentro.
+        Gli shader disegnano entrambe le facce: da fuori il pezzo sembra pieno e costa la metà dei triangoli."""
         bm.normal_update()
-        geom = list({v for f in facce for v in f.verts}) + list({e for f in facce for e in f.edges}) + facce
-        bmesh.ops.solidify(bm, geom=geom, thickness=spessore)
+        fs = set(facce)
+        lati = [e for f in facce for e in f.edges if sum(1 for g in e.link_faces if g in fs) == 1]
+        lati = list(set(lati))
+        if not lati:
+            return
+        nor = {v: v.normal.copy() for e in lati for v in e.verts}
+        prima = set(bm.verts)
+        ret = bmesh.ops.extrude_edge_only(bm, edges=lati)
+        spec = bm.verts.layers.int.get('spec')
+        orl = bm.loops.layers.uv.get('Orlo')
+        for v in ret['geom']:
+            if isinstance(v, bmesh.types.BMVert) and v not in prima:
+                orig = next((e.other_vert(v) for e in v.link_edges if e.other_vert(v) in nor), None)
+                if orig is not None:
+                    v.co = orig.co - nor[orig] * spessore
+                    if spec is not None:
+                        v[spec] = orig[spec]
+        for f in ret['geom']:
+            if orl is not None and isinstance(f, bmesh.types.BMFace):
+                for l in f.loops:
+                    l[orl].uv = (l[orl].uv.x, 0.0)          # il bordino è orlo
 
     def mesh_primitiva(self, capo, parte, crea, colore, pesi, matrice=Matrix.Identity(4)):
         """Aggiunge una primitiva di bmesh.ops (crea(bm_tmp)) trasformata da matrice."""
         tmp = bmesh.new()
+        tmp.loops.layers.uv.new('UVMap')
         crea(tmp)
         bmesh.ops.transform(tmp, matrix=matrice, verts=tmp.verts)
         me = bpy.data.meshes.new('tmp')
@@ -251,12 +317,15 @@ class Sarto:
         bm.from_mesh(me)
         bpy.data.meshes.remove(me)
         s = self._spec(pesi)
+        orl = bm.loops.layers.uv['Orlo']
         for v in bm.verts:
             if v not in prima:
                 v[spec] = s
+                for l in v.link_loops:
+                    l[orl].uv = (0.0, 1.0)          # lontano dagli orli
 
     # ------------------------------------------------------------------ vesti aderenti: la pelle ritagliata
-    def guscio(self, capo, parte, campo, stacco=0.012, colore=(1, 1, 1), spessore=0.0, liscia=6, seme=None, pesi='corpo', riduci=0.4,
+    def guscio(self, capo, parte, campo, stacco=0.012, colore=(1, 1, 1), spessore=0.0, liscia=6, seme=None, pesi='corpo', riduci=0.32,
                bordo=None):
         """Veste ricavata dalla pelle: si tiene la zona dove campo(co) > 0, tagliata esattamente sulla linea campo = 0
         (orli puliti), gonfiata di «stacco» (m o funzione co → m), lisciata (la stoffa non entra nei solchi dei muscoli).
@@ -356,11 +425,15 @@ class Sarto:
             bpy.data.meshes.remove(me)
             bm.normal_update()
         orli = self._orli(bm)
+        self._uv_orlo(bm, orli)
         if spessore > 0:
             self._solido(bm, bm.faces[:], spessore)
         me = bpy.data.meshes.new('tmp')
         bm.to_mesh(me)
         bm.free()
+        for k, l in enumerate(me.uv_layers):
+            if l.name != 'Orlo':
+                l.name = 'UVMap' if k == 0 else f'scarta{k}'
         dest = self._bm(capo, parte, colore)
         spec = dest.verts.layers.int['spec']
         prima = set(dest.verts)
@@ -376,8 +449,39 @@ class Sarto:
                 if len(o) > 3:
                     L = sum((b - a).length for a, b in zip(o, o[1:]))
                     chiuso = len(o) > 8 and (o[0] - o[-1]).length < 0.05 * self.u
-                    self.tubo(capo, p2, o, r, c2, lati=6, chiuso=chiuso, n=max(8, int(L / (0.025 * self.u))))
+                    self.tubo(capo, p2, o, r, c2, lati=5, chiuso=chiuso, n=max(8, int(L / (0.035 * self.u))))
         return orli
+
+    @staticmethod
+    def _uv_orlo(bm, orli, passo=0.004):
+        """Seconda UV di una superficie ritagliata: (lunghezza lungo l'orlo più vicino, distanza da quell'orlo) in metri."""
+        from mathutils.kdtree import KDTree
+        orl = bm.loops.layers.uv.get('Orlo') or bm.loops.layers.uv.new('Orlo')
+        pts = []
+        for o in orli:
+            s = 0.0
+            for a, b in zip(o, o[1:] + o[:1]):
+                L = (b - a).length
+                k = max(1, int(L / passo))
+                for i in range(k):
+                    pts.append((a.lerp(b, i / k), s + L * i / k))
+                s += L
+        if not pts:
+            for f in bm.faces:
+                for l in f.loops:
+                    l[orl].uv = (0.0, 1.0)
+            return
+        kd = KDTree(len(pts))
+        for i, (p, _) in enumerate(pts):
+            kd.insert(p, i)
+        kd.balance()
+        val = {}
+        for v in bm.verts:
+            co, i, d = kd.find(v.co)
+            val[v] = (pts[i][1], d)
+        for f in bm.faces:
+            for l in f.loops:
+                l[orl].uv = val[l.vert]
 
     @staticmethod
     def _orli(bm):
@@ -407,7 +511,7 @@ class Sarto:
 
     # ------------------------------------------------------------------ rivestimenti
     def busto(self, capo, parte, zb, zt, a0, a1, na=24, livelli=None, nv=8, stacco=0.02, colore=(1, 1, 1), spessore=0.0,
-              drappo=0.55, convesso=True, rmax=0.40, pesi='corpo', chiusa=None, ritorna_raggi=False):
+              drappo=0.55, convesso=True, rmax=0.40, pesi='corpo', chiusa=None, ritorna_raggi=False, orli='bordi'):
         """Rivestimento del busto: per ogni angolo da a0 ad a1 (gradi) quote da zb(a) a zt(a) (numeri o funzioni).
         livelli: [(frazione 0=basso..1=alto, scostamento extra in m)] al posto di nv quote uniformi.
         stacco: m (o funzione (z, a) → m) dalla pelle. drappo: quanto la stoffa può rientrare scendendo (pendenza)."""
@@ -451,12 +555,12 @@ class Sarto:
                 riga.append(self.centro(z) + self.dir(a) * (R[j][i] + st_f(z, a) + extra))
             righe.append(riga)
         righe.reverse()                                       # dal basso in alto
-        vs = self.griglia(capo, parte, righe, colore, chiusa=chiusa, spessore=spessore, pesi=pesi,
+        vs = self.griglia(capo, parte, righe, colore, chiusa=chiusa, spessore=spessore, pesi=pesi, orli=orli,
                           fuori=lambda p: Vector((p.x, p.y - self.centro(p.z).y, 0)))
         return righe
 
     def arto(self, capo, parte, percorso, t0, t1, nv=10, na=20, stacco=0.015, colore=(1, 1, 1), spessore=0.0, rmax=0.16,
-             livelli=None, pesi='corpo', drappo=0.6, rif=None):
+             livelli=None, pesi='corpo', drappo=0.6, rif=None, orli='bordi'):
         """Tubo attorno a un arto: percorso = lista di punti (assi delle ossa), t0..t1 frazione della lunghezza.
         stacco: m o funzione (t, ang) → m."""
         u = self.u
@@ -504,7 +608,7 @@ class Sarto:
                 dd = x * math.cos(ang) + y * math.sin(ang)
                 riga.append(c + dd * (R[j][i] + st_f(t, math.degrees(ang)) + extra))
             righe.append(riga)
-        self.griglia(capo, parte, righe, colore, chiusa=True, spessore=spessore, pesi=pesi)
+        self.griglia(capo, parte, righe, colore, chiusa=True, spessore=spessore, pesi=pesi, orli=orli)
         return righe
 
     def striscia(self, capo, parte, punti, largo, stacco=0.01, spessore=0.006, colore=(1, 1, 1), pesi='corpo',
@@ -546,9 +650,9 @@ class Sarto:
             mid.append(P[i] + N[i] * arco)
         righe = [[a, b, c] for a, b, c in zip(sx, mid, dx)]
         nn = {id(r): N[i] for i, r in enumerate(righe)}
-        self.griglia(capo, parte, righe, colore, chiusa=False, spessore=spessore, pesi=pesi)
+        self.griglia(capo, parte, righe, colore, chiusa=False, spessore=spessore, pesi=pesi, orli='nastro')
         if chiusa:
-            self.griglia(capo, parte, [righe[-1], righe[0]], colore, spessore=spessore, pesi=pesi)
+            self.griglia(capo, parte, [righe[-1], righe[0]], colore, spessore=spessore, pesi=pesi, orli='nastro')
         return P, N
 
     @staticmethod
@@ -569,7 +673,7 @@ class Sarto:
             out.append(pts[k].lerp(pts[k + 1], _lim(seg, 0, 1)))
         return out
 
-    def tubo(self, capo, parte, punti, raggio, colore=(1, 1, 1), lati=8, pesi='corpo', chiuso=False, n=None, tappi=True):
+    def tubo(self, capo, parte, punti, raggio, colore=(1, 1, 1), lati=6, pesi='corpo', chiuso=False, n=None, tappi=True):
         """Tubo tondo lungo una linea (corde, bordi arrotondati, anelli). raggio: m o lista."""
         P = self._ricampiona(punti, n, chiuso) if n else [Vector(p) for p in punti]
         m = len(P)
@@ -592,7 +696,7 @@ class Sarto:
             best = min(assi, key=lambda c: (c - p).length_squared)
             return p - best
         bm = self._bm(capo, parte, colore)
-        vs = self.griglia(capo, parte, [list(reversed(r)) for r in righe], colore, chiusa=True, pesi=pesi, fuori=fuori)
+        vs = self.griglia(capo, parte, [list(reversed(r)) for r in righe], colore, chiusa=True, pesi=pesi, fuori=fuori, orli=None)
         if tappi and not chiuso:
             for riga in (vs[0], vs[-1]):
                 try:
@@ -600,9 +704,9 @@ class Sarto:
                 except ValueError:
                     pass
 
-    def sfera(self, capo, parte, c, r, colore=(1, 1, 1), pesi='corpo', seg=(10, 6), scala=(1, 1, 1), rot=None):
+    def sfera(self, capo, parte, c, r, colore=(1, 1, 1), pesi='corpo', seg=(8, 5), scala=(1, 1, 1), rot=None):
         M = Matrix.Translation(c) @ (rot.to_4x4() if rot else Matrix.Identity(4)) @ Matrix.Diagonal((scala[0] * r, scala[1] * r, scala[2] * r, 1))
-        self.mesh_primitiva(capo, parte, lambda bm: bmesh.ops.create_uvsphere(bm, u_segments=seg[0], v_segments=seg[1], radius=1.0),
+        self.mesh_primitiva(capo, parte, lambda bm: bmesh.ops.create_uvsphere(bm, u_segments=seg[0], v_segments=seg[1], radius=1.0, calc_uvs=True),
                             colore, self._rigido(c) if pesi == 'corpo' else pesi, M)
 
     def gemma(self, capo, parte, c, r, normale, colore=(1, 1, 1), pesi='corpo', lati=6, alto=0.6):
@@ -621,22 +725,26 @@ class Sarto:
         a, b = bm.verts.new(sopra), bm.verts.new(sotto)
         for v in vs + [a, b]:
             v[spec] = s
+        orl = bm.loops.layers.uv['Orlo']
         for k in range(lati):
-            bm.faces.new((vs[k], vs[(k + 1) % lati], a))
-            bm.faces.new((vs[(k + 1) % lati], vs[k], b))
+            for f in (bm.faces.new((vs[k], vs[(k + 1) % lati], a)), bm.faces.new((vs[(k + 1) % lati], vs[k], b))):
+                for l in f.loops:
+                    l[orl].uv = (0.0, 1.0)
 
-    def borchia(self, capo, parte, c, r, normale, alto=0.4, colore=(1, 1, 1), pesi='corpo', lati=8):
+    def borchia(self, capo, parte, c, r, normale, alto=0.4, colore=(1, 1, 1), pesi='corpo', lati=6):
         """Borchia: cupoletta bassa appoggiata su un piano di normale data."""
         n = Vector(normale).normalized()
         x = (SU - n * SU.dot(n)) if abs(n.dot(SU)) < 0.9 else Vector((1, 0, 0))
         x.normalize()
         y = n.cross(x)
         righe = []
-        for k, (rr, h) in enumerate(((1.0, 0.0), (0.92, 0.45), (0.6, 0.85), (0.05, 1.0))):
+        anelli = ((1.0, 0.0), (0.92, 0.45), (0.6, 0.85), (0.05, 1.0)) if lati > 6 else ((1.0, 0.0), (0.75, 0.65), (0.08, 1.0))
+        for k, (rr, h) in enumerate(anelli):
             righe.append([c + (x * math.cos(2 * math.pi * i / lati) + y * math.sin(2 * math.pi * i / lati)) * r * rr + n * r * alto * h for i in range(lati)])
-        self.griglia(capo, parte, righe, colore, chiusa=True, pesi=self._rigido(c) if pesi == 'corpo' else pesi, fuori=lambda p: p - c + n * 0.001)
+        self.griglia(capo, parte, righe, colore, chiusa=True, pesi=self._rigido(c) if pesi == 'corpo' else pesi, fuori=lambda p: p - c + n * 0.001,
+                     orli=None)
 
-    def lama(self, capo, parte, base, punta, largo, normale, spessore=0.006, colore=(1, 1, 1), pesi='corpo', n=7, forma=None):
+    def lama(self, capo, parte, base, punta, largo, normale, spessore=0.006, colore=(1, 1, 1), pesi='corpo', n=5, forma=None):
         """Lamina affusolata con costola (lame da lancio, corna, alette, penne). forma(t) → larghezza relativa."""
         base, punta = Vector(base), Vector(punta)
         d = punta - base
@@ -711,12 +819,19 @@ class Sarto:
             z0, zg = z_top, self.z_ginocchio
 
             def pesi(co, lato=lato, z0=z0, zg=zg):
-                t = _lim((z0 - co.z) / max(1e-3, z0 - self.z_cavallo + 0.15 * u), 0, 1)
+                # scendendo il pannello passa dal bacino alla coscia (curva morbida); i pannelli davanti e dietro si
+                # dividono fra le due cosce secondo il lato, così in corsa si aprono invece di seguire rigidi una gamba
+                t = _lim((z0 - co.z) / max(1e-3, z0 - self.z_cavallo + 0.25 * u), 0, 1)
+                t = t * t * (3 - 2 * t)
+                k = _lim(0.5 + co.x / (0.22 * u), 0, 1)
                 w = coscia * t
                 s = stinco * _lim((zg - co.z) / (0.2 * u), 0, 1)
-                return {'hips': max(0.0, 1 - w - s), 'thigh_' + lato: w, 'shin_' + lato: s} if s > 0 else {'hips': 1 - w, 'thigh_' + lato: w}
+                out = {'hips': max(0.0, 1 - w - s), 'thigh_L': w * k, 'thigh_R': w * (1 - k)}
+                if s > 0:
+                    out['shin_' + lato] = s
+                return out
             righe.reverse()
-            self.griglia(capo, parte, righe, colore, spessore=spessore, pesi=pesi,
+            self.griglia(capo, parte, righe, colore, spessore=spessore, pesi=pesi, orli='file0' if file > 1 else 'bordi',
                          fuori=lambda p: Vector((p.x, p.y - self.centro(_lim(p.z, self.z_cavallo, 3.0)).y, 0)))
             if orlo:
                 alto, p2, col2 = orlo
@@ -760,7 +875,7 @@ class Sarto:
                     riga.append(p0 + d * a + (su * math.cos(phi) + av * math.sin(phi)) * r)
                 righe.append(riga)
         fuori = lambda p, p0=p0, d=d: p - (p0 + d * (p - p0).dot(d))
-        self.griglia(capo, parte, righe, colore, spessore=spessore, pesi=pesi, fuori=fuori)
+        self.griglia(capo, parte, righe, colore, spessore=spessore, pesi=pesi, fuori=fuori, orli='file1')
         if orlo:
             alto, p2, col2 = orlo
             ult = righe[-1]
@@ -769,13 +884,65 @@ class Sarto:
                          pesi=pesi, fuori=fuori)
         return p0, d, su, av, rad, pesi, righe
 
+    # ------------------------------------------------------------------ occlusione dipinta
+    # direzioni (x, y, z con z = normale) a coseno: tre anelli di tre raggi
+    _RAGGI_AO = [(math.cos(math.radians(az + 40 * k)) * math.cos(math.radians(el)),
+                  math.sin(math.radians(az + 40 * k)) * math.cos(math.radians(el)), math.sin(math.radians(el)))
+                 for k, el in enumerate((72, 42, 16)) for az in (0, 120, 240)]
+
+    def _occlusione(self):
+        """Occlusione ambientale vicina (8 cm) per vertice: incavi, zone sotto le piastre sovrapposte e sotto gli orli.
+        Ogni capo di grado si ombreggia con il corpo, le vesti di sotto della classe e se stesso; le vesti di sotto con il
+        corpo e se stesse. Ritorna {(capo, parte): [fattore 0..1 per vertice]} (1 = all'aperto)."""
+        self.bm.verts.index_update()
+        corpoV = [v.co.copy() for v in self.bm.verts]
+        corpoP = [[v.index for v in f.verts] for f in self.bm.faces]
+        alberi = {}
+
+        def albero(capo):
+            cls, g = capo.rsplit('_', 1)
+            chiavi = (capo,) if g == 'base' else (capo, cls + '_base')
+            if chiavi not in alberi:
+                V, P = list(corpoV), list(corpoP)
+                for (c2, p2), b2 in self.parti.items():
+                    if c2 in chiavi and p2 != 'gemma':
+                        off = len(V)
+                        V += [v.co.copy() for v in b2.verts]
+                        P += [[off + v.index for v in f.verts] for f in b2.faces]
+                alberi[chiavi] = BVHTree.FromPolygons(V, P)
+            return alberi[chiavi]
+        dist = 0.08 * self.u
+        out = {}
+        for (capo, parte), bm in self.parti.items():
+            t = albero(capo)
+            vals = []
+            for v in bm.verts:
+                n = v.normal
+                if n.length < 0.5:
+                    vals.append(1.0)
+                    continue
+                x = n.orthogonal().normalized()
+                y = n.cross(x)
+                o = v.co + n * 0.003
+                colpi = 0
+                for a, b, c in self._RAGGI_AO:
+                    if t.ray_cast(o, x * a + y * b + n * c, dist)[0] is not None:
+                        colpi += 1
+                vals.append(colpi / len(self._RAGGI_AO))
+            # una passata di media coi vicini: niente puntini
+            liscio = []
+            for v in bm.verts:
+                vic = [vals[e.other_vert(v).index] for e in v.link_edges]
+                m = (vals[v.index] * 2 + sum(vic)) / (2 + len(vic))
+                liscio.append(1.0 - 0.8 * m ** 1.2)
+            out[(capo, parte)] = liscio
+        return out
+
     # ------------------------------------------------------------------ uscita
     def oggetti(self):
         """Un oggetto per (capo, parte): capo_<capo>__<parte>, legato allo scheletro, con i pesi e il materiale."""
         fatti = []
         for (capo, parte), bm in self.parti.items():
-            nome = f'capo_{capo}__{parte}'
-            spec = bm.verts.layers.int['spec']
             bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=0.0004)
             # lo spessore (solidify) su facce quasi piegate a metà può lanciare un vertice lontanissimo: lo si riporta fra i vicini
             lontani = {v for v in bm.verts if (v.co - self.vicino(v.co)[0]).length > 0.7 * self.u}
@@ -784,9 +951,19 @@ class Sarto:
                 if vic:
                     v.co = sum(vic, Vector()) / len(vic)
             bm.verts.ensure_lookup_table()
+            bm.verts.index_update()
+            bm.normal_update()
+        occl = self._occlusione()
+        for (capo, parte), bm in self.parti.items():
+            nome = f'capo_{capo}__{parte}'
+            spec = bm.verts.layers.int['spec']
             specs = [v[spec] for v in bm.verts]
             me = bpy.data.meshes.new(nome)
             bm.to_mesh(me)
+            ao = occl[(capo, parte)]
+            ca = me.color_attributes.new('Occl', 'FLOAT_COLOR', 'POINT')
+            for i, a in enumerate(ao):
+                ca.data[i].color = (a, a, a, 1.0)
             ob = bpy.data.objects.new(nome, me)
             bpy.context.scene.collection.objects.link(ob)
             gruppi = {}
@@ -811,6 +988,17 @@ class Sarto:
             bsdf = next(n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')
             col = self.colori[(capo, parte)]
             bsdf.inputs['Base Color'].default_value = (*col, 1)
+            # l'occlusione dipinta passa come colore dei vertici (COLOR_0): il materiale deve usarla perché l'esportatore la scriva
+            nodo = mat.node_tree.nodes.new('ShaderNodeVertexColor')
+            nodo.layer_name = 'Occl'
+            mix = mat.node_tree.nodes.new('ShaderNodeMix')
+            mix.data_type = 'RGBA'
+            mix.blend_type = 'MULTIPLY'
+            mix.inputs['Factor'].default_value = 1.0
+            ingresso = {i.identifier: i for i in mix.inputs}
+            ingresso['A_Color'].default_value = (*col, 1)
+            mat.node_tree.links.new(nodo.outputs['Color'], ingresso['B_Color'])
+            mat.node_tree.links.new(next(o for o in mix.outputs if o.identifier == 'Result_Color'), bsdf.inputs['Base Color'])
             # lamelle: lacca su ferro (poco metallica, altrimenti il cielo le tinge di azzurro)
             bsdf.inputs['Metallic'].default_value = {'bordo': 0.75, 'piastre': 0.5, 'lamelle': 0.22}.get(parte, 0.0)
             bsdf.inputs['Roughness'].default_value = {'bordo': 0.3, 'piastre': 0.4, 'lamelle': 0.42, 'grani': 0.45, 'gemma': 0.15, 'cuoio': 0.7}.get(parte, 0.9)
@@ -937,8 +1125,8 @@ def bracciale(S, C, parte, colore, t0, t1, stacco=0.02, spessore=0.006, file=1, 
                 liv += [(t0 + (t1 - t0) * j / file, 0.0), (t0 + (t1 - t0) * (j + 1) / file - 1e-3, dente * u)]
         else:
             liv = [(t0 + (t1 - t0) * k / 6, 0.0) for k in range(7)]
-        S.arto(C, parte, [a, b], t0, t1, na=18, colore=colore, stacco=stacco * u, spessore=spessore * u, livelli=liv,
-               pesi={'forearm_' + s: 1.0})
+        S.arto(C, parte, [a, b], t0, t1, na=16, colore=colore, stacco=stacco * u, spessore=spessore * u, livelli=liv,
+               pesi={'forearm_' + s: 1.0}, orli='file1' if file > 1 else 'bordi')
         if bordo:
             for t in (t0, t1):
                 S.arto(C, bordo[0], [a, b], t - 0.025, t + 0.025, nv=2, na=18, colore=bordo[1], stacco=(stacco + 0.006) * u,
@@ -956,8 +1144,8 @@ def schiniere(S, C, parte, colore, t0, t1, stacco=0.022, spessore=0.006, file=1,
                 liv += [(t0 + (t1 - t0) * j / file, 0.0), (t0 + (t1 - t0) * (j + 1) / file - 1e-3, dente * u)]
         else:
             liv = [(t0 + (t1 - t0) * k / 6, 0.0) for k in range(7)]
-        S.arto(C, parte, [a, b], t0, t1, na=18, colore=colore, stacco=stacco * u, spessore=spessore * u, livelli=liv,
-               pesi={'shin_' + s: 1.0})
+        S.arto(C, parte, [a, b], t0, t1, na=16, colore=colore, stacco=stacco * u, spessore=spessore * u, livelli=liv,
+               pesi={'shin_' + s: 1.0}, orli='file1' if file > 1 else 'bordi')
         if bordo:
             S.arto(C, bordo[0], [a, b], t0 - 0.02, t0 + 0.02, nv=2, na=18, colore=bordo[1], stacco=(stacco + 0.006) * u,
                    spessore=spessore * u, pesi={'shin_' + s: 1.0})
@@ -967,7 +1155,7 @@ def schiniere(S, C, parte, colore, t0, t1, stacco=0.022, spessore=0.006, file=1,
             if hit:
                 c = hit + Vector((0, -0.012 * u, 0))
                 r = ginocchiera * u
-                S.sfera(C, parte, c, r, colore, pesi={'shin_' + s: 0.6, 'thigh_' + s: 0.4}, seg=(12, 8), scala=(1.0, 0.55, 1.15))
+                S.sfera(C, parte, c, r, colore, pesi={'shin_' + s: 0.6, 'thigh_' + s: 0.4}, seg=(10, 6), scala=(1.0, 0.55, 1.15))
                 if bordo:
                     S.borchia(C, bordo[0], c + Vector((0, -0.55 * r, 0)), r * 0.35, (0, -1, 0), colore=bordo[1],
                               pesi={'shin_' + s: 0.6, 'thigh_' + s: 0.4})
@@ -988,7 +1176,7 @@ def cintura(S, C, parte, colore, z, alto=0.06, stacco=0.03, spessore=0.006, fibb
             S.gemma(C, 'gemma', cen + Vector((0, -0.012 * u, 0)), r * 0.45 * u, (0, -1, 0), gemma, pesi={'hips': 0.6, 'spine': 0.4})
 
 
-def _disco(S, C, parte, c, r, n, colore, spessore=0.01, pesi='corpo', lati=20, cupola=0.25, anelli=(1.0, 0.82, 0.55, 0.0)):
+def _disco(S, C, parte, c, r, n, colore, spessore=0.01, pesi='corpo', lati=16, cupola=0.25, anelli=(1.0, 0.82, 0.55, 0.0)):
     """Disco bombato con bordo rialzato (fibbie, specchi da petto, medaglioni)."""
     c = Vector(c)
     n = Vector(n).normalized()
@@ -1006,6 +1194,7 @@ def spallacci(S, C, parte, colore, file, lungo, stacco=0.03, dente=0.014, apertu
     """Coppia di spallacci; calotta: (scala, parte, colore) cupola sopra la spalla; ala: (scala, parte, colore) piastra
     che sale verso l'esterno; borchie: (parte, colore) una per fila; gemma: colore della pietra sulla calotta."""
     u = S.u
+    info = {}
     for s in lati:
         p0, d, su, av, rad, pesi, righe = S.spallaccio(C, parte, s, file=file, lungo=lungo, stacco=stacco * u, dente=dente * u,
                                                        apertura=apertura, colore=colore, orlo=orlo, gonfia=gonfia * u,
@@ -1014,7 +1203,7 @@ def spallacci(S, C, parte, colore, file, lungo, stacco=0.03, dente=0.014, apertu
             k, p2, c2 = calotta
             cen = p0 + d * 0.03 * u + su * (rad + stacco * u * 0.6)
             M = Matrix((d, av, su)).transposed().to_4x4()
-            S.mesh_primitiva(C, p2, lambda bm: bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=10, radius=1.0), c2,
+            S.mesh_primitiva(C, p2, lambda bm: bmesh.ops.create_uvsphere(bm, u_segments=12, v_segments=7, radius=1.0, calc_uvs=True), c2,
                              {'shoulder_' + s: 0.55, 'upper_arm_' + s: 0.45},
                              Matrix.Translation(cen) @ M @ Matrix.Diagonal((0.13 * u * k, 0.12 * u * k, 0.075 * u * k, 1)))
             if gemma:
@@ -1034,6 +1223,8 @@ def spallacci(S, C, parte, colore, file, lungo, stacco=0.03, dente=0.014, apertu
                     q = riga[i]
                     nn = (q - (p0 + d * (q - p0).dot(d))).normalized()
                     S.borchia(C, p2, q + nn * 0.004 * u + d * 0.03 * u, 0.012 * u, nn, colore=c2, pesi=pesi(q))
+        info[s] = (p0, d, su, av, rad, pesi, righe)
+    return info
 
 
 def corazza(S, C, parte, colore, z_fondo, z_cima=None, file=6, dente=0.016, stacco=0.035, scollo=0.10, giro=0.16, spessore=0.006,
@@ -1052,26 +1243,216 @@ def corazza(S, C, parte, colore, z_fondo, z_cima=None, file=6, dente=0.016, stac
             liv += [(1 - j / file, 0.0), (1 - (j + 1) / file + 1e-3, dente * u)]
     else:
         liv = None
-    return S.busto(C, parte, zb, cima, 0, 360, na=44, livelli=liv, nv=9, stacco=stacco * u, colore=colore, spessore=spessore * u,
-                   pesi=pesi, rmax=rmax), cima
+    return S.busto(C, parte, zb, cima, 0, 360, na=40, livelli=liv, nv=9, stacco=stacco * u, colore=colore, spessore=spessore * u,
+                   pesi=pesi, rmax=rmax, orli='file0' if file > 1 else 'bordi'), cima
+
+
+# ---------------------------------------------------------------------- dettagli piccoli (pochi triangoli l'uno)
+def _assi(n, su=None):
+    """Terna (x, y, n) con n normale; x verso «su» se dato (proiettato sul piano)."""
+    n = Vector(n).normalized()
+    r = Vector(su) if su is not None else SU
+    x = r - n * r.dot(n)
+    if x.length < 1e-4:
+        x = Vector((1, 0, 0)) - n * n.x
+    x.normalize()
+    return n.cross(x).normalized(), x, n          # (lato, su, fuori)
+
+
+def fila_borchie(S, C, parte, colore, punti, r, pesi='corpo', fuori=None, alto=0.5):
+    """Teste di chiodo in fila: una borchia per punto, appoggiata sulla pelle o sul pezzo (fuori: normale per punto)."""
+    for i, p in enumerate(punti):
+        n = fuori[i] if fuori is not None else S.fuori(p)
+        S.borchia(C, parte, Vector(p) + Vector(n) * 0.001 * S.u, r, n, alto=alto, colore=colore,
+                  pesi=S._rigido(p) if pesi == 'corpo' else pesi)
+
+
+def cordone(S, C, punti, r, pesi='corpo', n=None, chiuso=False):
+    """Cordone di seta ritorto (lo shader disegna la torsione): parte «cordone», tinto col colore del regno."""
+    S.tubo(C, 'cordone', punti, r, (0.55, 0.08, 0.06), lati=5, pesi=pesi, n=n, chiuso=chiuso)
+
+
+def nodo(S, C, c, r, normale, pesi, su=None, nappa_lunga=0.0):
+    """Nodo ornamentale di cordone: quattro asole a croce e un bottone al centro; nappa_lunga > 0 ne appende una."""
+    lato, alto, n = _assi(normale, su)
+    c = Vector(c)
+    for k in range(4):
+        a = math.pi / 4 + k * math.pi / 2
+        d = lato * math.cos(a) + alto * math.sin(a)
+        cc = c + d * r * 0.55
+        e = n.cross(d).normalized()
+        giro = [cc + d * math.cos(2 * math.pi * i / 6) * r * 0.45 + e * math.sin(2 * math.pi * i / 6) * r * 0.24 for i in range(6)]
+        S.tubo(C, 'cordone', giro, r * 0.13, (0.55, 0.08, 0.06), lati=4, pesi=pesi, chiuso=True)
+    S.sfera(C, 'cordone', c + n * r * 0.1, r * 0.28, (0.55, 0.08, 0.06), pesi=pesi, seg=(6, 4))
+    if nappa_lunga > 0:
+        nappa(S, C, 'cordone', (0.55, 0.08, 0.06), c - alto * r * 0.9, nappa_lunga, r=r * 0.38, pesi=pesi)
+
+
+def fibbia(S, C, parte, colore, c, largo, alto, normale, su, pesi):
+    """Fibbia rettangolare (cornice tonda + ardiglione) sopra una cinghia."""
+    lato, sv, n = _assi(normale, su)
+    c = Vector(c) + n * 0.004 * S.u
+    w, h = largo / 2, alto / 2
+    angoli = [c + lato * x + sv * y for x, y in ((-w, -h), (w, -h), (w, h), (-w, h))]
+    S.tubo(C, parte, angoli, 0.0045 * S.u, colore, lati=4, pesi=pesi, chiuso=True, n=16)
+    S.tubo(C, parte, [c - lato * w * 0.9, c + lato * w * 0.3 + n * 0.003 * S.u], 0.0025 * S.u, colore, lati=4, pesi=pesi)
+
+
+def placca(S, C, parte, colore, c, largo, alto, normale, su, pesi, spessore=0.008, smusso=0.25):
+    """Placca rettangolare smussata (giada intagliata, targhe, emblemi): bordo, gradino e piano rialzato."""
+    lato, sv, n = _assi(normale, su)
+    c = Vector(c)
+    w, h = largo / 2, alto / 2
+    sp = spessore * S.u
+
+    def anello(k, z):
+        # rettangolo a 8 punti (angoli tagliati) scalato di k, alzato di z
+        pts = []
+        for x, y in ((-1, -0.6), (-0.6, -1), (0.6, -1), (1, -0.6), (1, 0.6), (0.6, 1), (-0.6, 1), (-1, 0.6)):
+            pts.append(c + lato * (x * w * k) + sv * (y * h * k) + n * z)
+        return pts
+    righe = [anello(1.0, 0.0), anello(1.0, sp * 0.7), anello(1 - smusso * 0.5, sp), anello(1 - smusso, sp * 1.25),
+             anello(0.02, sp * 1.3)]
+    S.griglia(C, parte, righe, colore, chiusa=True, pesi=pesi, fuori=lambda p: n, orli=None)
+
+
+def fodero(S, C, base, punta, largo, normale, pesi, cuoio=CUOIO, metallo=ORO, manico=CUOIO_CHIARO):
+    """Lama nel fodero: guaina di cuoio piatta, puntale e ghiera di metallo, manico fasciato e pomo."""
+    u = S.u
+    base, punta = Vector(base), Vector(punta)
+    d = (punta - base).normalized()
+    S.lama(C, 'cuoio', base, punta, largo, normale, spessore=0.007 * u, colore=cuoio, pesi=pesi,
+           forma=lambda t: 1.0 if t < 0.8 else 1.0 - (t - 0.8) * 3.5, n=5)
+    S.lama(C, 'bordo', punta - d * 0.05 * u, punta + d * 0.004 * u, largo * 0.95, normale, spessore=0.009 * u, colore=metallo,
+           pesi=pesi, forma=lambda t: 1.0 - t * 0.7, n=3)
+    S.tubo(C, 'bordo', [base - d * 0.002 * u, base + d * 0.018 * u], largo * 0.62, metallo, lati=6, pesi=pesi)
+    S.tubo(C, 'cuoio', [base - d * 0.002 * u, base - d * 0.10 * u], 0.011 * u, manico, lati=6, pesi=pesi)
+    S.sfera(C, 'bordo', base - d * 0.11 * u, 0.015 * u, metallo, pesi=pesi, seg=(6, 4))
+
+
+def borsa(S, C, parte, colore, c, normale, pesi, largo=0.08, alto=0.07, fondo=0.035, bottone=None):
+    """Tasca di cuoio squadrata con la patta e un bottone."""
+    u = S.u
+    lato, sv, n = _assi(normale)
+    c = Vector(c)
+    M = Matrix((lato * largo * u * 0.5, sv * alto * u * 0.5, n * fondo * u * 0.5)).transposed().to_4x4()
+    M.translation = c
+    S.mesh_primitiva(C, parte, lambda bm: bmesh.ops.create_cube(bm, size=2.0), colore, pesi, M)
+    top = c + sv * alto * u * 0.5 + n * fondo * u * 0.5
+    righe = [[top + lato * x * largo * u * 0.52 + n * 0.002 * u for x in (-1, 0, 1)],
+             [top - sv * alto * u * 0.55 + lato * x * largo * u * 0.52 + n * 0.006 * u for x in (-1, 0, 1)]]
+    S.griglia(C, parte, righe, colore, pesi=pesi, fuori=lambda p: n)
+    if bottone:
+        S.borchia(C, bottone[0], top - sv * alto * u * 0.45 + n * 0.007 * u, 0.008 * u, n, colore=bottone[1], pesi=pesi)
+
+
+def spirale(S, C, parte, colore, osso, t0, t1, giri=4.0, stacco=0.012, sovrapponi=1.25, punti_giro=9):
+    """Fascia avvolta a spirale attorno a un arto (avambraccio, stinco): nastro continuo con un filo di sovrapposizione."""
+    u = S.u
+    a, b = S.ossa(osso)
+    d = (b - a).normalized()
+    r0 = AVANTI if abs(d.dot(AVANTI)) < 0.8 else SU
+    x = (r0 - d * r0.dot(d)).normalized()
+    y = d.cross(x)
+    L = (b - a).length * (t1 - t0)
+    N = max(8, int(giri * punti_giro))
+    pts, nor = [], []
+    for k in range(N + 1):
+        t = t0 + (t1 - t0) * k / N
+        ang = 2 * math.pi * giri * k / N
+        dd = x * math.cos(ang) + y * math.sin(ang)
+        c = a.lerp(b, t)
+        r = S.raggio(c, dd, 0.02 * u, 0.16 * u)
+        pts.append(c + dd * (r + stacco * u))
+        nor.append(dd)
+    S.striscia(C, parte, pts, L / giri * sovrapponi, proietta=False, spessore=0.0, colore=colore, normali=nor,
+               pesi={osso: 1.0})
+
+
+def sonaglio(S, C, attacco, r, pesi, colore=ORO):
+    """Sonaglio appeso: anellino, campanella tonda con la fessura (la fessura è il solco dello shader dei grani)."""
+    a = Vector(attacco)
+    S.tubo(C, 'bordo', [a, a - Vector((0, 0, r * 0.9))], r * 0.15, colore, lati=4, pesi=pesi)
+    S.sfera(C, 'grani', a - Vector((0, 0, r * 1.8)), r, colore, pesi=pesi, seg=(6, 4))
+
+
+def emblema_nuvola(S, C, cen, r, normale, pesi, metallo=ORO, fondo=None):
+    """Emblema della Lama: disco con una nuvola di tre riccioli (uno grande in alto) sopra due onde, in rilievo."""
+    lato, sv, n = _assi(normale)
+    cen = Vector(cen)
+    if fondo:
+        _disco(S, C, fondo[0], cen, r, n, fondo[1], spessore=0.008 * S.u, pesi=pesi, lati=16)
+    z = n * 0.012 * S.u
+    for cx, cy, k, verso in ((-0.36, 0.0, 0.22, 1), (0.36, 0.0, 0.22, -1), (0.0, 0.2, 0.32, 1)):
+        c0 = cen + lato * cx * r + sv * cy * r + z
+        giro = []
+        for i in range(14):
+            t = i / 13
+            a = -math.pi / 2 + verso * 2 * math.pi * 1.1 * t
+            rr = r * k * (1 - 0.7 * t)
+            giro.append(c0 + (lato * math.cos(a) + sv * math.sin(a)) * rr)
+        S.tubo(C, 'bordo', giro, 0.0055 * S.u, metallo, lati=4, pesi=pesi)
+    for j, y in enumerate((-0.32, -0.5)):
+        onda = [cen + lato * (-0.62 + 1.24 * i / 11) * r * (1 - 0.15 * j) + sv * (y * r + 0.06 * r * math.sin(i * 1.6 + j)) + z
+                for i in range(12)]
+        S.tubo(C, 'bordo', onda, 0.005 * S.u, metallo, lati=4, pesi=pesi)
 
 
 # ---------------------------------------------------------------------- classi
+def _sul_busto(S, z, a, extra):
+    """Punto attorno al busto alla quota z e all'angolo a (gradi), «extra» m fuori dalla pelle; con la normale."""
+    c = S.centro(z)
+    d = S.dir(a)
+    return c + d * (S.raggio(c, d, 0.03 * S.u, 0.4 * S.u) + extra), d
+
+
+def sottoveste(S, C, parte, centri, largo, z_top, lungo, cols=5, gioco=0.035, coscia=0.8):
+    """Falde di stoffa sotto le scarselle: spuntano dagli orli e dagli spacchi delle piastre."""
+    S.falde(C, parte, centri, largo, z_top, lungo, apri=0.02 * S.u, cols=cols, gioco=gioco * S.u, colore=(1, 1, 1),
+            spessore=0.0, coscia=coscia)
+
+
+def cordoni_spalle(S, C, xs, z_fine, stacco, nappe=0.0, pesi_fine=None):
+    """Cordoni ritorti dalle spalle al centro del petto (a V) con un nodo ornamentale dove si incontrano."""
+    u = S.u
+    zc = S.z_collo
+    fine = None
+    for sx in (-1, 1):
+        guida = [Vector((sx * 0.62 * xs, 0.02, zc)), Vector((sx * 0.55 * xs, -0.3, zc - 0.07 * u)),
+                 Vector((sx * 0.3 * xs, -0.3, (zc + z_fine) / 2)), Vector((sx * 0.06 * xs, -0.3, z_fine + 0.01 * u))]
+        pts = [_sul_corpo(S, q, stacco) for q in guida]
+        cordone(S, C, pts, 0.0065 * u, n=18)
+        fine = pts[-1]
+    c = Vector((0, fine.y - 0.006 * u, z_fine))
+    nodo(S, C, c, 0.04 * u, (0, -1, 0.1), pesi_fine or {'chest': 1.0}, nappa_lunga=nappe)
+    return c
+
+
 def lama(S, g):
-    """Guerriero della spada: dalla tunica senza maniche alla corazza a piastre con spallacci enormi e mantello."""
+    """Guerriero della spada: dalla tunica senza maniche alla corazza a piastre con spallacci enormi e mantello.
+    Linguaggio decorativo: onde e nuvole (motivo degli orli), teste di chiodo in file, cordoni ritorti sulle spalle,
+    emblema della nuvola sul petto, stoffa che spunta sotto le piastre."""
     u = S.u
     C = f'lama_{g}'
     zv, zc, za = S.z_vita, S.z_collo, S.z_ascella
+    xs = S.B['upper_arm_L'].head_local.x
     if g == 'base':
         # veste corta senza maniche con colletto incrociato; pantaloni dritti con fasce di cuoio al polpaccio
         veste_busto(S, C, 'stoffa', (1, 1, 1), zv - 0.13 * u, scollo=0.17, collo=(0.045, 'fascia', (1, 1, 1)),
                     bordo=(0.006 * u, 'fascia', (1, 1, 1)))
         pantaloni(S, C, 'stoffa2', (1, 1, 1), S.z_caviglia + 0.10 * u, largo=0.018)
-        fasce_gamba(S, C, 'cuoio', CUOIO, 0.55, 0.86, giri=6)
+        spirale(S, C, 'cuoio', CUOIO, 'shin_L', 0.55, 0.86, giri=4, stacco=0.016)
+        spirale(S, C, 'cuoio', CUOIO, 'shin_R', 0.55, 0.86, giri=4, stacco=0.016)
         return
     if g == 0:
         cintura(S, C, 'cuoio', CUOIO, zv - 0.07 * u, alto=0.07, stacco=0.03, fibbia=('bordo', BRONZO, 0.035))
-        fasce_braccio(S, C, 'fascia', (1, 1, 1), 0.45, 0.92)
+        spirale(S, C, 'fascia', (1, 1, 1), 'forearm_L', 0.45, 0.92, giri=4)
+        spirale(S, C, 'fascia', (1, 1, 1), 'forearm_R', 0.45, 0.92, giri=4)
+        # teste di chiodo sulla cintura e un cordone annodato sul fianco
+        pp = [_sul_busto(S, zv - 0.07 * u, a, 0.036 * u) for a in (-140, -120, -60, -40)]
+        fila_borchie(S, C, 'bordo', BRONZO, [p for p, _ in pp], 0.009 * u, fuori=[n for _, n in pp], pesi={'hips': 1.0})
+        p, n = _sul_busto(S, zv - 0.07 * u, -20, 0.045 * u)
+        nodo(S, C, p, 0.035 * u, n, {'hips': 1.0}, nappa_lunga=0.14 * u)
         return
     pal = {1: dict(cor=CUOIO_CHIARO, met=CUOIO_CHIARO, bor=BRONZO),
            2: dict(cor=(0.13, 0.025, 0.018), met=(0.16, 0.16, 0.17), bor=BRONZO),
@@ -1079,50 +1460,93 @@ def lama(S, g):
            4: dict(cor=(0.035, 0.035, 0.045), met=(0.07, 0.07, 0.085), bor=(0.95, 0.62, 0.18), gem=(1.0, 0.45, 0.08))}[g]
     pc = 'cuoio' if g == 1 else 'lamelle'
     pm = 'cuoio' if g == 1 else 'piastre'
+    st_cor = 0.030 + 0.004 * g
     # corazza
-    corazza(S, C, pc, pal['cor'], zv - 0.10 * u, file=1 if g == 1 else 3 + g, dente=0.010 + 0.002 * g, stacco=0.030 + 0.004 * g,
+    corazza(S, C, pc, pal['cor'], zv - 0.10 * u, file=1 if g == 1 else 3 + g, dente=0.010 + 0.002 * g, stacco=st_cor,
             scollo=0.12 if g < 3 else 0.06)
     # spallacci: crescono col grado
-    spallacci(S, C, pc, pal['cor'], file=[0, 2, 3, 4, 5][g], lungo=[0, 0.38, 0.5, 0.62, 0.72][g], stacco=0.03 + 0.006 * g,
-              dente=0.012 + 0.002 * g, apertura=150 + 8 * g, gonfia=0.01 * g,
-              orlo=(0.024 * u, 'bordo', pal['bor']) if g >= 2 else None,
-              calotta=(0.62 + 0.12 * (g - 3), 'piastre' if g < 4 else 'bordo', pal['met'] if g < 4 else pal['bor']) if g >= 3 else None,
-              ala=(1.25, 'bordo', pal['bor']) if g >= 4 else None,
-              borchie=('bordo', pal['bor']) if g in (1, 2) else None, gemma=pal.get('gem'))
-    # cinturone e scarselle
-    cintura(S, C, 'cuoio', CUOIO, zv - 0.08 * u, alto=0.07 + 0.01 * g, stacco=0.05 + 0.006 * g,
+    sp = spallacci(S, C, pc, pal['cor'], file=[0, 2, 3, 4, 5][g], lungo=[0, 0.38, 0.5, 0.62, 0.72][g], stacco=0.03 + 0.006 * g,
+                   dente=0.012 + 0.002 * g, apertura=150 + 8 * g, gonfia=0.01 * g,
+                   orlo=(0.024 * u, 'bordo', pal['bor']) if g >= 2 else None,
+                   calotta=(0.62 + 0.12 * (g - 3), 'piastre' if g < 4 else 'bordo', pal['met'] if g < 4 else pal['bor']) if g >= 3 else None,
+                   ala=(1.25, 'bordo', pal['bor']) if g >= 4 else None,
+                   borchie=('bordo', pal['bor']) if g in (1, 2) else None, gemma=pal.get('gem'))
+    # cinturone e scarselle; sotto, la stoffa che spunta dagli orli
+    z_cint = zv - 0.08 * u
+    st_cint = 0.05 + 0.006 * g
+    cintura(S, C, 'cuoio', CUOIO, z_cint, alto=0.07 + 0.01 * g, stacco=st_cint,
             fibbia=('bordo', pal['bor'], 0.04 + 0.01 * g), gemma=pal.get('gem'))
-    S.falde(C, pc, [-90 + 360 / 6 * (k + 0.5) for k in range(6)] if g >= 2 else [-60, -120, 30, 150], 52 if g >= 2 else 50,
-            zv - 0.09 * u, [0, 0.26, 0.32, 0.38, 0.44][g] * u, apri=0.03 * g * u, file=1 if g == 1 else 1 + g, dente=0.012 * u,
+    centri = [-90 + 360 / 6 * (k + 0.5) for k in range(6)] if g >= 2 else [-60, -120, 30, 150]
+    lungo_f = [0, 0.26, 0.32, 0.38, 0.44][g] * u
+    S.falde(C, pc, centri, 52 if g >= 2 else 50,
+            zv - 0.09 * u, lungo_f, apri=0.03 * g * u, file=1 if g == 1 else 1 + g, dente=0.012 * u, cols=5,
             gioco=0.05 * u, colore=pal['cor'], spessore=0.005 * u,
             orlo=(0.022 * u, 'bordo', pal['bor']) if g >= 3 else None)
+    if g >= 2:
+        sottoveste(S, C, 'stoffa2', [c + 30 for c in centri], 40, zv - 0.09 * u, lungo_f + 0.07 * u, gioco=0.035)
+    # teste di chiodo sul cinturone, ai lati della fibbia e dietro
+    pp = [_sul_busto(S, z_cint, a, (st_cint + 0.008) * u) for a in (-150, -132, -48, -30, 60, 90, 120)]
+    fila_borchie(S, C, 'bordo', pal['bor'], [p for p, _ in pp], (0.010 + 0.001 * g) * u, fuori=[n for _, n in pp],
+                 pesi={'hips': 0.6, 'spine': 0.4})
     # braccia e gambe
     bracciale(S, C, pm, pal['met'], 0.35, 0.9, stacco=0.018, file=1 if g < 3 else 3, bordo=('bordo', pal['bor']) if g >= 2 else None)
     if g >= 2:
         schiniere(S, C, pm, pal['met'], 0.1, 0.62, stacco=0.034, file=1 if g < 3 else 3, ginocchiera=0.07 if g >= 3 else None,
                   bordo=('bordo', pal['bor']) if g >= 3 else None)
+    if g == 1:
+        # corazza di cuoio: due file di teste di chiodo sul petto e cinghie sulle spalle con le fibbie
+        for a in (-112, -68):
+            pp = [_sul_busto(S, z, a, (st_cor + 0.008) * u) for z in [zv + 0.03 * u + k * 0.06 * u for k in range(5)]]
+            fila_borchie(S, C, 'bordo', BRONZO, [p for p, _ in pp], 0.009 * u, fuori=[n for _, n in pp], pesi='corpo')
+        for sx in (-1, 1):
+            guida = [Vector((sx * 0.42 * xs, -0.3, zc - 0.22 * u)), Vector((sx * 0.45 * xs, -0.3, zc - 0.04 * u)),
+                     Vector((sx * 0.5 * xs, 0.0, zc + 0.02 * u)), Vector((sx * 0.45 * xs, 0.3, zc - 0.04 * u)),
+                     Vector((sx * 0.42 * xs, 0.3, zc - 0.22 * u))]
+            pts = [_sul_corpo(S, q, (st_cor + 0.012) * u) for q in guida]
+            P, N = S.striscia(C, 'cuoio', pts, 0.035 * u, stacco=(st_cor + 0.012) * u, spessore=0.004 * u, colore=CUOIO, n=20)
+            fibbia(S, C, 'bordo', BRONZO, P[3], 0.04 * u, 0.03 * u, N[3], SU, S._rigido(P[3]))
+    zp = S.B['chest'].head_local.z + S.B['chest'].length * 0.42
+    if g == 2:
+        # emblema della nuvola sul petto, cordoni ritorti dalle spalle
+        p, n = _sul_busto(S, zp, -90, (st_cor + 0.035) * u)
+        emblema_nuvola(S, C, p, 0.06 * u, (0, -1, 0.12), {'chest': 1.0}, metallo=pal['bor'], fondo=('piastre', pal['met']))
+        cordoni_spalle(S, C, xs, zp - 0.08 * u, (st_cor + 0.03) * u, nappe=0.12 * u)
     # petto: specchio protettivo, gorgiera
     if g >= 3:
-        zp = S.B['chest'].head_local.z + S.B['chest'].length * 0.42
         c = S.centro(zp)
         r = S.raggio(c, Vector((0, -1, 0)), 0.05 * u, 0.4 * u)
         cen = c + Vector((0, -(r + 0.065 * u), 0))
-        _disco(S, C, 'piastre', cen, (0.055 + 0.008 * g) * u, (0, -1, 0.15), pal['met'], spessore=0.012 * u, pesi={'chest': 1.0})
-        S.tubo(C, 'bordo', [cen + Vector((math.cos(2 * math.pi * i / 24), 0, math.sin(2 * math.pi * i / 24))) * (0.055 + 0.008 * g) * u for i in range(24)],
+        R0 = (0.055 + 0.008 * g) * u
+        _disco(S, C, 'piastre', cen, R0, (0, -1, 0.15), pal['met'], spessore=0.012 * u, pesi={'chest': 1.0})
+        S.tubo(C, 'bordo', [cen + Vector((math.cos(2 * math.pi * i / 24), 0, math.sin(2 * math.pi * i / 24))) * R0 for i in range(24)],
                0.011 * u, pal['bor'], chiuso=True, pesi={'chest': 1.0})
+        # corona di teste di chiodo attorno allo specchio, nuvole d'oro in rilievo al centro
+        giro = [cen + Vector((math.cos(2 * math.pi * (i + 0.5) / 10) * (R0 + 0.022 * u), -0.004 * u,
+                              math.sin(2 * math.pi * (i + 0.5) / 10) * (R0 + 0.022 * u))) for i in range(10)]
+        fila_borchie(S, C, 'bordo', pal['bor'], giro, 0.009 * u, fuori=[Vector((0, -1, 0.15))] * 10, pesi={'chest': 1.0})
         if g >= 4:
             S.gemma(C, 'gemma', cen + Vector((0, -0.03 * u, 0.0)), 0.04 * u, (0, -1, 0.15), pal['gem'], pesi={'chest': 1.0})
+        else:
+            emblema_nuvola(S, C, cen + Vector((0, -0.012 * u, 0)), R0 * 0.8, (0, -1, 0.15), {'chest': 1.0}, metallo=pal['bor'])
         # gorgiera
         a, b = S.ossa('neck')
         S.arto(C, 'bordo' if g >= 4 else 'piastre', [a - (b - a) * 0.6, b], 0.0, 0.45, na=24, colore=pal['bor'] if g >= 4 else pal['met'],
                livelli=[(0.0, 0.0), (0.2, 0.004 * u), (0.45, 0.02 * u)], stacco=0.03 * u, spessore=0.006 * u, rmax=0.2,
                pesi={'chest': 0.6, 'neck': 0.4})
-    # mantello corto alle spalle (leggendario)
+        # cordoni dalle spalle fin sopra lo specchio, annodati
+        cordoni_spalle(S, C, xs, zp + R0 + 0.025 * u, (st_cor + 0.045) * u, nappe=0.0)
     if g >= 4:
+        # catenella d'oro fra le spalle sotto la gorgiera e mantello del regno
+        pts = [_sul_corpo(S, Vector((x * 0.5 * xs, -0.3, zc - 0.1 * u - 0.07 * u * (1 - x * x))), 0.075 * u) for x in [i / 8 - 1 for i in range(17)]]
+        S.tubo(C, 'bordo', pts, 0.005 * u, pal['bor'], lati=4, n=24)
         mantello(S, C, 'regno', (1, 1, 1), S.z_cavallo + 0.02 * u, largo=110, stacco=0.075 * u, orlo=('bordo', pal['bor']))
+        # nappe ai lati del cinturone
+        for a in (-160, -20):
+            p, n = _sul_busto(S, z_cint, a, (st_cint + 0.012) * u)
+            nappa(S, C, 'cordone', (0.55, 0.08, 0.06), p, 0.2 * u, r=0.022 * u, cappuccio=('bordo', pal['bor']), pesi={'hips': 1.0})
 
 
-def mantello(S, C, parte, colore, z_fondo, largo=100, stacco=0.06, orlo=None, cols=25):
+def mantello(S, C, parte, colore, z_fondo, largo=100, stacco=0.06, orlo=None, cols=19):
     """Mantello appeso dietro le spalle fino a z_fondo; non rientra mai sotto il corpo che copre."""
     u = S.u
     zt = S.z_collo - 0.03 * u
@@ -1181,11 +1605,11 @@ def collana(S, C, parte, colore, r, caduta, stacco=None, centro=None, alterna=No
         if centro and i == 0:
             continue
         pp, cc = (alterna if alterna and i % 3 == 0 else (parte, colore))
-        S.sfera(C, pp, p, r, cc, seg=(8, 6))
+        S.sfera(C, pp, p, r, cc, seg=(7, 5))
     if centro:
         R, p2, c2 = centro
         p = pts[0] + S.fuori(pts[0]) * (R - r) + Vector((0, 0, -R * 0.9))
-        S.sfera(C, p2, p, R, c2, seg=(12, 8), scala=(1, 0.7, 1))
+        S.sfera(C, p2, p, R, c2, seg=(10, 6), scala=(1, 0.7, 1))
     return pts
 
 
@@ -1228,7 +1652,8 @@ def nappa(S, C, parte, colore, attacco, lungo, r=0.02, cappuccio=None, pesi='cor
     righe = []
     for k, (rr, dz) in enumerate(((0.25, 0), (0.55, 0.12), (0.8, 0.45), (1.0, 1.0), (0.9, 1.04))):
         righe.append([c + Vector((math.cos(2 * math.pi * i / 10) * r * rr, math.sin(2 * math.pi * i / 10) * r * rr, -dz * lungo * 0.65)) for i in range(10)])
-    S.griglia(C, parte, righe, colore, chiusa=True, pesi=P, fuori=lambda p: Vector((p.x - c.x, p.y - c.y, 0.01)))
+    S.griglia(C, 'nappa' if parte == 'cordone' else parte, righe, colore, chiusa=True, pesi=P,
+              fuori=lambda p: Vector((p.x - c.x, p.y - c.y, 0.01)), orli=None)
     if cappuccio:
         S.sfera(C, cappuccio[0], c + Vector((0, 0, -0.01 * u)), r * 0.45, cappuccio[1], pesi=P, seg=(8, 5), scala=(1, 1, 0.8))
 
@@ -1241,9 +1666,9 @@ def aureola(S, C, parte, colore, R, dietro=0.14, z=None, spessore=0.012, raggi=0
     yc = (hit.y if hit else 0.1 * u) + dietro * u
     P = {osso: 1.0}
     cen = Vector((0, yc, zc))
-    giro = [cen + Vector((math.cos(2 * math.pi * i / 48), 0, math.sin(2 * math.pi * i / 48))) * R for i in range(48)]
+    giro = [cen + Vector((math.cos(2 * math.pi * i / 36), 0, math.sin(2 * math.pi * i / 36))) * R for i in range(36)]
     S.tubo(C, parte, giro, spessore * u, colore, chiuso=True, pesi=P)
-    S.tubo(C, parte, [cen + (q - cen) * 0.82 for q in giro], spessore * 0.5 * u, colore, chiuso=True, pesi=P)
+    S.tubo(C, parte, [cen + (q - cen) * 0.82 for q in giro], spessore * 0.5 * u, colore, chiuso=True, pesi=P, lati=4)
     for k in range(raggi):
         a = 2 * math.pi * (k + 0.5) / raggi
         d = Vector((math.cos(a), 0, math.sin(a)))
@@ -1258,21 +1683,46 @@ def aureola(S, C, parte, colore, R, dietro=0.14, z=None, spessore=0.012, raggi=0
         p2, c2, rg, n = grani
         for k in range(n):
             a = 2 * math.pi * (k + 0.25) / n
-            S.sfera(C, p2, cen + Vector((math.cos(a), 0, math.sin(a))) * R * 0.91, rg * u, c2, pesi=P, seg=(10, 6))
+            S.sfera(C, p2, cen + Vector((math.cos(a), 0, math.sin(a))) * R * 0.91, rg * u, c2, pesi=P, seg=(7, 5))
     return cen
 
 
+def denti(S, C, parte, colore, punti, verso, lungo, largo, pesi, normale=None):
+    """Bordo a denti di sega: lamine triangolari lungo una fila di punti, puntate verso «verso»."""
+    for p in punti:
+        n = normale or S.fuori(p)
+        S.lama(C, parte, p, p + Vector(verso).normalized() * lungo, largo, n, spessore=0.003 * S.u, colore=colore, pesi=pesi, n=3,
+               forma=lambda t: 1 - t)
+
+
+def piume(S, C, base, verso, n, lungo, pesi, colore=(0.03, 0.03, 0.035), apri=22, fuori=(0, 1, 0)):
+    """Ciuffo di penne scure a ventaglio (parte «piume»: lo shader disegna le barbe)."""
+    v = Vector(verso).normalized()
+    f = Vector(fuori).normalized()
+    lato = v.cross(f).normalized()
+    for k in range(n):
+        a = math.radians((k - (n - 1) / 2) * apri)
+        d = (v * math.cos(a) + lato * math.sin(a)).normalized()
+        L = lungo * (1.0 - 0.18 * abs(k - (n - 1) / 2))
+        S.lama(C, 'piume', base, base + d * L + f * 0.02 * S.u, 0.045 * S.u, f, spessore=0.002 * S.u, colore=colore, pesi=pesi, n=6,
+               forma=lambda t: math.sin(math.pi * min(1.0, 0.15 + t * 0.95)) ** 0.7)
+
+
 def ombra(S, g):
-    """Assassino: stoffe scure aderenti, cuoio, una spalla sola corazzata, cinghie a croce con lame da lancio."""
+    """Assassino: stoffe scure aderenti, cuoio, una spalla sola corazzata, cinghie a croce con lame da lancio.
+    Linguaggio decorativo: denti di sega (motivo degli orli e bordi dentati), cinghie con fibbie, tasche, lame nei foderi,
+    penne scure."""
     u = S.u
     C = f'ombra_{g}'
     zv, zc = S.z_vita, S.z_collo
+    xs = S.B['upper_arm_L'].head_local.x
     if g == 'base':
         veste_busto(S, C, 'stoffa', (1, 1, 1), zv - 0.17 * u, scollo=0.03, alto=0.03, spalla=0.74, collo=None,
                     bordo=(0.005 * u, 'fascia', (1, 1, 1)))
         pantaloni(S, C, 'stoffa2', (1, 1, 1), S.z_caviglia + 0.06 * u, largo=0.012)
-        fasce_gamba(S, C, 'stoffa', (1, 1, 1), 0.5, 0.9, giri=7, stacco=0.012)
-        fasce_braccio(S, C, 'stoffa2', (1, 1, 1), 0.3, 0.95, giri=7)
+        for s in 'LR':
+            spirale(S, C, 'stoffa', (1, 1, 1), 'shin_' + s, 0.5, 0.9, giri=5, stacco=0.012)
+            spirale(S, C, 'stoffa2', (1, 1, 1), 'forearm_' + s, 0.3, 0.95, giri=6, stacco=0.012)
         return
     pal = {0: dict(cu=(0.05, 0.04, 0.045), me=ACCIAIO, bo=ARGENTO),
            1: dict(cu=(0.06, 0.045, 0.045), me=ACCIAIO, bo=ARGENTO),
@@ -1283,31 +1733,67 @@ def ombra(S, g):
     # sciarpa attorno al collo (il cappuccio abbassato)
     giro = anello_collo(S, 0.07 * u, 0.03 * u + 0.004 * u * g, n=40)
     S.striscia(C, 'fascia', giro, (0.075 + 0.008 * g) * u, proietta=False, spessore=0.006 * u, arco=0.018 * u, chiusa=True)
-    S.tubo(C, 'fascia', [p + Vector((0, 0, 0.03 * u)) + S.fuori(p) * 0.012 * u for p in giro], 0.016 * u, (1, 1, 1), lati=8, chiuso=True)
-    cintura(S, C, 'cuoio', pal['cu'], zv - 0.10 * u, alto=0.05, stacco=0.022)
+    S.tubo(C, 'fascia', [p + Vector((0, 0, 0.03 * u)) + S.fuori(p) * 0.012 * u for p in giro], 0.016 * u, (1, 1, 1), lati=6, chiuso=True)
+    z_cint = zv - 0.10 * u
+    cintura(S, C, 'cuoio', pal['cu'], z_cint, alto=0.05, stacco=0.022)
+    p, n = _sul_busto(S, z_cint, -90, 0.03 * u)
+    fibbia(S, C, 'bordo', pal['bo'], p, 0.05 * u, 0.04 * u, n, SU, {'hips': 1.0})
+    # cinghia sulla coscia destra con un pugnale nel fodero
+    lati_cosce = ('R',) if g < 2 else ('R', 'L')
+    for s in lati_cosce:
+        a, b = S.ossa('thigh_' + s)
+        S.arto(C, 'cuoio', [a, b], 0.36, 0.42, nv=2, na=12, colore=pal['cu'], stacco=0.03 * u, spessore=0.003 * u,
+               pesi={'thigh_' + s: 1.0})
+        S.arto(C, 'cuoio', [a, b], 0.62, 0.67, nv=1, na=12, colore=pal['cu'], stacco=0.03 * u, spessore=0.003 * u,
+               pesi={'thigh_' + s: 1.0})
+        sx = 1 if s == 'L' else -1
+        d = (b - a).normalized()
+        q = a.lerp(b, 0.3)
+        hit = S.bvh.ray_cast(q + Vector((sx * 0.4, 0, 0)), Vector((-sx, 0, 0)), 1.0)[0]
+        if hit:
+            base = hit + Vector((sx * 0.022 * u, 0, 0))
+            fodero(S, C, base, base + d * 0.26 * u, 0.04 * u, (sx, 0, 0), {'thigh_' + s: 1.0}, cuoio=pal['cu'], metallo=pal['bo'],
+                   manico=(0.02, 0.02, 0.025))
     if g == 0:
         return
     # gilet di cuoio, a V profonda
     corazza(S, C, 'cuoio', pal['cu'], zv - 0.13 * u, file=1, stacco=0.026, scollo=0.20, giro=0.10, spessore=0.005)
     # uno spallaccio solo (sinistro), sempre più corazzato
-    spallacci(S, C, 'cuoio' if g < 3 else 'piastre', pal['cu'] if g < 3 else pal['me'], file=1 + g, lungo=0.32 + 0.1 * g,
-              stacco=0.03 + 0.004 * g, dente=0.014, apertura=150 + 6 * g, lati='L', gonfia=0.008 * g,
-              orlo=(0.018 * u, 'bordo', pal['bo']) if g >= 3 else None,
-              borchie=('bordo', pal['bo']) if g >= 2 else None,
-              ala=(0.9, 'bordo', pal['bo']) if g >= 3 else None, gemma=gem,
-              calotta=(0.7, 'piastre', pal['me']) if g >= 4 else None)
+    sp = spallacci(S, C, 'cuoio' if g < 3 else 'piastre', pal['cu'] if g < 3 else pal['me'], file=1 + g, lungo=0.32 + 0.1 * g,
+                   stacco=0.03 + 0.004 * g, dente=0.014, apertura=150 + 6 * g, lati='L', gonfia=0.008 * g,
+                   orlo=(0.018 * u, 'bordo', pal['bo']) if g >= 3 else None,
+                   borchie=('bordo', pal['bo']) if g >= 2 else None,
+                   ala=(0.9, 'bordo', pal['bo']) if g >= 3 else None, gemma=gem,
+                   calotta=(0.7, 'piastre', pal['me']) if g >= 4 else None)
+    p0, d, su, av, rad, pesi_s, righe = sp['L']
+    if g >= 2:
+        # denti di sega lungo l'orlo dello spallaccio
+        ult = righe[-1]
+        pts = [ult[i] + d * 0.012 * u for i in range(1, len(ult) - 1, 2)]
+        denti(S, C, 'bordo', pal['bo'], pts, d, (0.03 + 0.006 * g) * u, 0.03 * u, pesi_s)
     bracciale(S, C, 'cuoio' if g < 3 else 'piastre', pal['cu'] if g < 3 else pal['me'], 0.35, 0.92, stacco=0.016,
               file=1 if g < 2 else 2, bordo=('bordo', pal['bo']) if g >= 2 else None)
-    # cinghie con le lame da lancio
-    bandoliera(S, C, 'cuoio', CUOIO_CHIARO if g < 3 else pal['cu'], da_destra=True, stacco=0.045,
-               coltelli=('piastre', ARGENTO if g < 4 else pal['me'], gem), n_col=2 + min(g, 2))
+    # cinghie con le lame da lancio; fibbie sul petto
+    P, N = bandoliera(S, C, 'cuoio', CUOIO_CHIARO if g < 3 else pal['cu'], da_destra=True, stacco=0.045,
+                      coltelli=('piastre', ARGENTO if g < 4 else pal['me'], gem), n_col=2 + min(g, 2))
+    t = (P[3] - P[1]).normalized()
+    fibbia(S, C, 'bordo', pal['bo'], P[2], 0.06 * u, 0.045 * u, N[2], t, S._rigido(P[2]))
+    # tasca sul fianco sinistro, dietro
+    p, n = _sul_busto(S, z_cint - 0.04 * u, 150, 0.06 * u)
+    borsa(S, C, 'cuoio', CUOIO_CHIARO if g < 3 else pal['cu'], p, n, {'hips': 1.0}, bottone=('bordo', pal['bo']))
     if g >= 2:
-        bandoliera(S, C, 'cuoio', CUOIO_CHIARO if g < 3 else pal['cu'], da_destra=False, stacco=0.055,
-                   coltelli=('piastre', ARGENTO if g < 4 else pal['me'], gem), n_col=2 + min(g - 1, 2))
+        P2, N2 = bandoliera(S, C, 'cuoio', CUOIO_CHIARO if g < 3 else pal['cu'], da_destra=False, stacco=0.055,
+                            coltelli=('piastre', ARGENTO if g < 4 else pal['me'], gem), n_col=2 + min(g - 1, 2))
+        t = (P2[3] - P2[1]).normalized()
+        fibbia(S, C, 'bordo', pal['bo'], P2[2], 0.06 * u, 0.045 * u, N2[2], t, S._rigido(P2[2]))
         # falda di cuoio sul fianco sinistro e ginocchiere
         S.falde(C, 'cuoio', [10], 50, zv - 0.10 * u, 0.30 * u, apri=0.03 * u, file=2, dente=0.01 * u, gioco=0.04 * u,
                 colore=pal['cu'], orlo=(0.016 * u, 'bordo', pal['bo']) if g >= 3 else None)
         schiniere(S, C, 'piastre', pal['me'], 0.02, 0.1, stacco=0.02, ginocchiera=0.042)
+        for ang in (120, -150):
+            p, n = _sul_busto(S, z_cint - 0.04 * u, ang, 0.06 * u)
+            borsa(S, C, 'cuoio', CUOIO_CHIARO if g < 3 else pal['cu'], p, n, {'hips': 1.0}, largo=0.07, alto=0.06,
+                  bottone=('bordo', pal['bo']))
     if g >= 3:
         # coda della sciarpa che scende dietro
         a, b = S.ossa('neck')
@@ -1319,20 +1805,18 @@ def ombra(S, g):
                        pesi=lambda co, zt=top.z: (lambda t: {'chest': 1 - t, 'spine_1': t})(_lim((zt - co.z) / (0.4 * u), 0, 1)))
         # manica sinistra aderente sotto lo spallaccio, lame sugli avambracci
         a, b = S.ossa('upper_arm_L')
-        S.arto(C, 'stoffa', [a, b], 0.12, 0.95, nv=8, na=16, stacco=0.012 * u, colore=(1, 1, 1))
+        S.arto(C, 'stoffa', [a, b], 0.12, 0.95, nv=8, na=14, stacco=0.012 * u, colore=(1, 1, 1))
         for s, sg in (('L', 1), ('R', -1)):
             a, b = S.ossa('forearm_' + s)
-            d = (b - a).normalized()
+            d2 = (b - a).normalized()
             for k in range(2 if g == 3 else 3):
-                base = a + d * (0.35 + 0.18 * k) * (b - a).length + Vector((0, 0.07 * u, 0.0))
-                S.lama(C, 'piastre', base, base + d * 0.12 * u + Vector((0, 0.06 * u, 0)), 0.04 * u, Vector((0, 0, 1)), spessore=0.004 * u,
+                base = a + d2 * (0.35 + 0.18 * k) * (b - a).length + Vector((0, 0.07 * u, 0.0))
+                S.lama(C, 'piastre', base, base + d2 * 0.12 * u + Vector((0, 0.06 * u, 0)), 0.04 * u, Vector((0, 0, 1)), spessore=0.004 * u,
                        colore=ARGENTO if g < 4 else pal['bo'], pesi={'forearm_' + s: 1.0})
-        # borse alla cintura
-        for ang in (110, 135, 160):
-            c = S.centro(zv - 0.14 * u)
-            r = S.raggio(c, S.dir(ang), 0.05 * u, 0.4 * u)
-            p = c + S.dir(ang) * (r + 0.05 * u)
-            S.sfera(C, 'cuoio', p, 0.04 * u, pal['cu'], scala=(1.0, 0.7, 1.15), rot=Matrix.Rotation(math.radians(ang), 3, 'Z'))
+        # penne scure sopra lo spallaccio, verso dietro
+        base = p0 + su * (rad + 0.05 * u) + d * 0.02 * u + Vector((0, 0.03 * u, 0))
+        piume(S, C, base, (su * 0.6 + Vector((0, 0.8, 0.3))).normalized(), 3 + 2 * (g - 3), (0.20 + 0.06 * (g - 3)) * u,
+              {'shoulder_L': 0.6, 'upper_arm_L': 0.4}, fuori=(0.3, 0.0, 1.0))
     if g >= 4:
         # mezza maschera sul viso e ventaglio di lame dietro le spalle
         h0, h1 = S.ossa('head')
@@ -1343,48 +1827,61 @@ def ombra(S, g):
         cen = Vector((0, (hit.y if hit else 0.15) + 0.07 * u, S.z_ascella + 0.02 * u))
         for k in range(5):
             a = math.radians(90 + (k - 2) * 24)
-            d = Vector((math.cos(a), 0.15, math.sin(a))).normalized()
-            S.lama(C, 'piastre', cen + d * 0.06 * u, cen + d * 0.30 * u, 0.075 * u, (0, 1, 0), spessore=0.006 * u, colore=pal['me'],
+            dd = Vector((math.cos(a), 0.15, math.sin(a))).normalized()
+            S.lama(C, 'piastre', cen + dd * 0.06 * u, cen + dd * 0.30 * u, 0.075 * u, (0, 1, 0), spessore=0.006 * u, colore=pal['me'],
                    pesi={'chest': 1.0})
-            S.lama(C, 'bordo', cen + d * 0.05 * u + Vector((0, 0.006 * u, 0)), cen + d * 0.2 * u + Vector((0, 0.006 * u, 0)), 0.03 * u, (0, 1, 0),
+            S.lama(C, 'bordo', cen + dd * 0.05 * u + Vector((0, 0.006 * u, 0)), cen + dd * 0.2 * u + Vector((0, 0.006 * u, 0)), 0.03 * u, (0, 1, 0),
                    spessore=0.004 * u, colore=pal['bo'], pesi={'chest': 1.0})
         S.gemma(C, 'gemma', cen + Vector((0, 0.02 * u, 0)), 0.035 * u, (0, 1, 0), gem, pesi={'chest': 1.0})
 
 
+def anellino(S, C, c, r, normale, pesi, colore=ORO):
+    """Anello di metallo appeso (anelli tintinnanti del bastone dei monaci, qui sulle vesti)."""
+    lato, su, n = _assi(normale)
+    c = Vector(c)
+    giro = [c + (lato * math.cos(2 * math.pi * i / 8) + su * math.sin(2 * math.pi * i / 8)) * r for i in range(8)]
+    S.tubo(C, 'bordo', giro, max(0.0035 * S.u, r * 0.13), colore, lati=4, pesi=pesi, chiuso=True)
+
+
 def monaco(S, g):
-    """Monaco guerriero: busto nudo, pantaloni larghi raccolti sotto il ginocchio, grani, fasce, oro e giada."""
+    """Monaco guerriero: busto nudo, pantaloni larghi raccolti sotto il ginocchio, grani, fasce, oro e giada.
+    Linguaggio decorativo: grani incisi (shader), fasce avvolte a spirale, anelli e sonagli, simboli incisi sull'oro
+    (motivo dei grani negli orli)."""
     u = S.u
     C = f'monaco_{g}'
     zv, zc = S.z_vita, S.z_collo
     GIADA = (0.06, 0.40, 0.24)
     LEGNO = (0.16, 0.08, 0.035)
+    xs = S.B['upper_arm_L'].head_local.x
     if g == 'base':
         pantaloni(S, C, 'stoffa', (1, 1, 1), S.z_ginocchio - 0.13 * u, largo=0.055, stacco=0.012)
-        fasce_gamba(S, C, 'fascia', (1, 1, 1), 0.26, 0.88, giri=6, stacco=0.016)
+        for s in 'LR':
+            spirale(S, C, 'fascia', (1, 1, 1), 'shin_' + s, 0.26, 0.88, giri=5, stacco=0.016)
         if S.donna:
-            # fascia di stoffa avvolta al petto (sarashi): copre il seno, lascia scoperti braccia, spalle e ventre
-            zp = S.z_vita + 0.10 * u
-            xs = S.B['upper_arm_L'].head_local.x
-            S.guscio(C, 'stoffa2', lambda co: min(co.z - zp, (S.z_ascella + 0.05 * u) - co.z, 0.85 * xs - abs(co.x)), 0.02 * u,
+            # fascia di stoffa avvolta al petto (sarashi): copre il seno e i fianchi del petto, lascia scoperti braccia,
+            # spalle e ventre. Larga fin sotto le ascelle: ai lati non deve affiorare il top dipinto del corpo.
+            zp = S.z_vita + 0.08 * u
+            S.guscio(C, 'stoffa2', lambda co: min(co.z - zp, (S.z_ascella + 0.06 * u) - co.z, 1.02 * xs - abs(co.x)), 0.02 * u,
                      (1, 1, 1), seme=(0, -0.5, zp + 0.08 * u), liscia=12, bordo=(0.006 * u, 'fascia', (1, 1, 1)))
         # fascia alta in vita con il nodo e i due lembi davanti
-        S.busto(C, 'stoffa2', zv - 0.12 * u, zv + 0.02 * u, 0, 360, na=40, nv=4, stacco=0.035 * u, colore=(1, 1, 1),
+        S.busto(C, 'stoffa2', zv - 0.12 * u, zv + 0.02 * u, 0, 360, na=36, nv=4, stacco=0.035 * u, colore=(1, 1, 1),
                 spessore=0.006 * u, drappo=0.0)
         c = S.centro(zv - 0.06 * u)
         ang = -60
         r = S.raggio(c, S.dir(ang), 0.05 * u, 0.4 * u) + 0.05 * u
-        nodo = c + S.dir(ang) * r
-        S.sfera(C, 'stoffa2', nodo, 0.035 * u, (1, 1, 1), scala=(1.2, 0.8, 1.0))
+        cappio = c + S.dir(ang) * r
+        S.sfera(C, 'stoffa2', cappio, 0.035 * u, (1, 1, 1), scala=(1.2, 0.8, 1.0))
         for k, dx in enumerate((-0.03, 0.035)):
-            pts = [nodo + Vector((dx * u * t * 2, -0.02 * u * t, -(0.02 + (0.30 + 0.06 * k) * t) * u)) for t in (i / 7 for i in range(8))]
+            pts = [cappio + Vector((dx * u * t * 2, -0.02 * u * t, -(0.02 + (0.30 + 0.06 * k) * t) * u)) for t in (i / 7 for i in range(8))]
             S.striscia(C, 'stoffa2', pts, 0.06 * u, proietta=False, spessore=0.004 * u, normali=[S.dir(ang)] * 8,
                        pesi=lambda co, ang=ang: (lambda t: {'hips': 1 - t * 0.6, 'thigh_L': t * 0.6})(_lim((S.z_vita - co.z) / (0.4 * u), 0, 1)))
         return
     bor = BRONZO if g < 3 else ORO
     gem = (0.25, 1.0, 0.55) if g >= 3 else None
-    fasce_braccio(S, C, 'fascia', (1, 1, 1), 0.5 if g >= 2 else 0.35, 0.95, giri=5)
+    for s in 'LR':
+        spirale(S, C, 'fascia', (1, 1, 1), 'forearm_' + s, 0.5 if g >= 2 else 0.35, 0.95, giri=4 if g >= 2 else 5, stacco=0.012)
     if g == 0:
-        collana(S, C, 'grani', LEGNO, 0.011 * u, 0.12 * u)
+        collana(S, C, 'grani', LEGNO, 0.014 * u, 0.12 * u)
         return
     # collana di grani grossi
     collana(S, C, 'grani', LEGNO, (0.018 + 0.003 * g) * u, (0.16 + 0.02 * g) * u,
@@ -1394,35 +1891,60 @@ def monaco(S, g):
         giro = anello_collo(S, (0.16 + 0.02 * g) * u, 0.03 * u, n=80)
         S.gemma(C, 'gemma', giro[0] + S.fuori(giro[0]) * 0.03 * u + Vector((0, 0, -0.045 * u)), 0.022 * u, S.fuori(giro[0]), gem)
     # fascia a tracolla dalla spalla sinistra al fianco destro
-    xs = S.B['upper_arm_L'].head_local.x
     guida = [Vector((0.6 * xs, -0.3, zc - 0.02 * u)), Vector((0.1 * xs, -0.3, zc - 0.3 * u)), Vector((-0.6 * xs, -0.3, zv - 0.02 * u)),
              Vector((-0.85 * xs, 0.0, zv - 0.05 * u)), Vector((-0.6 * xs, 0.3, zv - 0.02 * u)), Vector((0.1 * xs, 0.3, zc - 0.3 * u)),
              Vector((0.6 * xs, 0.3, zc - 0.02 * u)), Vector((0.7 * xs, 0.0, zc + 0.03 * u))]
     pts = [_sul_corpo(S, q, 0.02 * u) for q in guida]
-    P, N = S.striscia(C, 'stoffa', pts, (0.08 + 0.01 * g) * u, stacco=0.02 * u, spessore=0.005 * u, n=60, chiusa=True, arco=0.01 * u)
+    P, N = S.striscia(C, 'stoffa', pts, (0.08 + 0.01 * g) * u, stacco=0.02 * u, spessore=0.005 * u, n=48, chiusa=True, arco=0.01 * u)
     if g >= 3:
         for sgn in (-1, 1):
             orlo = []
             for i in range(len(P)):
                 t = (P[(i + 1) % len(P)] - P[i - 1]).normalized()
                 orlo.append(P[i] + t.cross(N[i]).normalized() * sgn * (0.04 + 0.005 * g) * u + N[i] * 0.004 * u)
-            S.tubo(C, 'bordo', orlo, 0.006 * u, ORO, chiuso=True)
-    # cordone sopra la fascia, con le nappe
+            S.tubo(C, 'bordo', orlo, 0.006 * u, ORO, chiuso=True, lati=4, n=30)
+    # cordone sopra la fascia, con le nappe, gli anelli e i sonagli
     c0 = S.centro(zv - 0.05 * u)
     giro = []
-    for i in range(48):
-        a = 360 * i / 48
+    for i in range(40):
+        a = 360 * i / 40
         giro.append(c0 + S.dir(a) * (S.raggio(c0, S.dir(a), 0.05 * u, 0.4 * u) + 0.06 * u))
-    S.tubo(C, 'regno', giro, 0.012 * u, (1, 1, 1), chiuso=True, lati=6)
+    cordone(S, C, giro, 0.012 * u, chiuso=True, pesi={'hips': 0.7, 'spine': 0.3})
     for a in (-75, -105):
         c = S.centro(zv - 0.05 * u)
         p = c + S.dir(a) * (S.raggio(c, S.dir(a), 0.05 * u, 0.4 * u) + 0.075 * u)
-        nappa(S, C, 'regno', (1, 1, 1), p, (0.22 + 0.03 * g) * u, r=(0.025 + 0.004 * g) * u, cappuccio=('bordo', bor) if g >= 2 else None,
+        nappa(S, C, 'cordone', (1, 1, 1), p, (0.22 + 0.03 * g) * u, r=(0.025 + 0.004 * g) * u, cappuccio=('bordo', bor) if g >= 2 else None,
               pesi={'hips': 1.0})
+    # anelli d'oro infilati nel cordone sul fianco sinistro, sonagli sul destro
+    for k, a in enumerate((-40, -25, -10)[:1 + min(g, 2)]):
+        p, n = _sul_busto(S, zv - 0.05 * u, a, 0.075 * u)
+        anellino(S, C, p + Vector((0, 0, -0.03 * u)), 0.026 * u, n, {'hips': 1.0}, colore=bor)
+    for a in (-145, -160)[:1 + (g >= 2)]:
+        p, n = _sul_busto(S, zv - 0.05 * u, a, 0.075 * u)
+        sonaglio(S, C, p, 0.016 * u, {'hips': 1.0}, colore=bor)
     if g >= 2:
         bracciale(S, C, 'bordo', bor, 0.42, 0.88, stacco=0.03, spessore=0.007, file=1 if g < 4 else 2,
                   bordo=('piastre', GIADA) if g >= 3 else None)
         schiniere(S, C, 'bordo', bor, 0.72, 0.9, stacco=0.035, ginocchiera=None)
+        # cavigliere con i sonagli e un giro di grani piccoli al polso sinistro
+        for s in 'LR':
+            a, b = S.ossa('shin_' + s)
+            q = a.lerp(b, 0.9)
+            for k in range(4):
+                ang = math.radians(-150 + 40 * k)
+                dd = Vector((math.cos(ang), math.sin(ang), 0))
+                rr = S.raggio(q, dd, 0.02 * u, 0.15 * u) + 0.045 * u
+                sonaglio(S, C, q + dd * rr, 0.013 * u, {'shin_' + s: 1.0}, colore=bor)
+        a, b = S.ossa('forearm_L')
+        dfa = (b - a).normalized()
+        x = (AVANTI - dfa * AVANTI.dot(dfa)).normalized()
+        y = dfa.cross(x)
+        q = a.lerp(b, 0.36)
+        for k in range(12):
+            an = 2 * math.pi * k / 12
+            dd = x * math.cos(an) + y * math.sin(an)
+            S.sfera(C, 'grani', q + dd * (S.raggio(q, dd, 0.02 * u, 0.15 * u) + 0.012 * u), 0.011 * u, LEGNO,
+                    pesi={'forearm_L': 1.0}, seg=(6, 4))
         if gem:
             for s in 'LR':
                 a, b = S.ossa('forearm_' + s)
@@ -1431,14 +1953,26 @@ def monaco(S, g):
                 if hit:
                     S.gemma(C, 'gemma', hit + Vector((0, -0.04 * u, 0)), 0.02 * u, (0, -1, 0), gem, pesi={'forearm_' + s: 1.0})
     if g >= 3:
-        # spallaccio d'oro sulla spalla sinistra, sopra la tracolla
-        spallacci(S, C, 'bordo', ORO, file=2 if g == 3 else 3, lungo=0.40 + 0.08 * (g - 3), stacco=0.05, dente=0.012, apertura=140,
-                  lati='L', orlo=(0.016 * u, 'piastre', GIADA), gemma=gem, calotta=(0.65, 'piastre', GIADA))
+        # spallaccio d'oro sulla spalla sinistra, sopra la tracolla, con tre anelli appesi all'orlo
+        sp = spallacci(S, C, 'bordo', ORO, file=2 if g == 3 else 3, lungo=0.40 + 0.08 * (g - 3), stacco=0.05, dente=0.012, apertura=140,
+                       lati='L', orlo=(0.016 * u, 'piastre', GIADA), gemma=gem, calotta=(0.65, 'piastre', GIADA))
+        p0, d, su, av, rad, pesi_s, righe = sp['L']
+        ult = righe[-1]
+        for i in (len(ult) // 2 - 3, len(ult) // 2, len(ult) // 2 + 3):
+            q = ult[i] + d * 0.03 * u
+            nn = (q - (p0 + d * (q - p0).dot(d))).normalized()
+            anellino(S, C, q + nn * 0.01 * u + d * 0.02 * u, 0.018 * u, nn.cross(d), pesi_s(q), colore=ORO)
     if g >= 4:
         for s in 'LR':
             a, b = S.ossa('upper_arm_' + s)
-            S.arto(C, 'bordo', [a, b], 0.58, 0.66, nv=2, na=18, colore=ORO, stacco=0.012 * u, spessore=0.005 * u, pesi={'upper_arm_' + s: 1.0})
-        aureola(S, C, 'bordo', ORO, 0.32 * u, dietro=0.16, z=S.z_ascella + 0.05 * u, spessore=0.014, gemme=gem, grani=('piastre', GIADA, 0.026, 8))
+            S.arto(C, 'bordo', [a, b], 0.58, 0.66, nv=2, na=16, colore=ORO, stacco=0.012 * u, spessore=0.005 * u, pesi={'upper_arm_' + s: 1.0})
+        cen = aureola(S, C, 'bordo', ORO, 0.32 * u, dietro=0.16, z=S.z_ascella + 0.05 * u, spessore=0.014, gemme=gem,
+                      grani=('piastre', GIADA, 0.026, 8))
+        # anelli tintinnanti appesi sotto l'aureola
+        for k in range(5):
+            a = math.radians(-90 + (k - 2) * 22)
+            q = cen + Vector((math.cos(a), 0, math.sin(a))) * 0.32 * u
+            anellino(S, C, q + Vector((0, 0, -0.03 * u)), 0.022 * u, (0, -1, 0), {'chest': 1.0}, colore=ORO)
 
 
 def mistico(S, g):
@@ -1458,13 +1992,27 @@ def mistico(S, g):
             S.arto(C, 'fascia', [a, b], 0.80, 0.86, nv=2, na=20, colore=(1, 1, 1), spessore=0.004 * u, stacco=0.107 * u, rmax=0.12, drappo=0.0)
         pantaloni(S, C, 'stoffa2', (1, 1, 1), S.z_caviglia + 0.05 * u, largo=0.015)
         centri = [-112.5, -67.5, -22.5, 22.5, 67.5, 112.5, 157.5, -157.5]
-        S.falde(C, 'stoffa', centri, 44, zv - 0.06 * u, zv - 0.06 * u - z_polp, apri=0.07 * u, cols=7, gioco=0.03 * u, colore=(1, 1, 1),
-                spessore=0.004 * u, coscia=0.7, orlo=(0.03 * u, 'fascia', (1, 1, 1)))
+        S.falde(C, 'stoffa', centri, 44, zv - 0.06 * u, zv - 0.06 * u - z_polp, apri=0.07 * u, cols=5, gioco=0.03 * u, colore=(1, 1, 1),
+                spessore=0.004 * u, coscia=0.55, orlo=(0.03 * u, 'fascia', (1, 1, 1)))
         return
     bor = BRONZO if g < 3 else ORO
     gem = (0.35, 0.75, 1.0) if g >= 3 else None
     # fascia in vita
     cintura(S, C, 'fascia', (1, 1, 1), zv - 0.06 * u, alto=0.09, stacco=0.05, spessore=0.005)
+    # cordone sulla fascia annodato davanti, con una perla di giada e la nappa
+    c0 = S.centro(zv - 0.06 * u)
+    giro = [c0 + S.dir(a) * (S.raggio(c0, S.dir(a), 0.05 * u, 0.4 * u) + 0.062 * u) for a in range(0, 360, 10)]
+    cordone(S, C, giro, 0.008 * u, chiuso=True, pesi={'hips': 0.7, 'spine': 0.3})
+    p, n = _sul_busto(S, zv - 0.06 * u, -90, 0.07 * u)
+    nodo(S, C, p, (0.04 + 0.004 * g) * u, n, {'hips': 1.0}, nappa_lunga=(0.18 + 0.02 * g) * u)
+    if g >= 3:
+        # placche di giada intagliate sulla fascia e nappe ai fianchi
+        for a in (-125, -55):
+            p, n = _sul_busto(S, zv - 0.06 * u, a, 0.058 * u)
+            placca(S, C, 'piastre', GIADA, p, 0.045 * u, 0.06 * u, n, SU, {'hips': 1.0})
+        for a in (-20, -160):
+            p, n = _sul_busto(S, zv - 0.06 * u, a, 0.07 * u)
+            nappa(S, C, 'cordone', (1, 1, 1), p, 0.2 * u, r=0.022 * u, cappuccio=('bordo', ORO), pesi={'hips': 1.0})
     if g == 0:
         return
     # colletto alto
@@ -1492,6 +2040,11 @@ def mistico(S, g):
         S.striscia(C, 'fascia', pts, (0.07 + 0.008 * g) * u, proietta=False, spessore=0.005 * u, colore=(1, 1, 1),
                    normali=N, pesi=pes)
         fondo = Vector((ult.x, min(ult.y, c.y - avanti) - 0.008 * u, lungo_stola))
+        # nodo ornamentale sulla stola all'altezza del petto; più in basso una placca di giada sopra il talismano
+        nodo(S, C, sup[4] + N[4] * 0.008 * u, 0.032 * u, N[4], S._rigido(sup[4]), su=SU)
+        if g >= 2:
+            placca(S, C, 'piastre', GIADA, fondo + Vector((0, -0.004 * u, 0.07 * u)), 0.05 * u, 0.07 * u, (0, -1, 0), SU,
+                   {'hips': 0.6, 'thigh_L' if sx > 0 else 'thigh_R': 0.4})
         # talismano di carta appeso
         t0 = fondo + Vector((0, 0, -0.01 * u))
         S.griglia(C, 'carta', [[t0 + Vector((-0.03 * u, 0, -z)), t0 + Vector((0.03 * u, 0, -z))] for z in (0, 0.07 * u, 0.14 * u)], CARTA,
@@ -1516,6 +2069,12 @@ def mistico(S, g):
             lat = Vector((-d.y, d.x, 0))
             S.griglia(C, 'carta', [[p + lat * -0.025 * u + Vector((0, 0, -z)), p + lat * 0.025 * u + Vector((0, 0, -z))] for z in (0.02 * u, 0.1 * u, 0.17 * u)],
                       CARTA, pesi={'hips': 0.7, 'thigh_L' if d.x > 0 else 'thigh_R': 0.3}, fuori=lambda q, d=d: d)
+    if g == 2:
+        # pendente di giada sul petto appeso a un cordone, con il nodo sopra
+        zp = S.B['chest'].head_local.z + S.B['chest'].length * 0.3
+        p, n = _sul_busto(S, zp, -90, 0.075 * u)
+        placca(S, C, 'piastre', GIADA, p, 0.07 * u, 0.09 * u, (0, -1, 0.1), SU, {'chest': 1.0}, spessore=0.01)
+        cordoni_spalle(S, C, xs, zp + 0.06 * u, 0.06 * u)
     if g >= 3:
         spallacci(S, C, 'piastre', GIADA, file=2, lungo=0.30 + 0.06 * (g - 3), stacco=0.085 + 0.01 * g, dente=0.01, apertura=130,
                   orlo=(0.014 * u, 'bordo', ORO), calotta=(0.55, 'bordo', ORO), gemma=gem)

@@ -10,6 +10,9 @@ const ATTACCHI := {
 }
 const PosaArmaScript := preload("res://script/posa_arma.gd")
 const SPECIE := {"wolf": "lupo", "boar": "cinghiale", "bear": "orso", "tiger": "tigre", "horse": "cavallo"}
+## motivo ornamentale degli orli dei completi (ornati.gdshaderinc): onde e nuvole, denti, grani, rombi ricamati
+const MOTIVI := {"lama": 0, "ombra": 1, "monaco": 2, "mistico": 3}
+const RICAMO_ORO := Color(0.85, 0.62, 0.25)
 
 static var _scene: Dictionary = {}
 static var _librerie: Dictionary = {}
@@ -93,26 +96,55 @@ static func umano(modello: String, wear: Dictionary, tipo_arma := "sword", grado
 			c = v
 		elif v is Dictionary and v.has(parte):
 			c = v[parte]
+		elif v is Dictionary and parte in ["cordone", "nappa"] and v.has("regno"):
+			c = v.regno           # cordoni e nappe dei completi: seta nel colore del regno
 		# colore e lucentezza di partenza: quelli del modello, se il capo non ne impone uno
 		var orig := mi.mesh.surface_get_material(0) as BaseMaterial3D
 		var colore: Color = c if c != null else (orig.albedo_color if orig != null else Color(0.5, 0.5, 0.5))
-		# parti dei completi (tools/blender/completi.py): metalli, cuoio, stoffe tinte dal gioco, pietre luminose
+		# parti dei completi (tools/blender/completi.py): metalli, cuoio, stoffe tinte dal gioco, pietre luminose.
+		# I completi portano orli (seconda UV) e occlusione dipinta (colore dei vertici): motivo ornamentale per classe.
+		var classe_c: String = capo.get_slice("_", 0)
+		var motivo: int = MOTIVI.get(classe_c, -1) if capo.get_slice_count("_") == 2 else -1
+		var orlato := motivo >= 0
 		if parte in ["piastre", "bordo", "lamelle", "grani"]:
 			var met := _dipinto("metallo", colore)
 			met.set_shader_parameter("metallico", orig.metallic if orig != null else 0.3)
 			met.set_shader_parameter("ruvido", orig.roughness if orig != null else 0.5)
 			if parte == "lamelle":
-				met.set_shader_parameter("lamelle", 0.12)
+				met.set_shader_parameter("lamelle", 0.045 if orlato else 0.12)
+				met.set_shader_parameter("laccio", v.regno if v is Dictionary and v.has("regno") else ricamo)
+			if orlato:
+				met.set_shader_parameter("usa_orlo", true)
+				met.set_shader_parameter("motivo_classe", motivo)
+				met.set_shader_parameter("fascia", 0.022 if parte == "piastre" else (0.014 if parte == "bordo" else 0.0))
+				met.set_shader_parameter("ribattini", 0.0 if parte in ["lamelle", "grani"] else 0.045)
+			if parte == "bordo" and colore.r > colore.b * 1.6:
+				met.set_shader_parameter("oro", 1.0)
+			if parte == "grani":
+				met.set_shader_parameter("grani", 1.0)
 			mi.material_override = met
 		elif parte == "gemma":
 			var gm := _dipinto("gemma", colore)
 			mi.material_override = gm
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif parte == "carta":
+			mi.material_override = _dipinto("carta", colore)
 		else:
 			var st := _dipinto("stoffa", colore)
-			st.set_shader_parameter("ricamo", ricamo)
+			# il ricamo delle stoffe è nel colore delle finiture; sulle finiture stesse e sul colore del regno è d'oro
+			st.set_shader_parameter("ricamo", RICAMO_ORO if parte in ["fascia", "regno"] else ricamo)
 			if parte == "cuoio":
 				st.set_shader_parameter("cuoio", 1.0)
+			elif parte == "piume":
+				st.set_shader_parameter("piume", 1.0)
+			elif parte == "cordone":
+				st.set_shader_parameter("ritorto", 0.012)
+			elif parte == "nappa":
+				st.set_shader_parameter("frange", 1.0)
+			if orlato:
+				st.set_shader_parameter("usa_orlo", true)
+				st.set_shader_parameter("motivo_classe", motivo)
+				st.set_shader_parameter("fascia", 0.0 if parte in ["cuoio", "piume", "cordone", "nappa"] else (0.02 if parte == "stoffa2" else 0.028))
 			mi.material_override = st
 	var testa := p.scheletro.find_bone("head")
 	if testa >= 0:
