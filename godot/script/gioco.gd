@@ -344,6 +344,14 @@ func _su_fx(m: Dictionary) -> void:
 		"tp":
 			if s != null:
 				fx.colonna(s.global_position, Color(0.55, 0.82, 1.0), 1.2, 12.0, 1.0)
+		"aura":
+			# aura di classe accesa o spenta (a = id dell'effetto, vuoto = spenta)
+			if s != null:
+				s.info["au"] = String(m.get("a", ""))
+				if s.corpo != null:
+					s.corpo.metti_aura(String(m.get("a", "")))
+				if s == me:
+					Suoni.suona("aura", -6.0, 1.0 if String(m.get("a", "")) != "" else 0.7)
 		"proc":
 			if s == me:
 				var b: Dictionary = Dati.BUFFS.get(String(m.get("b", "")), {})

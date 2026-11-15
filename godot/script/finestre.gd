@@ -255,6 +255,8 @@ func testo_tecnica(sid: String, lvl: int) -> String:
 		righe.append(Hud.NOMI_RUOLO[ruolo])
 	if sk.get("scatto", false):
 		righe.append("Ogni uccisione ne accorcia la ricarica di %d s." % int(Dati.gioco.SERIE.scattoS))
+	elif sk.get("aura", false):
+		righe.append("Resta accesa finché non la spegni: premi di nuovo il tasto.")
 	elif sk.get("potenziamento", false):
 		righe.append("Ogni uccisione ne accorcia la ricarica di %d s." % int(Dati.gioco.SERIE.potS))
 	if sk.get("finale", false):
@@ -817,7 +819,7 @@ Quando un nemico lancia (barra arancione) premi l'Interruzione: spezza il lancio
 Ogni Via ha una MAESTRIA passiva che premia il suo stile: la trovi nella finestra Abilità.
 Ogni colpo a segno dà una tacca di SLANCIO (fino a 5): più risorsa e rapidità finché continui a colpire.
 SERIE: uccidi un nemico dopo l'altro (entro 7 s) e corri più veloce (fino a +24%), Slancio e Ira non calano,
-ogni uccisione accorcia di 2 s la ricarica dello scatto e di 1 s quella del potenziamento.
+ogni uccisione accorcia di 2 s la ricarica dello scatto; le auree di classe restano accese finché non le spegni.
 Scatti: Carica (Lama), Passo d'Ombra o Ala di Vento (Ombra), Calcio Volante (Monaco), Passo di Luce (Mistico, verso dove guardi).
 I lanci del Mistico (Dardo, Sfera) si fanno anche camminando.
 Élite e boss hanno la POSTURA (barra gialla): gli scarichi la abbassano; a zero il nemico è Squilibrato, stordito e fragile.

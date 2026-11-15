@@ -822,7 +822,8 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 		_arricchisci(c)
 		return
 	if String(c.fx).begins_with("buff_"):
-		_buff_classe(c)
+		if int(m.get("off", 0)) == 0:      # spegnendo l'aura non si rifà l'effetto d'accensione
+			_buff_classe(c)
 		return
 	_arricchisci(c)
 	if int(m.get("ris", 0)) == 1:

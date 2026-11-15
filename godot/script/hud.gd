@@ -4,8 +4,8 @@ extends CanvasLayer
 
 const ORO := Color(0.86, 0.72, 0.40)
 const SFONDO := Color(0.06, 0.05, 0.05, 0.82)
-const RUOLI := {"accumulo": Color(0.35, 0.80, 0.40), "medio": Color(0.90, 0.75, 0.30), "potente": Color(0.90, 0.28, 0.22), "interr": Color(0.40, 0.70, 1.0), "scatto": Color(0.75, 0.55, 1.0), "pot": Color(1.0, 0.62, 0.25)}
-const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale", "interr": "Interruzione", "scatto": "Scatto", "pot": "Potenziamento"}
+const RUOLI := {"accumulo": Color(0.35, 0.80, 0.40), "medio": Color(0.90, 0.75, 0.30), "potente": Color(0.90, 0.28, 0.22), "interr": Color(0.40, 0.70, 1.0), "scatto": Color(0.75, 0.55, 1.0), "pot": Color(1.0, 0.62, 0.25), "aura": Color(1.0, 0.62, 0.25)}
+const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale", "interr": "Interruzione", "scatto": "Scatto", "pot": "Potenziamento", "aura": "Aura"}
 
 
 ## Ruolo di una tecnica per l'interfaccia (tacca colorata sotto il tasto, titolo nella finestra Abilità).
@@ -14,6 +14,8 @@ static func ruolo_di(sk: Dictionary) -> String:
 		return "interr"
 	if sk.get("scatto", false):
 		return "scatto"
+	if sk.get("aura", false):
+		return "aura"
 	if sk.get("potenziamento", false):
 		return "pot"
 	return String(sk.get("ruolo", ""))
@@ -974,7 +976,7 @@ class Icona:
 		else:
 			var larg := f.get_string_size(glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
 			draw_string(f, Vector2((size.x - larg) * 0.5, 19), glifo, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, colore)
-		if secondi > 0.0:
+		if secondi > 0.0 and secondi < 36000.0:      # le auree non scadono: niente conto alla rovescia
 			var t := str(int(ceil(secondi)))
 			var lt := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
 			draw_string_outline(f, Vector2(size.x - lt - 2, size.y - 2), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, 3, Color.BLACK)

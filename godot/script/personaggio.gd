@@ -481,6 +481,19 @@ func metti_effetti(wu: int, wr: int, bu: int, br: int, mio: bool) -> void:
 	Equip.aura_armatura(self, bu, br, _tipo_arma)
 
 
+## Aura di classe (effetto permanente, id in BUFFS): la accende attorno al corpo, o la spegne con id vuoto.
+func metti_aura(id: String) -> void:
+	var vecchia := get_node_or_null("AuraClasse")
+	if vecchia != null:
+		vecchia.name = "AuraSpenta"
+		vecchia.queue_free()
+	if id != "":
+		var a := Equip.aura_classe(id)
+		if a != null:
+			a.name = "AuraClasse"
+			add_child(a)
+
+
 ## Toglie i capi non indossati: ogni modello ne porta un centinaio nascosti (tutti i completi di tutte le classi);
 ## tenerli costa memoria e tempo a ogni personaggio in vista. Quando cambia l'equipaggiamento il personaggio viene rifatto.
 func sfoltisci() -> void:

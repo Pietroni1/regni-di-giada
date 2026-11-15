@@ -490,7 +490,7 @@ export class World {
         return { ...base, k: 'p', n: e.name, cls: e.cls, kd: e.kingdom, sx: e.ch.sex === 'f' ? 'f' : 'm', lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp,
           w: eq.weapon ? eq.weapon.id : null, wu: eq.weapon ? eq.weapon.up : 0, wr: eq.weapon ? eq.weapon.r || 0 : 0,
           b: eq.body ? eq.body.id : null, bu: eq.body ? eq.body.up : 0, br: eq.body ? eq.body.r || 0 : 0, h: eq.head ? eq.head.id : null, f: eq.feet ? eq.feet.id : null,
-          gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0, mt: e.mounted && e.ch.horse ? HORSE.tierOf(e.ch.horse.lvl) : 0 };
+          gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0, au: e.aura || null, mt: e.mounted && e.ch.horse ? HORSE.tierOf(e.ch.horse.lvl) : 0 };
       }
       case 'mob': {
         const o = { ...base, k: 'm', ty: e.type, n: e.name, lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp };
@@ -593,6 +593,7 @@ export class World {
     const before = p.buffs.length;
     p.buffs = p.buffs.filter(b => b.until > t);
     if (p.buffs.length !== before) this.recalc(p);
+    this.tickAure(p, t);
     if (p.debuffs.length) p.debuffs = p.debuffs.filter(d => d.until > t);
     this.tickDots(p, t);
     if (p.dead) return;
@@ -1087,6 +1088,7 @@ export class World {
   playerDie(p, killer) {
     p.dead = true; p.hp = 0; p.deadAt = NOW();
     p.buffs = []; p.hots = []; p.dots = []; p.waves = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0; p.serie = 0;
+    if (p.aura) { p.aura = null; this.fx(p, { k: 'aura', s: p.id, a: '' }); }
     p.mounted = false; p.mountUntil = 0; p.vis++;
     this.recalc(p);
     this.touch(p); p.selfDirty = true;
@@ -1510,6 +1512,10 @@ export class World {
         if (sk.manaPct && p.rtype === 'mana') { p.res = Math.min(p.rmax, p.res + p.rmax * sk.manaPct / 100); p.resDirty = true; }
         break;
       }
+      case 'aura':
+        // aura di classe: si accende e resta finché non la si spegne (stesso tasto) o si cade
+        if (p.aura === sk.buff) { this.mettiAura(p, null); fxd.off = 1; } else this.mettiAura(p, sk.buff, lvl, sk.gruppo || 0);
+        break;
       case 'buff_allies':
         for (const q of this.players) {
           if (this.alleato(p, q) && !q.dead && dist(q, p) <= sk.radius) {
@@ -1701,6 +1707,39 @@ export class World {
       if (announce) this.sys(p, `Nuova abilità: ${SKILLS[sid].name}`);
     }
     p.selfDirty = true;
+  }
+
+  /** Aura di classe: effetto senza scadenza (BUFFS[..].aura); id nullo la spegne. Chi è in vista lo sa da `au` nelle info
+   *  e dall'effetto `aura`; con `raggio` i compagni di gruppo vicini la ricevono finché restano nel raggio (tickAure). */
+  mettiAura(p, id, lvl = 1, raggio = 0) {
+    p.buffs = p.buffs.filter(b => !b.aura);
+    p.aura = id || null;
+    p.auraLvl = lvl; p.auraRaggio = raggio;
+    if (id) {
+      const def = BUFFS[id], stats = {};
+      for (const k in def.stats) stats[k] = Math.round(skillVal(def.stats[k], lvl) * 10) / 10;
+      p.buffs.push({ id, stats, until: NOW() + 1e11, aura: true });
+    }
+    this.recalc(p);
+    p.selfDirty = true;
+    this.fx(p, { k: 'aura', s: p.id, a: id || '' });
+  }
+
+  /** Una volta al secondo: le auree di gruppo arrivano ai compagni vivi entro il raggio (effetto breve, rinnovato). */
+  tickAure(p, t) {
+    if (!p.aura || !p.auraRaggio || !p.party || p.dead || t < (p.auraTick || 0)) return;
+    p.auraTick = t + 1000;
+    const party = this.parties.get(p.party), def = BUFFS[p.aura];
+    for (const id of (party ? party.members : [])) {
+      const q = this.ents.get(id);
+      if (!q || q === p || q.dead || q.aura === p.aura || !this.alleato(p, q) || dist(p, q) > p.auraRaggio) continue;
+      const stats = {};
+      for (const k in def.stats) stats[k] = Math.round(skillVal(def.stats[k], p.auraLvl) * 10) / 10;
+      const nuovo = !q.buffs.some(b => b.id === p.aura);
+      q.buffs = q.buffs.filter(b => b.id !== p.aura);
+      q.buffs.push({ id: p.aura, stats, until: t + 2500 });
+      if (nuovo) { this.recalc(q); q.selfDirty = true; }
+    }
   }
 
   addBuff(p, id, lvl = 1, notify = false) {
@@ -2192,7 +2231,7 @@ export class World {
       }
       case 'via': {
         if (!CLASSES[p.cls].vie.includes(a[0])) return sys(`Vie disponibili: ${CLASSES[p.cls].vie.join(', ')}`);
-        p.ch.via = a[0]; p.buffs = [];
+        p.ch.via = a[0]; p.buffs = []; if (p.aura) { p.aura = null; this.fx(p, { k: 'aura', s: p.id, a: '' }); }
         p.ch.qb = p.ch.qb.map(q => (q && q.k === 's' && SKILLS[q.id] && SKILLS[q.id].via && SKILLS[q.id].via !== a[0]) ? null : q);
         this.recalc(p); this.autoQuickbar(p, false);
         return sys(`Via impostata: ${VIE[a[0]].name}`);

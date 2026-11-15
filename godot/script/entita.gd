@@ -253,6 +253,8 @@ func _giocatore() -> Personaggio:
 		stile = "short" if stile != "bald" else "bald"      # sotto l'elmo niente crocchie o code
 	p.metti_testa(stile, Dati.colore(look.get("hair", 0x1a1210)) if look.get("hair") != null else Color(0.1, 0.08, 0.07), Dati.colore(look.get("robe", 0x26293a)))
 	p.metti_effetti(int(info.get("wu", 0)), int(info.get("wr", 0)), int(info.get("bu", 0)), int(info.get("br", 0)), io)
+	if info.get("au") != null:
+		p.metti_aura(String(info.au))
 	return p
 
 

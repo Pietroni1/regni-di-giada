@@ -528,6 +528,8 @@ class Bot {
     const S = this.stato(q);
     for (const [sid, cond] of Object.entries(this.rot.fuori || {})) {
       if ((this.blocco[sid] || 0) > ora || !S.ok(sid) || !cond(S)) continue;
+      // le auree si accendono una volta sola (ripremere il tasto le spegnerebbe)
+      if (SKILLS[sid].aura) { if ((me.buffs || []).some((b) => b.b === SKILLS[sid].buff) || ora < (this.auraProva || 0)) continue; this.auraProva = ora + 3000; }
       this.lancia(sid, ora, id);
     }
     if (ora >= this.gcdFino && !this.lancio && !this.attesa && d <= st + 2.5) {

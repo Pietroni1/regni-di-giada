@@ -306,6 +306,19 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   `perManaPct` 0,58 come prima. **Non riproporre il tempo globale dimezzato.** Restano scatti, potenziamenti, Serie e
   Occasione. Freccia Perforante 2,55 (con il tempo lungo l'Arco era a +14%). Misura (30 s, velocità 4, una prova): Vie da
   danno 1216-1422 (−7% … +9%), Montagna 63%, Benedizione 52%, barra Suprema 50-63 s (Benedizione ~94 s: da riguardare).
+- **Auree di classe al posto dei potenziamenti a tempo** (l'autore: «cambia l'idea di spell passive con buff, pensa alle
+  auree»): le quattro tecniche del livello 8 (stessi id) sono ora `type: 'aura'`, `aura: true`: un tasto le accende e
+  restano finché non si ripreme, si cade o si cambia Via (`mettiAura` in `server/world.js`; `p.aura`, effetto in
+  `p.buffs` con `aura: true` senza scadenza). **Aura di Guerra** (Lama: danni +, danni subiti −; gruppo entro 15 m),
+  **Aura d'Ombra** (critico e velocità), **Aura del Drago** (Monaco: rapidità e furto di vita), **Aura degli Astri**
+  (Mistico: attacco e rigenerazione; gruppo entro 20 m). Valori circa il 40% dei vecchi potenziamenti a tempo, niente
+  risorsa regalata all'accensione. `tickAure`: i compagni di gruppo nel raggio la ricevono come effetto breve rinnovato
+  ogni secondo. Agli altri: `au` nelle info del giocatore ed effetto `{ k: 'aura', s, a }`. Client Godot:
+  `Equip.aura_classe(id)` / `Personaggio.metti_aura` (cerchio di rune a terra + motivo per classe: lingue rosso-oro, fumo
+  scuro, fiamme del chi, stelle in orbita e corona), ruolo «Aura» sotto il tasto, icona senza conto alla rovescia.
+  I bot di `sim` e `farming` la accendono una volta. Misura (30 s, velocità 4): Vie da danno −5% … +5%.
+  Viste a schermo in gioco le quattro auree accese. Non visti: spegnimento, aura vista da un altro giocatore, gruppo.
+  Il client nel browser non le mostra. `SERIE.potS` non serve più (nessuna tecnica `potenziamento`).
 - **Postura** di élite e boss: fatta (`shared/postura.js`, `colpisciPostura`/`tickPostura` nel server, barre nel client).
 - **Simulazione senza browser**: `npm run sim` (`tools/sim/simula.mjs`). Avvia da sé un server di prova, crea un personaggio
   per Via (livello, arma, punti statistica e abilità), lo porta davanti ai fantocci e gioca una rotazione sensata (tabella

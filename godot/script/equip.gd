@@ -631,6 +631,107 @@ static func aura_armatura(corpo: Node3D, bu: int, br: int, tipo := "sword") -> v
 
 
 ## Cerchio di rune a terra. fisso = resta acceso (aure); altrimenti chi lo crea anima il parametro «fase».
+## Aura di classe: cerchio a terra che gira e un motivo proprio per classe attorno al corpo. Resta finché è accesa.
+const AURE := {
+	"grido_guerra": {"c1": Color(1.0, 0.3, 0.12), "c2": Color(1.0, 0.78, 0.25), "stile": "guerra"},
+	"velo_ombra": {"c1": Color(0.5, 0.25, 0.85), "c2": Color(0.7, 1.0, 0.35), "stile": "ombra"},
+	"respiro_drago": {"c1": Color(1.0, 0.55, 0.12), "c2": Color(1.0, 0.85, 0.35), "stile": "drago"},
+	"benedizione_astri": {"c1": Color(0.55, 0.75, 1.0), "c2": Color(1.0, 0.95, 0.75), "stile": "astri"},
+}
+
+static func aura_classe(id: String) -> Node3D:
+	if not AURE.has(id):
+		return null
+	var a: Dictionary = AURE[id]
+	var c1: Color = a.c1
+	var c2: Color = a.c2
+	var radice := Node3D.new()
+	var cerchio := cerchio_rune(1.35, c1, false)
+	cerchio.position.y = 0.14
+	radice.add_child(cerchio)
+	# scintille che salgono dal cerchio
+	var p := particelle(radice, 16, 0.09, 1.5, c1, c2, 0.8)
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	p.emission_ring_axis = Vector3.UP
+	p.emission_ring_radius = 0.95
+	p.emission_ring_inner_radius = 0.7
+	p.emission_ring_height = 0.1
+	p.position.y = 0.15
+	p.direction = Vector3.UP
+	p.spread = 8.0
+	p.initial_velocity_min = 0.6
+	p.initial_velocity_max = 1.3
+	p.gravity = Vector3(0, 0.3, 0)
+	match String(a.stile):
+		"guerra":       # lingue rosso-oro che salgono come stendardi
+			var f := particelle(radice, 40, 0.34, 1.0, c1, c2, 0.7)
+			f.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+			f.emission_ring_axis = Vector3.UP
+			f.emission_ring_radius = 0.75
+			f.emission_ring_inner_radius = 0.55
+			f.emission_ring_height = 0.1
+			f.position.y = 0.1
+			f.direction = Vector3.UP
+			f.spread = 4.0
+			f.initial_velocity_min = 1.6
+			f.initial_velocity_max = 2.6
+			f.gravity = Vector3.ZERO
+		"ombra":        # fumo scuro che striscia e sale lungo le gambe
+			var fumo := particelle(radice, 22, 0.5, 2.0, c1, Color(0.02, 0.02, 0.03), 0.5, true)
+			fumo.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+			fumo.emission_ring_axis = Vector3.UP
+			fumo.emission_ring_radius = 0.85
+			fumo.emission_ring_inner_radius = 0.1
+			fumo.emission_ring_height = 0.1
+			fumo.position.y = 0.2
+			fumo.gravity = Vector3(0, 0.35, 0)
+			fumo.initial_velocity_max = 0.25
+		"drago":        # fiamme del chi tutto attorno
+			var fi := particelle(radice, 30, 0.24, 0.8, c1, c2, 0.65)
+			fi.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+			fi.emission_ring_axis = Vector3.UP
+			fi.emission_ring_radius = 0.7
+			fi.emission_ring_inner_radius = 0.4
+			fi.emission_ring_height = 0.1
+			fi.position.y = 0.1
+			fi.direction = Vector3.UP
+			fi.spread = 10.0
+			fi.initial_velocity_min = 1.2
+			fi.initial_velocity_max = 2.2
+			fi.gravity = Vector3(0, 1.5, 0)
+		"astri":        # stelle in orbita a mezz'altezza e una corona sopra la testa
+			var giro := Giro.new()
+			giro.position.y = 1.1
+			radice.add_child(giro)
+			for i in range(5):
+				var s := MeshInstance3D.new()
+				var sm := SphereMesh.new()
+				sm.radius = 0.05
+				sm.height = 0.1
+				sm.radial_segments = 8
+				sm.rings = 4
+				s.mesh = sm
+				var m := StandardMaterial3D.new()
+				m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				m.albedo_color = c2
+				s.material_override = m
+				s.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				var ang := TAU * i / 5.0
+				s.position = Vector3(cos(ang) * 0.85, sin(ang * 2.0) * 0.35, sin(ang) * 0.85)
+				giro.add_child(s)
+			var corona := cerchio_rune(0.45, c2, false)
+			corona.position.y = 2.25
+			radice.add_child(corona)
+	return radice
+
+
+## Nodo che gira piano attorno all'asse verticale (stelle dell'aura).
+class Giro:
+	extends Node3D
+	func _process(dt: float) -> void:
+		rotate_y(dt * 1.4)
+
+
 static func cerchio_rune(raggio: float, colore: Color, fisso: bool) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
