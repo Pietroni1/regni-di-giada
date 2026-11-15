@@ -183,8 +183,9 @@ if mancanti:
     raise SystemExit('ossa dello scheletro senza giunto: ' + ', '.join(mancanti))
 
 # ------------------------------------------------------------------ dalla posa di MakeHuman alla posa a T del gioco
-# Busto, collo e testa restano come li ha modellati MakeHuman (portamento naturale): si allineano solo gli arti.
-FIGLIO = {}
+# Anche la schiena e il collo si allineano allo scheletro del gioco (dritti: le animazioni partono da lì, altrimenti il
+# personaggio sta ingobbito); la testa invece resta diritta com'è, senza seguire la rotazione del collo.
+FIGLIO = {'Spine': 'Spine1', 'Spine1': 'Spine2', 'Spine2': 'Neck', 'Neck': 'Head'}
 for lato in ('Left', 'Right'):
     FIGLIO.update({f'{lato}Arm': f'{lato}ForeArm', f'{lato}ForeArm': f'{lato}Hand',
                    f'{lato}Hand': f'{lato}HandMiddle1', f'{lato}UpLeg': f'{lato}Leg', f'{lato}Leg': f'{lato}Foot',
@@ -235,6 +236,8 @@ for b in ORDINE:
             ora, vuole = unita(ora - asse * np.dot(ora, asse)), unita(vuole - asse * np.dot(vuole, asse))
             ang = math.atan2(float(np.dot(np.cross(ora, vuole), asse)), float(np.dot(ora, vuole)))
             Rb = rot_asse(asse, ang) @ Rb
+    if b == 'Head':
+        Rb = np.eye(3)
     R[b], ORIG[b], ARR[b], NUOVO[b] = Rb, POS[b], testa, testa
 
 Vn = np.zeros_like(V)

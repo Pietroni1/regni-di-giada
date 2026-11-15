@@ -96,6 +96,9 @@ Obiettivo dell'autore: aspetto alla WoW, cioè corpo base + capi separati che ca
   orientali marcati (al più qualche tratto), fisici forti e muscolosi «da eroe», uomo e donna belli. I parametri attuali
   vanno in quella direzione (etnia 0,8 caucasica / 0,2 asiatica, muscoli al massimo, torso a V, spalle larghe, mascella
   forte; donna atletica a clessidra con `seno` e `tonicita`).
+  Schiena e collo vanno allineati allo scheletro (`FIGLIO` in `corpo_base.py`, testa esclusa): con la postura rilassata
+  di MakeHuman i personaggi stavano ingobbiti (l'autore l'ha notato subito). Proporzioni «da eroe»: gambe più lunghe,
+  testa più piccola. L'autore cita i personaggi di Metin 2 come riferimento di stile (portamento e fisico), non da copiare.
   Da migliorare: attaccatura dei capelli seghettata, pelle uniforme (nessuna texture, muscoli poco leggibili sotto le
   vesti aderenti), scollo della veste seghettato, stili di capelli diversi. Il client nel browser non è stato riprovato
   con i corpi nuovi.

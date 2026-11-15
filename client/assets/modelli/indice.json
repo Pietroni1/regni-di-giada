@@ -22,10 +22,10 @@
       ],
       "spalle": 1.1,
       "testa": {
-        "raggio": 0.1051,
-        "su": 0.0916,
-        "avanti": 0.0124,
-        "profondo": 0.1297
+        "raggio": 0.0956,
+        "su": 0.0836,
+        "avanti": 0.0103,
+        "profondo": 0.121
       }
     },
     "base_uomo": {
@@ -50,10 +50,10 @@
       ],
       "spalle": 1.22,
       "testa": {
-        "raggio": 0.0963,
-        "su": 0.0917,
-        "avanti": 0.0117,
-        "profondo": 0.132
+        "raggio": 0.0884,
+        "su": 0.0842,
+        "avanti": 0.0096,
+        "profondo": 0.1249
       }
     }
   },

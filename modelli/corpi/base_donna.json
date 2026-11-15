@@ -7,7 +7,10 @@
   "proporzioni": 1.0,
   "seno": 0.68,
   "tonicita": 0.9,
-  "etnia": { "caucasian": 0.8, "asian": 0.2 },
+  "etnia": {
+    "caucasian": 0.8,
+    "asian": 0.2
+  },
   "forme": {
     "# fisico atletico: spalle forti, vita stretta, fianchi e gambe toniche": 0,
     "bodyshapes/bodyshapes-elvs-fem-neat-hourglass": 0.7,
@@ -32,6 +35,12 @@
     "eyes/lr-eye-height2-decr": 0.3,
     "eyebrows/eyebrows-angle-down": 0.15,
     "nose/nose-scale-horiz-decr": 0.3,
-    "nose/nose-point-up": 0.2
+    "nose/nose-point-up": 0.2,
+    "# proporzioni da eroe: gambe lunghe, testa più piccola": 0,
+    "measure/measure-upperleg-height-incr": 0.55,
+    "measure/measure-lowerleg-height-incr": 0.55,
+    "head/head-scale-horiz-decr": 0.2,
+    "head/head-scale-vert-decr": 0.15,
+    "head/head-scale-depth-decr": 0.15
   }
 }
