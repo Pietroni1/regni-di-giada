@@ -247,11 +247,20 @@ func _prova_automatica() -> void:
 				gioco.hud.finestre.aggiorna()
 			"potenzia": gioco.hud.finestre._potenzia(false)
 			"usa":
+				# fra più copie dello stesso oggetto si usa quella più potenziata
 				var lista: Array = gioco.inv.get("inv", [])
+				var scelta := -1
 				for j in range(lista.size()):
 					if lista[j] is Dictionary and String(lista[j].id) == p[1]:
-						Rete.manda({"t": "use", "i": j})
-						break
+						if scelta < 0 or int(lista[j].get("up", 0)) > int(lista[scelta].get("up", 0)):
+							scelta = j
+				if scelta >= 0:
+					Rete.manda({"t": "use", "i": scelta})
+			"togli":
+				# togli body|head|feet|weapon: rimette nel primo posto libero dell'inventario quel pezzo dell'equipaggiamento
+				var libero: int = (gioco.inv.get("inv", []) as Array).find(null)
+				if libero >= 0:
+					Rete.manda({"t": "mv", "a": {"k": "e", "i": p[1]}, "b": {"k": "i", "i": libero}})
 			"prova":
 				for e: Entita in gioco.ents.values():
 					if e.tipo == "n" and String(e.info.get("role", "")) == "custode":

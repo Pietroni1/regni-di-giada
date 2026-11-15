@@ -21,6 +21,7 @@ SRC, OUT = os.path.abspath(argv[0]), os.path.abspath(argv[1])
 sys.argv = sys.argv[:sys.argv.index('--') + 1] + [tempfile.mkdtemp(), OUT] + argv[2:]
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import importa_mixamo as M
+from completi import crea_completi
 
 ANIM_FILE = 'eroe_anim.glb'
 # nome nel gioco → azione della libreria (la prima che esiste)
@@ -138,7 +139,14 @@ def animazioni():
 
 
 # ------------------------------------------------------------------ corpi
-def corpo(nome, file, capigliature):
+def _alto(o):
+    """Ingombro massimo dell'oggetto nel mondo."""
+    bb = [o.matrix_world @ Vector(c) for c in o.bound_box]
+    return max(max(p[i] for p in bb) - min(p[i] for p in bb) for i in range(3))
+
+
+def prepara(file, capigliature):
+    """Corpo importato, ossa rinominate, alto H con i piedi a terra; capigliature legate alla testa."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     arm, meshes, nuovi = importa(os.path.join(SRC, 'corpi', file))
     if arm.animation_data:
@@ -158,6 +166,10 @@ def corpo(nome, file, capigliature):
     # capigliature: stesso spazio del corpo appena importato; si legano allo scheletro del corpo (osso della testa)
     for cap in capigliature:
         a2, m2, n2 = importa(os.path.join(SRC, 'capelli', cap + '.gltf'))
+        for o in list(m2):
+            # Hair_SimpleParted contiene anche una sfera d'aiuto grande 2 m: si scarta tutto ciò che non sta su una testa
+            if _alto(o) > 0.4 * _alto(pelle):
+                m2.remove(o)                # lo toglie il giro più sotto, con gli altri oggetti del file
         for parte, o in enumerate(sorted(m2, key=lambda o: -len(o.data.vertices)), 1):
             mw = o.matrix_world.copy()
             for mod in list(o.modifiers):
@@ -195,7 +207,14 @@ def corpo(nome, file, capigliature):
     for img in bpy.data.images:
         if img.size[0] > M.TEX or img.size[1] > M.TEX:
             img.scale(min(M.TEX, img.size[0]), min(M.TEX, img.size[1]))
-    capi = M.crea_capi(ob, arm) + M.crea_armature(ob, arm, M.H) + sorted({o.name[5:].split('__')[0] for o in extra})
+    return ob, arm, extra
+
+
+def corpo(nome, file, capigliature):
+    ob, arm, extra = prepara(file, capigliature)
+    # capi e armature di prima (li usa ancora il client nel browser) + completi per classe e grado (client Godot)
+    capi = (M.crea_capi(ob, arm) + M.crea_armature(ob, arm, M.H) + crea_completi(ob, arm, M.H, donna=nome.endswith('donna'))
+            + sorted({o.name[5:].split('__')[0] for o in extra}))
     arm.data.pose_position = 'POSE'
     out = os.path.join(OUT, nome + '.glb')
     kw = dict(export_animations=False, export_materials='EXPORT')
@@ -207,17 +226,18 @@ def corpo(nome, file, capigliature):
     return capi
 
 
-fatte = animazioni()
-idx_path = os.path.join(OUT, 'indice.json')
-with open(idx_path, encoding='utf-8') as fh:
-    idx = json.load(fh)
-for nome, (file, capigliature) in CORPI.items():
-    capi = corpo(nome, file, capigliature)
-    d = idx['modelli'].setdefault(nome, {})
-    d.update({'file': nome + '.glb', 'anim': ANIM_FILE, 'capi': capi, 'dipinto': True})
-    d.pop('testa', None)
-    d.pop('spalle', None)
-with open(idx_path, 'w', encoding='utf-8') as fh:
-    json.dump(idx, fh, indent=2, ensure_ascii=False)
-    fh.write('\n')
-print('FATTO — animazioni:', fatte, 'corpi:', list(CORPI))
+if __name__ == '__main__':
+    fatte = animazioni()
+    idx_path = os.path.join(OUT, 'indice.json')
+    with open(idx_path, encoding='utf-8') as fh:
+        idx = json.load(fh)
+    for nome, (file, capigliature) in CORPI.items():
+        capi = corpo(nome, file, capigliature)
+        d = idx['modelli'].setdefault(nome, {})
+        d.update({'file': nome + '.glb', 'anim': ANIM_FILE, 'capi': capi, 'dipinto': True})
+        d.pop('testa', None)
+        d.pop('spalle', None)
+    with open(idx_path, 'w', encoding='utf-8') as fh:
+        json.dump(idx, fh, indent=2, ensure_ascii=False)
+        fh.write('\n')
+    print('FATTO — animazioni:', fatte, 'corpi:', list(CORPI))

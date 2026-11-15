@@ -96,6 +96,12 @@ func _costruisci() -> void:
 				if modello == "general":
 					veste["nubi"] = {"stoffa": Color(0.5, 0.1, 0.1)}
 					veste["elmo_drago"] = true
+				if ha_completi("base_uomo"):
+					# banditi: completo dell'assassino nei colori del mostro; generale: corazza leggendaria della Lama
+					var tinte := {"stoffa": colore, "stoffa2": colore.darkened(0.3), "fascia": colore.darkened(0.5), "regno": Color(0.45, 0.1, 0.08)}
+					veste = completo("lama", 4, {"stoffa": Color(0.3, 0.08, 0.06), "stoffa2": Color(0.12, 0.08, 0.07), "fascia": Color(0.7, 0.55, 0.3), "regno": Color(0.5, 0.1, 0.1)}) if modello == "general" else completo("ombra", 1 if modello == "bandit_archer" else 0, tinte)
+					if modello == "general":
+						veste["elmo_drago"] = true
 				corpo = Personaggio.umano("base_uomo", veste, "bow" if modello == "bandit_archer" else "sword", 2, Color(0.62, 0.48, 0.38))
 				corpo.metti_testa("hood" if modello != "general" else "short", Color(0.08, 0.07, 0.06), colore.darkened(0.2))
 				corpo.scale = Vector3.ONE * scala
@@ -105,6 +111,17 @@ func _costruisci() -> void:
 				var capi := {"veste": argilla.darkened(0.15), "pantaloni": argilla.darkened(0.25), "lamellare": {"stoffa": argilla.darkened(0.3), "piastre": argilla, "bordo": argilla.darkened(0.2)}, "elmo_bronzo": true, "stivali_cuoio": true}
 				if modello == "custode":
 					capi = {"veste": Color(0.12, 0.1, 0.16), "pantaloni": Color(0.08, 0.07, 0.1), "nubi": {"stoffa": Color(0.35, 0.1, 0.45)}, "elmo_drago": true, "stivali_nube": true}
+				if ha_completi("base_uomo"):
+					if modello == "custode":
+						capi = completo("lama", 4, {"stoffa": Color(0.12, 0.1, 0.16), "stoffa2": Color(0.08, 0.07, 0.1), "fascia": Color(0.5, 0.3, 0.6), "regno": Color(0.35, 0.1, 0.45)})
+						capi["elmo_drago"] = true
+						capi["stivali_nube"] = true
+					else:
+						# tutto d'argilla, anche le piastre
+						capi = completo("lama", 2, {"stoffa": argilla.darkened(0.15), "stoffa2": argilla.darkened(0.25), "fascia": argilla.darkened(0.1),
+								"regno": argilla.darkened(0.3), "lamelle": argilla, "piastre": argilla.darkened(0.1), "bordo": argilla.darkened(0.2), "cuoio": argilla.darkened(0.35)})
+						capi["elmo_bronzo"] = true
+						capi["stivali_cuoio"] = true
 				corpo = Personaggio.umano("base_uomo", capi, "sword", 4 if modello == "custode" else 2, argilla if modello == "terracotta" else Color(0.3, 0.28, 0.36))
 				corpo.scale = Vector3.ONE * scala
 			elif modello == "lantern":
@@ -135,8 +152,24 @@ func _costruisci() -> void:
 				# araldo dell'arena: armatura laccata vermiglia
 				veste = {"veste": Color(0.42, 0.08, 0.06), "pantaloni": Color(0.12, 0.08, 0.07), "lamellare": {"stoffa": Color(0.6, 0.1, 0.08), "piastre": Color(0.75, 0.6, 0.3)}, "elmo_bronzo": true, "stivali_cuoio": true}
 				arma = "sword"
-			corpo = Personaggio.umano("base_donna" if String(info.get("role", "")) == "erbe" else "base_uomo", veste, arma, 1)
 			var ruolo := String(info.get("role", ""))
+			if ha_completi("base_uomo"):
+				# PNG con i completi delle classi: abitanti con tunica e pantaloni, guardie e araldo in corazza,
+				# maestri, guide ed erboriste con la veste lunga
+				var tinte := {"stoffa": regno.darkened(0.35), "stoffa2": Color(0.18, 0.15, 0.13), "fascia": regno.darkened(0.6), "regno": regno}
+				var extra := {}
+				for c in ["sandali", "cappello_paglia", "elmo_bronzo", "stivali_cuoio"]:
+					if veste.has(c):
+						extra[c] = true
+				match ruolo:
+					"guardia": veste = completo("lama", 2, tinte)
+					"araldo": veste = completo("lama", 3, {"stoffa": Color(0.42, 0.08, 0.06), "stoffa2": Color(0.12, 0.08, 0.07), "fascia": Color(0.75, 0.6, 0.3), "regno": Color(0.6, 0.1, 0.08), "lamelle": Color(0.55, 0.08, 0.05)})
+					"maestro", "custode": veste = completo("mistico", 1, {"stoffa": Color(0.82, 0.78, 0.68), "stoffa2": Color(0.6, 0.56, 0.48), "fascia": regno.darkened(0.3), "regno": regno})
+					"guida": veste = completo("mistico", 0, {"stoffa": Color(0.45, 0.36, 0.22), "stoffa2": Color(0.22, 0.18, 0.13), "fascia": Color(0.3, 0.22, 0.12), "regno": Color(0.5, 0.4, 0.2)})
+					"erbe": veste = completo("mistico", 0, {"stoffa": Color(0.45, 0.55, 0.35), "stoffa2": Color(0.3, 0.28, 0.22), "fascia": Color(0.6, 0.5, 0.3), "regno": regno})
+					_: veste = completo("lama", 0, tinte)
+				veste.merge(extra)
+			corpo = Personaggio.umano("base_donna" if ruolo == "erbe" else "base_uomo", veste, arma, 1)
 			corpo.metti_testa("long" if ruolo == "erbe" else ("short" if veste.has("elmo_bronzo") or veste.has("cappello_paglia") else "topknot"), Color(0.75, 0.75, 0.72) if ruolo in ["maestro", "erbe"] else Color(0.1, 0.08, 0.07))
 		"d":
 			corpo = Personaggio.new()
@@ -160,19 +193,42 @@ func _costruisci() -> void:
 		in_sella(grado if grado > 0 else int(info.get("mt", 0)))
 
 
+## Completo di una classe (tools/blender/completi.py): vesti di sotto «<classe>_base» + sopravveste o armatura del grado
+## (0 = senza armatura, 1-4 = grado dell'armatura). colori: tinte delle parti stoffa, stoffa2, fascia, regno
+## (e, per chi ne ha bisogno, anche piastre, lamelle, bordo, cuoio: altrimenti restano quelle del modello).
+static func completo(classe: String, grado: int, colori: Dictionary) -> Dictionary:
+	return {classe + "_base": colori, "%s_%d" % [classe, clampi(grado, 0, 4)]: colori}
+
+
+## Il modello ha i completi per classe? (indice.json, capi del modello)
+static func ha_completi(modello: String, classe := "lama") -> bool:
+	return (Dati.indice.get("modelli", {}).get(modello, {}).get("capi", []) as Array).has(classe + "_base")
+
+
 func _giocatore() -> Personaggio:
-	var cls: Dictionary = Dati.CLASSES.get(String(info.get("cls", "lama")), {})
+	var classe := String(info.get("cls", "lama"))
+	var cls: Dictionary = Dati.CLASSES.get(classe, {})
 	var look: Dictionary = cls.get("look", {})
 	var k: Dictionary = Dati.KINGDOMS.get(String(info.get("kd", "")), {})
 	var regno := Dati.colore(k.get("hex", 0x888888))
-	var wear := {"veste": Dati.colore(look.get("robe", 0x555555)), "pantaloni": Dati.colore(look.get("pants", 0x333333))}
-	wear["bracciali"] = Dati.colore(look.get("trim", 0x8a7a5a)).darkened(0.35)     # fasce agli avambracci
-	wear["gambali"] = Dati.colore(look.get("robe", 0x555555)).darkened(0.25)       # schinieri di stoffa e cuoio
+	var grado := 0
 	var corazza = info.get("b")
 	if corazza != null and Dati.ITEMS.has(corazza):
-		var grado := int(Dati.ITEMS[corazza].get("tier", 0))
+		grado = clampi(int(Dati.ITEMS[corazza].get("tier", 0)), 0, 4)
+	var lista: Array = Dati.indice.get("classi", {}).get(classe, ["base_uomo", "base_donna"])
+	var modello: String = lista[mini(1 if String(info.get("sx", "m")) == "f" else 0, lista.size() - 1)]
+	var wear := {}
+	if ha_completi(modello, classe):
+		# completo della classe: colori del «look» della classe, accento nel colore del regno
+		wear = completo(classe, grado, {"stoffa": Dati.colore(look.get("robe", 0x555555)), "stoffa2": Dati.colore(look.get("pants", 0x333333)),
+				"fascia": Dati.colore(look.get("trim", 0x8a7a5a)), "regno": regno})
+	else:
+		# modelli senza completi: vesti ricavate dal corpo e armature uguali per tutte le classi
+		wear = {"veste": Dati.colore(look.get("robe", 0x555555)), "pantaloni": Dati.colore(look.get("pants", 0x333333))}
+		wear["bracciali"] = Dati.colore(look.get("trim", 0x8a7a5a)).darkened(0.35)
+		wear["gambali"] = Dati.colore(look.get("robe", 0x555555)).darkened(0.25)
 		if grado >= 1:
-			var capo: String = ["", "tunica", "lamellare", "giada", "nubi"][clampi(grado, 0, 4)]
+			var capo: String = ["", "tunica", "lamellare", "giada", "nubi"][grado]
 			wear[capo] = {"stoffa": regno, "piastre": Dati.colore(look.get("trim", 0x999999))} if grado == 1 else {"stoffa": regno}
 	if info.get("f") != null:
 		wear[String(info.f)] = true
@@ -184,8 +240,6 @@ func _giocatore() -> Personaggio:
 	if arma != null and Dati.ITEMS.has(arma):
 		tipo_arma = String(Dati.ITEMS[arma].get("wt", "sword"))
 		grado_arma = int(Dati.ITEMS[arma].get("tier", 1))
-	var lista: Array = Dati.indice.get("classi", {}).get(String(info.get("cls", "lama")), ["base_uomo", "base_donna"])
-	var modello: String = lista[mini(1 if String(info.get("sx", "m")) == "f" else 0, lista.size() - 1)]
 	var p := Personaggio.umano(modello, wear, tipo_arma, grado_arma, Color(0.8, 0.56, 0.4), Dati.colore(look.get("trim", 0xb8a070)))
 	var donna := String(info.get("sx", "m")) == "f"
 	var stile := String(look.get("hairStyle", "short"))
