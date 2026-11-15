@@ -380,6 +380,17 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   (la posa dita/polso è tarata sugli eroi), arco in gioco col bersaglio, prestazioni con molti giocatori (mesh da codice non
   condivise), scia dei colpi sulle forme nuove, aura dell'armatura. Difetti: lame con facce piatte senza texture, penne
   dell'arco un po' fitte, artigli dei pugni sottili, a riposo il bastone sfiora la gamba.
+- **Effetti per classe e potenziamento** (richiesta dell'autore: «aumentiamo gli effetti e cambiamo colori e tipologia in
+  base alla classe e al potenziamento»): `Equip.tema(tipo_arma, up)` → stile dalla classe (`STILE_DI`: spada = `fulmine`,
+  pugnali/arco = `ombra`, pugni = `fiamma`, bastone = `astrale`) e colori dal passo (+7, +9, +12, +15: tabella `TEMI`).
+  `effetti_arma(…, tipo)`: saette lungo la lama (`Equip.Saette`, nastri rifatti più volte al secondo), fumo scuro non
+  additivo e gocce (`mat_fumo`), fiamme che salgono con anello di chi dal +12, stelle in orbita attorno alla cima.
+  `aura_armatura(…, tipo)`: stesso tema attorno al corpo (archi, fumo ai piedi, fiamme dal suolo, stelle in orbita), ora
+  dal +7; cerchio di rune dal +12. Prova: vetrina con `--gradi=4,4,4,4 --up=7,9,12,15`. Storia: l'autore aveva chiesto di
+  «correggere» gli effetti e li avevo abbassati (abbagliavano), poi li ha voluti più ricchi: tenere le forme leggibili.
+  **Bastone**: `Equip.Piombo` lo tiene quasi a piombo (85%) anche se la mano si inclina, presa a 1,14 m dalla base, braccio
+  lungo il fianco (`POSE.staff`): prima il braccio era piegato sulla pancia e il bastone attraversava manica e veste.
+  Visto a schermo in vetrina: le 4 classi ai 4 passi, da fermi. Non visto: in corsa e in attacco, nel gioco col server.
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 

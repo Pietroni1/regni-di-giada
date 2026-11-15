@@ -39,8 +39,13 @@ func _ready() -> void:
 		if donna and stile in ["topknot", "bald"]:
 			stile = "long"
 		p.metti_testa(stile, Dati.colore(look.get("hair", 0x1a1210)) if look.get("hair") != null else Color(0.1, 0.08, 0.07), colori.stoffa)
-		if g >= 4:
-			p.metti_effetti(0, 0, 15, 4, false)
+		if _arg.has("up"):
+			# --up=7,9,12,15: un potenziamento per figura (arma e armatura), per provare gli effetti
+			var ups := String(_arg.up).split(",")
+			var u := int(ups[mini(i, ups.size() - 1)])
+			p.metti_effetti(u, 0, u, 0, false)
+		elif g >= 4:
+			p.metti_effetti(15, 4, 15, 4, false)
 		p.position = Vector3((i - (gradi.size() - 1) / 2.0) * passo, 0, 0)
 		p.rotation.y = yaw
 		add_child(p)

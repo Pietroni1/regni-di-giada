@@ -52,6 +52,147 @@ static func livello(up: int) -> Dictionary:
 	return {}
 
 
+## Tema degli effetti: cambia con la classe (dal tipo d'arma) e con il potenziamento (+7, +9, +12, +15).
+## Lama = fulmine (saette e scintille), Ombra = ombra e veleno (fumo scuro, gocce), Monaco = fiamma del chi (fiamme che
+## salgono, anelli), Mistico = astrale (stelle in orbita). Restituisce { nome, stile, c1, c2, quante, passo } o {}.
+const TEMI := {
+	"fulmine": [[Color(0.45, 0.8, 1.0), Color(0.85, 0.96, 1.0)], [Color(0.25, 0.5, 1.0), Color(0.7, 0.9, 1.0)],
+			[Color(0.68, 0.42, 1.0), Color(0.95, 0.75, 1.0)], [Color(1.0, 0.84, 0.35), Color(0.72, 0.5, 1.0)]],
+	"ombra": [[Color(0.45, 0.9, 0.55), Color(0.1, 0.22, 0.14)], [Color(0.3, 0.95, 0.35), Color(0.08, 0.2, 0.08)],
+			[Color(0.82, 0.3, 0.95), Color(0.2, 0.06, 0.3)], [Color(1.0, 0.22, 0.32), Color(0.28, 0.04, 0.1)]],
+	"fiamma": [[Color(1.0, 0.75, 0.3), Color(1.0, 0.42, 0.1)], [Color(1.0, 0.45, 0.1), Color(1.0, 0.15, 0.05)],
+			[Color(0.4, 0.75, 1.0), Color(0.85, 0.95, 1.0)], [Color(1.0, 0.86, 0.4), Color(1.0, 0.5, 0.15)]],
+	"astrale": [[Color(0.45, 0.9, 1.0), Color(0.82, 1.0, 1.0)], [Color(1.0, 0.6, 0.85), Color(1.0, 0.86, 0.95)],
+			[Color(0.7, 0.55, 1.0), Color(0.45, 0.8, 1.0)], [Color(1.0, 0.95, 0.75), Color(0.6, 0.8, 1.0)]],
+}
+const STILE_DI := {"sword": "fulmine", "daggers": "ombra", "bow": "ombra", "fists": "fiamma", "staff": "astrale"}
+
+
+static func tema(tipo: String, up: int) -> Dictionary:
+	var l := livello(up)
+	if l.is_empty():
+		return {}
+	var passo := 3 if up >= 15 else (2 if up >= 12 else (1 if up >= 9 else 0))
+	var stile: String = STILE_DI.get(tipo, "fulmine")
+	var c: Array = TEMI[stile][passo]
+	return {"nome": l.nome, "stile": stile, "c1": c[0], "c2": c[1], "quante": l.quante, "passo": passo}
+
+
+## Materiale per il fumo (non additivo: resta scuro sopra gli sfondi chiari).
+static var _mat_fumo: StandardMaterial3D = null
+static func mat_fumo() -> StandardMaterial3D:
+	if _mat_fumo == null:
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		m.vertex_color_use_as_albedo = true
+		m.albedo_texture = alone()
+		m.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		_mat_fumo = m
+	return _mat_fumo
+
+
+## Particelle generiche degli effetti (colore che sfuma da c1 a c2 e sparisce).
+static func particelle(genitore: Node3D, quante: int, misura: float, vita: float, c1: Color, c2: Color, alfa := 0.8, fumo := false) -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(misura, misura)
+	p.mesh = q
+	p.material_override = mat_fumo() if fumo else mat_particella()
+	p.amount = maxi(1, quante)
+	p.lifetime = vita
+	p.local_coords = false
+	p.spread = 180.0
+	p.gravity = Vector3.ZERO
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.2
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.2, 1.0])
+	g.colors = PackedColorArray([Color(c1.r, c1.g, c1.b, 0.0), Color(c1.r, c1.g, c1.b, alfa), Color(c2.r, c2.g, c2.b, 0.0)])
+	p.color_ramp = g
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	genitore.add_child(p)
+	return p
+
+
+## Saette che guizzano fra due punti (o, con raggio > 0, attorno a un corpo): nastri sottili rifatti più volte al secondo.
+class Saette:
+	extends MeshInstance3D
+	var a := Vector3.ZERO
+	var b := Vector3.UP
+	var quante := 2
+	var ampiezza := 0.07
+	var spessore := 0.012
+	var raggio := 0.0            # > 0: archi verticali in punti a caso su un cerchio (aura del corpo)
+	var _t := 0.0
+
+	func _init(colore: Color) -> void:
+		mesh = ImmediateMesh.new()
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.albedo_color = Color(colore.r, colore.g, colore.b, 0.85)
+		material_override = m
+		cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+	func _process(dt: float) -> void:
+		_t -= dt
+		if _t > 0.0:
+			return
+		_t = randf_range(0.05, 0.13)
+		var im := mesh as ImmediateMesh
+		im.clear_surfaces()
+		if randf() < 0.25:
+			return              # un attimo di buio: il guizzo
+		im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+		for k in range(quante):
+			var da := a
+			var verso := b
+			if raggio > 0.0:
+				var ang := randf() * TAU
+				da = Vector3(cos(ang) * raggio, randf_range(0.1, 0.9), sin(ang) * raggio)
+				verso = da + Vector3(randf_range(-0.25, 0.25), randf_range(0.5, 1.1), randf_range(-0.25, 0.25))
+			var prec := da
+			var n := 6
+			for i in range(1, n + 1):
+				var p := da.lerp(verso, float(i) / n)
+				if i < n:
+					p += Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * ampiezza
+				for lato in [Vector3(1, 0.2, 0.3).normalized(), Vector3(-0.3, 0.2, 1).normalized()]:
+					var w: Vector3 = (p - prec).cross(lato).normalized() * spessore
+					im.surface_add_vertex(prec - w)
+					im.surface_add_vertex(prec + w)
+					im.surface_add_vertex(p + w)
+					im.surface_add_vertex(prec - w)
+					im.surface_add_vertex(p + w)
+					im.surface_add_vertex(p - w)
+				prec = p
+		im.surface_end()
+
+
+## Tiene un'arma lunga (il bastone) quasi a piombo anche se la mano si inclina: così resta dritta a fianco del corpo.
+class Piombo:
+	extends Node3D
+	var quanto := 0.85
+	var locale := Basis.IDENTITY       # orientamento «in mano» quando quanto = 0
+
+	func _process(_dt: float) -> void:
+		var g := get_parent() as Node3D
+		if g == null:
+			return
+		var in_mano := (g.global_basis * locale).orthonormalized()
+		var av := in_mano.z - Vector3.UP * in_mano.z.dot(Vector3.UP)
+		if av.length() < 0.05:
+			av = in_mano.x - Vector3.UP * in_mano.x.dot(Vector3.UP)
+		av = av.normalized()
+		var dritto := Basis(Vector3.UP.cross(av).normalized(), Vector3.UP, av)
+		var sc := g.global_basis.get_scale()
+		global_basis = Basis(in_mano.get_rotation_quaternion().slerp(dritto.get_rotation_quaternion(), quanto)).scaled(sc)
+
+
 # ------------------------------------------------------------------ presa
 ## Nodo dentro il pugno. Assi del nodo: +y = lato del pollice (dove esce la lama), +z = verso le dita.
 ## Si calcola sulla posa a riposo (braccia aperte, palmo in giù): lì il pollice guarda in avanti (+z dello scheletro).
@@ -91,7 +232,7 @@ static var POSE := {
 	"daggers": {"R": {"curl": 1.0}, "L": {"curl": 1.0}},
 	"fists": {"R": {"curl": 1.0}, "L": {"curl": 1.0}},
 	"bow": {"L": {"curl": 1.0, "roll": 60.0, "flex": 30.0}, "R": {"curl": 0.7}},
-	"staff": {"R": {"curl": 1.0, "roll": 70.0, "flex": 40.0}},
+	"staff": {"R": {"curl": 1.0, "roll": 40.0, "flex": 14.0, "alza": 8.0}},     # braccio lungo il fianco: il bastone poggia a terra
 }
 
 
@@ -220,10 +361,11 @@ static func metti(sk: Skeleton3D, tipo: String, grado: int) -> Array:
 			armi.append(p)
 		"staff":
 			var s2 := impugna(sk, "hand_R", INCLINA.staff)
-			var p := Node3D.new()
+			var p := Piombo.new()
+			p.locale = Basis(Vector3(0, 0, 1), deg_to_rad(RZ.staff))
 			s2.add_child(p)
 			p.rotation.z = deg_to_rad(RZ.staff)
-			var gira: Node3D = Forme.bastone(p, grado)
+			var gira: Node3D = Forme.bastone(p, grado, 1.14)
 			if gira != null and grado >= 2:
 				var tw := p.create_tween().set_loops()
 				tw.tween_property(gira, "rotation:y", TAU, 9.0 - grado).from(0.0)
@@ -233,8 +375,8 @@ static func metti(sk: Skeleton3D, tipo: String, grado: int) -> Array:
 
 # ------------------------------------------------------------------ effetti per livello di potenziamento
 ## Bagliore, particelle e (al +15) spirali sull'arma. up: potenziamento, rar: rarità (0-4).
-static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> void:
-	var l := livello(up)
+static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool, tipo := "sword") -> void:
+	var l := tema(tipo, up)
 	var punti: Array = arma.get_meta("lama", [Vector3.ZERO, Vector3(0, 1, 0)])
 	var base: Vector3 = punti[0]
 	var punta: Vector3 = punti[1]
@@ -253,7 +395,7 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 			var m: StandardMaterial3D = (mi.material_override as StandardMaterial3D).duplicate()
 			m.emission_enabled = true
 			m.emission = colore
-			m.emission_energy_multiplier = 0.45 if l.is_empty() else (0.7 + 0.1 * (up - 7))     # col bloom oltre ~1,3 diventa bianco
+			m.emission_energy_multiplier = 0.45 if l.is_empty() else (0.8 + 0.13 * (up - 7))     # col bloom oltre ~1,3 diventa bianco
 			mi.material_override = m
 	if l.is_empty():
 		return
@@ -267,7 +409,7 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 	q.size = Vector2(grande, grande)
 	p.mesh = q
 	p.material_override = mat_particella()
-	p.amount = maxi(8, int(float(l.quante) * 0.85 * corta))
+	p.amount = maxi(8, int(float(l.quante) * corta))
 	p.lifetime = 0.7
 	p.local_coords = false
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
@@ -278,14 +420,77 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 	p.initial_velocity_min = 0.05
 	p.initial_velocity_max = 0.4
 	p.gravity = Vector3(0, 0.9 if String(l.nome) != "gelo" else -0.5, 0)
+	var stile := String(l.stile)
+	var passo := int(l.passo)
+	match stile:
+		"fulmine":      # scintille secche che schizzano e cadono
+			p.lifetime = 0.3
+			p.initial_velocity_min = 0.8
+			p.initial_velocity_max = 2.4
+			p.gravity = Vector3(0, -3.5, 0)
+		"ombra":        # gocce di veleno che colano
+			p.lifetime = 0.9
+			p.initial_velocity_max = 0.15
+			p.gravity = Vector3(0, -1.4, 0)
+		"fiamma":       # fiamme che salgono
+			p.lifetime = 0.55
+			p.initial_velocity_min = 0.3
+			p.initial_velocity_max = 0.9
+			p.spread = 25.0
+			p.gravity = Vector3(0, 2.6, 0)
+			q.size = Vector2(grande * 1.5, grande * 1.5)
+		"astrale":      # polvere di stelle che scende lenta
+			p.lifetime = 1.3
+			p.initial_velocity_max = 0.12
+			p.gravity = Vector3(0, -0.25, 0)
 	p.scale_amount_min = 0.4
 	p.scale_amount_max = 1.2
 	var sf := Gradient.new()
 	sf.offsets = PackedFloat32Array([0.0, 0.2, 1.0])
-	sf.colors = PackedColorArray([Color(l.c1.r, l.c1.g, l.c1.b, 0.0), Color(l.c1.r, l.c1.g, l.c1.b, 0.7), Color(l.c2.r, l.c2.g, l.c2.b, 0.0)])
+	sf.colors = PackedColorArray([Color(l.c1.r, l.c1.g, l.c1.b, 0.0), Color(l.c1.r, l.c1.g, l.c1.b, 0.85), Color(l.c2.r, l.c2.g, l.c2.b, 0.0)])
 	p.color_ramp = sf
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	arma.add_child(p)
+	# lo strato proprio della classe
+	match stile:
+		"fulmine":
+			var sa := Saette.new(l.c2)
+			sa.a = base
+			sa.b = punta
+			sa.quante = 1 + passo
+			sa.ampiezza = 0.05 + 0.02 * passo
+			arma.add_child(sa)
+		"ombra":
+			var fumo := particelle(arma, int(10 + 6 * passo), 0.2 + 0.04 * passo, 1.1, Color(l.c2.r, l.c2.g, l.c2.b), Color(0.02, 0.02, 0.03), 0.55, true)
+			fumo.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+			fumo.emission_box_extents = Vector3(0.03, 0.03, 0.03) + (punta - base).abs() * 0.5
+			fumo.position = centro
+			fumo.gravity = Vector3(0, 0.5, 0)
+			fumo.initial_velocity_max = 0.15
+		"fiamma":
+			if passo >= 2:
+				# anello di chi che ruota attorno al pugno / all'arma
+				var perno := Node3D.new()
+				perno.position = centro
+				arma.add_child(perno)
+				for k in range(3):
+					var br := particelle(perno, 10, 0.07, 0.35, l.c2, l.c1, 0.9)
+					br.position = Vector3(cos(TAU * k / 3.0), 0, sin(TAU * k / 3.0)) * 0.2
+					br.initial_velocity_max = 0.03
+				var giro := arma.create_tween().set_loops()
+				giro.tween_property(perno, "rotation:y", TAU, 0.8).from(0.0)
+		"astrale":
+			# stelle in orbita attorno alla cima
+			for k in range(2 + passo):
+				var perno := Node3D.new()
+				perno.position = punta
+				perno.rotation = Vector3(randf_range(-0.6, 0.6), 0, randf_range(-0.6, 0.6))
+				arma.add_child(perno)
+				var st := particelle(perno, 12, 0.07, 0.6, l.c2, l.c1, 0.95)
+				st.position = Vector3(0.22 + 0.05 * k, 0, 0)
+				st.initial_velocity_max = 0.02
+				var giro := arma.create_tween().set_loops()
+				giro.tween_property(perno, "rotation:y", TAU * (1.0 if k % 2 == 0 else -1.0), 1.6 + 0.4 * k).from(TAU * k / 5.0)
 	# alone attorno alla lama
 	var al := MeshInstance3D.new()
 	var qa := QuadMesh.new()
@@ -298,7 +503,7 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 	ma.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	ma.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	ma.albedo_texture = alone()
-	ma.albedo_color = Color(l.c1.r, l.c1.g, l.c1.b, (0.2 + 0.035 * (up - 7)) * (0.4 if lunga < 0.6 else 1.0))     # armi corte: alone più tenue
+	ma.albedo_color = Color(l.c1.r, l.c1.g, l.c1.b, (0.22 + 0.04 * (up - 7)) * (0.4 if lunga < 0.6 else 1.0))     # armi corte: alone più tenue
 	ma.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
 	ma.billboard_keep_scale = true
 	ma.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
@@ -341,18 +546,17 @@ static func effetti_arma(arma: Node3D, up: int, rar: int, con_luce: bool) -> voi
 
 
 ## Aura dell'armatura: scintille che salgono dal +9 (o dalla rarità Epica), cerchio di rune al +15 o Leggendaria.
-static func aura_armatura(corpo: Node3D, bu: int, br: int) -> void:
-	if bu < 9 and br < 3:
+static func aura_armatura(corpo: Node3D, bu: int, br: int, tipo := "sword") -> void:
+	# il potenziamento dell'armatura decide il passo; una rarità alta vale come un potenziamento
+	var vale := maxi(bu, 15 if br >= 4 else (9 if br >= 3 else 0))
+	var l := tema(tipo, vale)
+	if l.is_empty():
 		return
-	var colore: Color = RARITA[clampi(br, 0, 4)] if br >= 3 else (Color(0.69, 0.44, 1.0) if bu >= 12 else Color(1.0, 0.78, 0.38))
-	var p := CPUParticles3D.new()
-	var q := QuadMesh.new()
-	q.size = Vector2(0.1, 0.1)
-	p.mesh = q
-	p.material_override = mat_particella()
-	p.amount = 14 + (12 if bu >= 12 else 0) + (14 if br >= 4 else 0)
-	p.lifetime = 1.6
-	p.local_coords = false
+	var passo := int(l.passo)
+	var c1: Color = l.c1
+	var c2: Color = l.c2
+	# base comune: scintille che salgono attorno ai piedi
+	var p := particelle(corpo, 10 + 9 * passo, 0.1, 1.6, c1, c2, 0.85)
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
 	p.emission_ring_axis = Vector3.UP
 	p.emission_ring_radius = 0.75
@@ -364,16 +568,51 @@ static func aura_armatura(corpo: Node3D, bu: int, br: int) -> void:
 	p.initial_velocity_min = 0.5
 	p.initial_velocity_max = 1.1
 	p.gravity = Vector3(0, 0.25, 0)
-	p.scale_amount_min = 0.4
-	p.scale_amount_max = 1.1
-	var sf := Gradient.new()
-	sf.offsets = PackedFloat32Array([0.0, 0.15, 1.0])
-	sf.colors = PackedColorArray([Color(colore.r, colore.g, colore.b, 0.0), Color(colore.r, colore.g, colore.b, 0.85), Color(colore.r, colore.g, colore.b, 0.0)])
-	p.color_ramp = sf
-	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	corpo.add_child(p)
-	if br >= 4 or bu >= 15:
-		corpo.add_child(cerchio_rune(1.5, RARITA[4] if br >= 4 else Color(1.0, 0.78, 0.38), true))
+	match String(l.stile):
+		"fulmine":      # archi che risalgono il corpo
+			var sa := Saette.new(c2)
+			sa.raggio = 0.55
+			sa.quante = 1 + passo
+			sa.ampiezza = 0.1
+			sa.spessore = 0.014
+			corpo.add_child(sa)
+			p.lifetime = 0.5
+			p.initial_velocity_max = 2.2
+		"ombra":        # fumo scuro che striscia ai piedi
+			var fumo := particelle(corpo, 14 + 8 * passo, 0.45, 2.0, c2, Color(0.02, 0.02, 0.03), 0.5, true)
+			fumo.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+			fumo.emission_ring_axis = Vector3.UP
+			fumo.emission_ring_radius = 0.8
+			fumo.emission_ring_inner_radius = 0.1
+			fumo.emission_ring_height = 0.1
+			fumo.position.y = 0.15
+			fumo.gravity = Vector3(0, 0.25, 0)
+			fumo.initial_velocity_max = 0.2
+		"fiamma":       # fiamme del chi che salgono dal suolo
+			var f := particelle(corpo, 16 + 10 * passo, 0.22, 0.8, c1, c2, 0.7)
+			f.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+			f.emission_ring_axis = Vector3.UP
+			f.emission_ring_radius = 0.7
+			f.emission_ring_inner_radius = 0.5
+			f.emission_ring_height = 0.1
+			f.position.y = 0.1
+			f.direction = Vector3.UP
+			f.spread = 8.0
+			f.initial_velocity_min = 0.8
+			f.initial_velocity_max = 1.8
+			f.gravity = Vector3(0, 1.5, 0)
+		"astrale":      # stelle in orbita attorno al busto
+			for k in range(2 + passo):
+				var perno := Node3D.new()
+				perno.position.y = 0.9 + 0.3 * k
+				corpo.add_child(perno)
+				var st := particelle(perno, 14, 0.09, 0.8, c2, c1, 0.95)
+				st.position = Vector3(0.75, 0, 0)
+				st.initial_velocity_max = 0.02
+				var giro := corpo.create_tween().set_loops()
+				giro.tween_property(perno, "rotation:y", TAU * (1.0 if k % 2 == 0 else -1.0), 2.4 + 0.5 * k).from(TAU * k / 4.0)
+	if passo >= 2:
+		corpo.add_child(cerchio_rune(1.2 if passo == 2 else 1.5, c1, true))
 
 
 ## Cerchio di rune a terra. fisso = resta acceso (aure); altrimenti chi lo crea anima il parametro «fase».

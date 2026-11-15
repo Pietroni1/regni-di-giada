@@ -440,12 +440,12 @@ func tira_arco() -> void:
 
 ## Effetti per livello di potenziamento e rarità: wu/wr dell'arma, bu/br dell'armatura. mio = è il proprio personaggio.
 func metti_effetti(wu: int, wr: int, bu: int, br: int, mio: bool) -> void:
-	var l := Equip.livello(wu)
+	var l := Equip.tema(_tipo_arma, wu)
 	for a in armi:
-		Equip.effetti_arma(a, wu, wr, mio)
+		Equip.effetti_arma(a, wu, wr, mio, _tipo_arma)
 	for sc in _scie:
 		(sc as Equip.Scia).colore = l.c1.lightened(0.3) if not l.is_empty() else Color(1.0, 0.96, 0.88)
-	Equip.aura_armatura(self, bu, br)
+	Equip.aura_armatura(self, bu, br, _tipo_arma)
 
 
 # ------------------------------------------------------------------ animazioni
