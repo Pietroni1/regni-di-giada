@@ -429,6 +429,16 @@ func _aggiorna_gruppo() -> void:
 		p.gui_input.connect(func(ev: InputEvent) -> void:
 			if ev is InputEventMouseButton and ev.pressed and gioco.ents.has(id):
 				gioco.bersaglio = gioco.ents[id])
+	# compagni disconnessi da poco: il posto resta loro per qualche minuto
+	for a in g.get("off", []):
+		var pa := PanelContainer.new()
+		pa.add_theme_stylebox_override("panel", stile(SFONDO, ORO.darkened(0.7), 5))
+		riq_gruppo.add_child(pa)
+		var na := Label.new()
+		na.text = "%s  ·  %d  (disconnesso)" % [a.n, int(a.lvl)]
+		na.add_theme_font_size_override("font_size", 12)
+		na.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
+		pa.add_child(na)
 	var lascia := Button.new()
 	lascia.text = "Lascia il gruppo"
 	lascia.pressed.connect(func() -> void: Rete.manda({"t": "pleave"}))
@@ -648,7 +658,10 @@ func _process(dt: float) -> void:
 		postura_b.value = 0 if b.squilibrato else b.postura
 		if b.squilibrato:
 			nome_b.text += "   — SQUILIBRATO —"
-		bott_invita.visible = b.tipo == "p" and String(b.info.get("kd", "")) == gioco.regno
+		# «Invita» solo per chi non è già un compagno, e solo se posso invitare (senza gruppo, o capogruppo con posto)
+		var g: Dictionary = gioco.gruppo
+		var posso: bool = g.is_empty() or (int(g.get("leader", 0)) == gioco.mio_id and g.get("members", []).size() < 5)
+		bott_invita.visible = b.tipo == "p" and String(b.info.get("kd", "")) == gioco.regno and not gioco.compagno(b) and posso
 		# lancio del bersaglio: la barra arancione dice quanto manca; l'Interruzione lo spezza
 		var lb: Dictionary = gioco.lanci_nemici.get(b.id, {})
 		if not lb.is_empty() and float(lb.fine) > gioco.ora():

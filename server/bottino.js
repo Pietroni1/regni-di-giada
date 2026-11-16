@@ -6,6 +6,7 @@
 //    livello del mostro (élite +2, obelischi +2, boss +5), di solito il gradino più alto (65%), a volte quello sotto;
 //  · bottino adatto alla classe: nel 75% dei casi il pezzo è della classe di chi ha fatto più danni (armature per tutti,
 //    armi solo del suo tipo: per l'Ombra quella che impugna, 70%), altrimenti uno qualsiasi (da vendere o smontare);
+//    in gruppo la classe è, a turno, quella di uno dei compagni vicini (il bottino resta di tutto il gruppo);
 //  · le élite (solitari con vita ≥ 1000) lasciano pezzi più spesso e più rari (`RARITY_WEIGHTS.elite`).
 import { ITEMS, CLASSES, GEM_TYPES, equipSlotOf } from '../shared/data.js';
 import { makeEquip, rollRarity } from './world.js';
@@ -67,7 +68,8 @@ export function fonteDi(d) {
 
 const metodi = {
   // Bottino aggiuntivo per fascia di livello: equipaggiamento (per classe e livello), gemme, modificatori, essenze.
-  extraDrops(m, top) {
+  // perChi: il compagno per cui si sceglie la classe dei pezzi (a turno nel gruppo); il bottino resta di `top` e del suo gruppo
+  extraDrops(m, top, perChi = top) {
     const d = m.d, lv = d.lvl;
     const source = fonteDi(d);
     const mul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100) * (d.bott ?? 1);   // bott: bottino ridotto per i mostri dei branchi
@@ -77,7 +79,7 @@ const metodi = {
     const livPezzi = lv + (source === 'boss' ? 5 : source === 'mob' ? 0 : 2);
     for (let i = 0; i < rolls; i++) {
       if (!roll(CHANCE[source])) continue;
-      const id = equipAdatto(livPezzi, { cls: top && top.cls, wt: armaDi(top) });
+      const id = equipAdatto(livPezzi, { cls: perChi && perChi.cls, wt: armaDi(perChi) });
       if (id) this.dropInstance(makeEquip(id, rollRarity(source)), m.x, m.z, owner);
     }
     const gems = Object.keys(GEM_TYPES);

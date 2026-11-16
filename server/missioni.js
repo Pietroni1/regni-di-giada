@@ -211,7 +211,7 @@ const metodi = {
       for (const [id, a] of Object.entries(q.ch.mis.att)) {
         MISSIONI[id].ob.forEach((o, i) => {
           if (o.tipo === 'raccogli' && a.p[i] < o.n && o.mob.includes(m.type) && Math.random() < (o.prob || 0)) {
-            this.spawnDrop(o.item, 1, m.x, m.z, q.id);
+            this.spawnDrop(o.item, 1, m.x, m.z, q.id, 'mob', true);   // solo per chi ha la missione, non per il gruppo
           }
         });
       }

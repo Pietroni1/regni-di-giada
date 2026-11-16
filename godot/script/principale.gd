@@ -275,7 +275,13 @@ func _prova_automatica() -> void:
 					await get_tree().process_frame
 				await _foto(p[2] + "_lancio")
 				gioco.usa_tecnica(p[1])
-			"accetta": Rete.manda({"t": "preply", "ok": true})
+			"accetta":
+				# aspetta (fino a 5 minuti veri) che arrivi l'invito, poi lo accetta come il pulsante del riquadro
+				var fino := Time.get_ticks_msec() + 300000
+				while not gioco.hud.riq_invito.visible and Time.get_ticks_msec() < fino:
+					await get_tree().process_frame
+				Rete.manda({"t": "preply", "ok": true})
+				gioco.hud.riq_invito.visible = false
 			"scegli":
 				gioco.hud.finestre.scelta = int(p[1])
 				gioco.hud.finestre.aggiorna()
@@ -364,6 +370,30 @@ func _prova_automatica() -> void:
 				gioco.bersaglio = gioco.ostile_vicino()
 				if gioco.bersaglio != null:
 					gioco.me.guarda(gioco.bersaglio)
+			"finche_gruppo":   # finche_gruppo N: aspetta (fino a 5 minuti veri) un gruppo di almeno N membri
+				var fino_g := Time.get_ticks_msec() + 300000
+				while gioco.gruppo.get("members", []).size() < int(p[1]) and Time.get_ticks_msec() < fino_g:
+					await get_tree().process_frame
+			"finche_vita":   # finche_vita < 50 | > 60: aspetta (fino a 5 minuti veri) che la propria vita in % passi la soglia
+				var fino_v := Time.get_ticks_msec() + 300000
+				while Time.get_ticks_msec() < fino_v:
+					var pv := float(gioco.io.get("hp", 0)) / maxf(1.0, float(gioco.io.get("mhp", 1))) * 100.0
+					if (p[1] == "<" and pv < float(p[2])) or (p[1] == ">" and pv > float(p[2])):
+						break
+					await get_tree().process_frame
+			"finche_cura":   # aspetta (fino a 5 minuti veri) un balzo della propria vita di oltre il 15% (una cura, non la rigenerazione)
+				var fino_c := Time.get_ticks_msec() + 300000
+				var prima := float(gioco.io.get("hp", 0))
+				while Time.get_ticks_msec() < fino_c:
+					var ora_v := float(gioco.io.get("hp", 0))
+					if ora_v - prima > 0.15 * float(gioco.io.get("mhp", 1)):
+						break
+					prima = ora_v
+					await get_tree().process_frame
+			"seleziona":   # seleziona nome: un'entità (compagno, PNG...) per nome
+				for e: Entita in gioco.ents.values():
+					if e.nome == p[1]:
+						gioco.bersaglio = e
 			"attacca":
 				if gioco.bersaglio != null:
 					gioco.intento = {"tipo": "attacco", "id": gioco.bersaglio.id}
