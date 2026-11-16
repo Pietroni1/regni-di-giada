@@ -230,6 +230,11 @@ func _prova_automatica() -> void:
 						int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)),
 						int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))])
 			"foto": await _foto(p[1])
+			"vicino":
+				# vicino x z: aspetta (fino a 15 minuti veri) che il personaggio sia entro 4 m dal punto (dopo un /tp, col server lento)
+				var lim4 := Time.get_ticks_msec() + 900000
+				while Time.get_ticks_msec() < lim4 and Vector2(gioco.me.x - float(p[1]), gioco.me.z - float(p[2])).length() > 4.0:
+					await get_tree().process_frame
 			"tecnica": gioco.usa_tecnica(p[1])
 			"mappa": gioco.mappa.apri_chiudi()
 			"diario": gioco.missioni.apri_chiudi()

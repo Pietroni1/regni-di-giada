@@ -699,6 +699,35 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   Difetti noti: niente stivali sui corpi (i capi `stivali_*` del modello sono solo piastre: piedi nudi anche per
   generale e statue), criniere dei lupi a ciocche un po' regolari, la morte delle bestie è quella di `animali.py`.
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
+- **Mappe lontane con texture dipinte e villaggi con più carattere** (seguito della voce sopra: «migliora tutto il
+  migliorabile»). Mappe: `terra_lontana.gd` usa ora `terreno.gdshader` (nuovo parametro `centro`) con 8 strati scelti fra
+  due atlanti (`TerraLontana.STRATI`, `Mondo.strati_da(["m0", "t4", …])`); secondo atlante `godot/texture/terreno_mappe.png`
+  (`fai_mappe()` in `tools/godot/texture_terreno.py`: muschio, foglie di bambù, terra umida, roccia muschiosa, sabbia
+  rossa, arenaria, argilla crepata, ghiaia del deserto). I pesi (1 px = 2 m) si calcolano una volta per mappa in
+  `_pesi` da pendenza, quota, rumori `FastNoiseLite` in blocco, sentieri arrivo → centro → obelischi, lettiera sotto i
+  bambù, erba secca attorno ai cespugli, lastricato attorno all'arena e viali dalle porte (0,3-0,7 s nel container
+  carico). Piante a zolle con `Mondo.semina` (statica, condivisa); i fusti dei bambù (1372 triangoli l'uno, 4017 nella
+  Selva) senza ombra e visibili fino a 120 m. Arrivo, rovine e arena passano da `Edifici.fondi`. `terreno_mappa.gdshader`
+  tolto. Villaggi (`edifici.gd`, `Mondo._dettagli_villaggio`): tetti con code ricurve al colmo, punte e campanelle agli
+  angoli (`tetto(..., ornati)`), griglia dei tetti in proporzione (le mura passano da 1568 a ~190 triangoli a tratto);
+  case con tendina sulla porta, insegna dorata (motivo astratto) e lanterne di carta alla gronda; porte con basi di
+  bronzo, mensole, targa e secondo tetto; mura più alte con coronamento; torri ottagonali sugli ostacoli dei tratti ai lati
+  di ogni porta e lungo il giro, con stendardi del regno; fili di lanterne fra le gronde (sopra la testa); bancarelle con
+  merci (armi: lame, scudi, lance; erbe: ceste, vasi, mazzi appesi); piazza lastricata con cordolo e, al posto del pozzo
+  (stesso ostacolo), un elemento per regno: braciere della Fenice (con luce), stele della Tigre, fontana del Drago;
+  casse, botti e pini in vaso dentro la fascia d'ostacolo delle mura. Niente di nuovo sta dove il server lascia passare.
+  `Edifici.fondi` ora fonde anche le mesh con figli (prima tetti e stendardi restavano fuori: un disegno ciascuno).
+  Copione: `vicino x z` aspetta che il personaggio arrivi dopo un `/tp` (con la macchina carica la risposta tarda minuti).
+  Misura (`stat`, vecchio e nuovo in parallelo con due server; ms molto rumorosi, contano disegni e triangoli):
+  Selva 841 → 887 disegni, 7,03 → 2,19 milioni di triangoli; Distesa 958 → 959, 514k → 391k; Arena 1326 → 836, 438k →
+  472k. Villaggi (dalla porta / in piazza): Fenice 1386 → 1341 e 727k → 665k / 1226 → 1249 e 659k → 681k; Tigre
+  1427 → 1389 e 669k → 605k / 1186 → 1236 e 593k → 662k; Drago 1355 → 1306 e 643k → 581k / 1162 → 1209 e 483k → 536k.
+  In piazza i triangoli salgono del 3-12% (i tetti fusi non si scartano più a pezzi fuori vista; i PNG che si muovono
+  danno ±7% fra una prova e l'altra), dalla porta scendono dell'8-10%; ms invariati entro il rumore.
+  Visti a schermo: le tre mappe (arrivo, dall'alto), i tre villaggi (porta e piazza). Non visti: Forward+, l'interno delle
+  mappe lontano dall'arrivo, i villaggi di notte; le lanterne di carta non fanno luce vera (solo emissione).
+- Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
+  modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 
 ## Mappe da esperienza e Arena PvP
 - Definizioni in `shared/mappe.js` (nessun import: lo importano `data.js`, che aggiunge `MOBS_MAPPE` a `MOBS` e

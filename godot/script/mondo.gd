@@ -78,17 +78,34 @@ static func _immagine(percorso: String) -> ImageTexture:
 static var _strati: Texture2DArray = null
 static func strati_terreno() -> Texture2DArray:
 	if _strati == null:
+		_strati = strati_da(["t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7"])
+	return _strati
+
+
+## Riquadri dei due atlanti già tagliati (con mipmap): «t3» = riquadro 3 di terreno.png, «m5» = riquadro 5 di
+## terreno_mappe.png (materiali delle mappe lontane, tools/godot/texture_terreno.py).
+static var _riquadri: Dictionary = {}
+static func _riquadro(nome: String) -> Image:
+	if not _riquadri.has(nome):
+		var file := "res://texture/terreno.png" if nome.begins_with("t") else "res://texture/terreno_mappe.png"
 		var atl := Image.new()
-		atl.load_png_from_buffer(FileAccess.get_file_as_bytes("res://texture/terreno.png"))
+		atl.load_png_from_buffer(FileAccess.get_file_as_bytes(file))
 		var lato := atl.get_width() / 4
-		var lista: Array[Image] = []
 		for k in range(8):
 			var im := atl.get_region(Rect2i((k % 4) * lato, (k / 4) * lato, lato, lato))
 			im.generate_mipmaps()
-			lista.append(im)
-		_strati = Texture2DArray.new()
-		_strati.create_from_images(lista)
-	return _strati
+			_riquadri[nome.substr(0, 1) + str(k)] = im
+	return _riquadri[nome]
+
+
+## Pila di 8 materiali scelti fra i due atlanti (l'ordine è quello dei pesi in terreno.gdshader).
+static func strati_da(nomi: Array) -> Texture2DArray:
+	var lista: Array[Image] = []
+	for n in nomi:
+		lista.append(_riquadro(String(n)))
+	var t := Texture2DArray.new()
+	t.create_from_images(lista)
+	return t
 
 
 func _acqua() -> void:
@@ -149,10 +166,14 @@ func _vegetazione() -> void:
 
 
 ## Le piante si dividono in zolle di ZOLLA metri: così quelle fuori vista o lontane non vengono disegnate
-## (prima ogni specie era un blocco unico, disegnato sempre per intero anche nelle ombre).
+## (prima ogni specie era un blocco unico, disegnato sempre per intero anche nelle ombre). Usata anche dalle mappe lontane.
 const ZOLLA := 64.0
 
 func _semina(forma: Mesh, materiale: Material, tutte: Array, scala: float, alza: float, tinte: Array, ombra: bool, vista := 240.0) -> void:
+	semina(self, forma, materiale, tutte, scala, alza, tinte, ombra, vista)
+
+
+static func semina(genitore: Node3D, forma: Mesh, materiale: Material, tutte: Array, scala: float, alza: float, tinte: Array, ombra: bool, vista := 240.0) -> void:
 	if forma == null or tutte.is_empty():
 		return
 	var zolle := {}
@@ -162,10 +183,10 @@ func _semina(forma: Mesh, materiale: Material, tutte: Array, scala: float, alza:
 			zolle[chiave] = []
 		zolle[chiave].append(e)
 	for chiave in zolle:
-		_semina_zolla(forma, materiale, zolle[chiave], scala, alza, tinte, ombra, vista)
+		_semina_zolla(genitore, forma, materiale, zolle[chiave], scala, alza, tinte, ombra, vista)
 
 
-func _semina_zolla(forma: Mesh, materiale: Material, arr: Array, scala: float, alza: float, tinte: Array, ombra: bool, vista: float) -> void:
+static func _semina_zolla(genitore: Node3D, forma: Mesh, materiale: Material, arr: Array, scala: float, alza: float, tinte: Array, ombra: bool, vista: float) -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = not tinte.is_empty()
@@ -184,7 +205,7 @@ func _semina_zolla(forma: Mesh, materiale: Material, arr: Array, scala: float, a
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if ombra else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.visibility_range_end = vista
 	mi.visibility_range_end_margin = 12.0
-	add_child(mi)
+	genitore.add_child(mi)
 
 
 # ------------------------------------------------------------------ villaggi
@@ -208,22 +229,25 @@ func _villaggio(kid: String) -> void:
 		var m: Node3D
 		match String(b.kind):
 			"pagoda": m = Edifici.pagoda(float(b.w) - 1.0, tetto_col, accento)
-			"forge": m = Edifici.fucina(w, d, tetto_col)
-			"hall": m = Edifici.casa(w, d, tetto_col, 3.2, 2.8)
-			_: m = Edifici.casa(w, d, tetto_col)
+			"forge": m = Edifici.fucina(w, d, tetto_col, accento)
+			"hall": m = Edifici.casa(w, d, tetto_col, 3.2, 2.8, accento)
+			_: m = Edifici.casa(w, d, tetto_col, 2.8, 2.4, accento)
 		m.position = Vector3(b.x, 0, b.z)
 		m.rotation.y = float(b.face)
 		radice.add_child(m)
 
 	var teli := {"armi": Color(0.62, 0.16, 0.14), "erbe": Color(0.20, 0.46, 0.26)}
 	for s in disp.stalls:
-		var banco := Edifici.bancarella(teli.get(String(s.role), accento))
+		var banco := Edifici.bancarella(teli.get(String(s.role), accento), String(s.role))
 		banco.position = Vector3(s.x, 0, s.z)
 		radice.add_child(banco)
 
-	var pz := Edifici.pozzo()
-	pz.position = Vector3(disp.well.x, 0, disp.well.z)
-	radice.add_child(pz)
+	# piazza: lastricato con cordolo e, al posto del pozzo (stesso ostacolo), un elemento diverso per regno
+	var piazza := Vector3(disp.well.x, 0, disp.well.z)
+	Edifici.piazzale(6.5, piazza, radice)
+	var cp := Edifici.centro_piazza(kid, accento)
+	cp.position = piazza
+	radice.add_child(cp)
 
 	var i := 0
 	for l in disp.lanterns:
@@ -247,12 +271,77 @@ func _villaggio(kid: String) -> void:
 		p.rotation.y = a
 		radice.add_child(p)
 
+	_dettagli_villaggio(radice, kid, disp, tetto_col, accento)
 	# stendardi del regno ai lati della piazza
 	for sx in [-1.0, 1.0]:
 		var asta := Edifici.cilindro(0.07, 0.09, 6.0, Vector3(sx * 10.5, 3.0, 36.5), Edifici.legno(Edifici.LEGNO), radice, 8)
 		Edifici.scatola(Vector3(0.9, 2.6, 0.04), Vector3(0.52, 1.5, 0), Edifici.mat(accento, 0.85), asta)
 	# centinaia di pezzi (travi, muri, coppi) diventano poche mesh, una per materiale
 	Edifici.fondi(radice, 330.0)
+
+
+## Torri, lanterne appese, merci e alberi in vaso. Tutto sta sopra ostacoli che il server conosce già (mura, case)
+## o in alto: niente di nuovo blocca la vista dove si cammina liberamente.
+func _dettagli_villaggio(radice: Node3D, kid: String, disp: Dictionary, tetto_col: Color, accento: Color) -> void:
+	var R := float(Dati.costanti.WALL_RADIUS)
+	var mura: Array = Dati.gioco.mura
+	# torri: ai lati di ogni porta (sui primi tratti di mura) e qualcuna lungo il giro; centrate su un tratto (raggio ≤ 2 m)
+	var torri: Array = []
+	for g in disp.gates:
+		for s in [-1.0, 1.0]:
+			torri.append([_angolo_mura(mura, float(g) + s * 0.25), 8.6])
+	for a in [0.74, -0.74, 3.09]:
+		torri.append([_angolo_mura(mura, a), 7.4])
+	for t in torri:
+		var a: float = t[0]
+		var tr := Edifici.torre(t[1], tetto_col, accento)
+		tr.position = Vector3(sin(a) * R, 0, cos(a) * R)
+		tr.rotation.y = a
+		radice.add_child(tr)
+		for lato in [0.0, PI]:
+			var faccia := Node3D.new()
+			faccia.rotation.y = lato
+			tr.add_child(faccia)
+			Edifici.stendardo(Vector3(0, float(t[1]) - 1.9, 1.98), 2.6, accento, faccia)
+	# fili di lanterne di carta fra le gronde delle case (sopra la testa)
+	var colori := [Edifici.CARTA, accento.lerp(Color(1, 0.95, 0.85), 0.35)]
+	var case_x := 18.4
+	for z in [14.0, -11.0]:
+		Edifici.filo_lanterne(Vector3(-case_x + 1.2, 3.35, z), Vector3(case_x - 1.2, 3.35, z), 7, colori, radice, 0.45)
+	for sx in [-1.0, 1.0]:
+		Edifici.filo_lanterne(Vector3(sx * (case_x - 1.0), 3.35, -5.0), Vector3(sx * (case_x - 1.0), 3.35, 8.0), 4, colori, radice, 0.35)
+	# casse, botti e alberi in vaso a ridosso delle mura, dentro l'ostacolo dei tratti (fra 38 e 39,2 m dal centro)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(kid)
+	var k := 0
+	for a in [0.5, -0.5, 1.0, -1.0, 2.05, -2.05, 2.7, -2.7, 2.85, -2.85]:
+		var dir := Vector3(sin(a), 0, cos(a))
+		var lat := Vector3(cos(a), 0, -sin(a))
+		var c := dir * 38.75
+		match k % 3:
+			0:
+				Edifici.cassa(c - lat * 0.55, 0.8, a + rng.randf_range(-0.2, 0.2), radice)
+				Edifici.botte(c + lat * 0.5, radice)
+				Edifici.cassa(c - lat * 0.55 + Vector3(0, 0.64, 0), 0.55, a + rng.randf_range(-0.5, 0.5), radice)
+			1:
+				Edifici.albero_vaso(c, rng.randi(), radice)
+			_:
+				Edifici.botte(c - lat * 0.45, radice)
+				Edifici.botte(c + lat * 0.4, radice)
+				Edifici.cassa(c + lat * 1.3, 0.75, a, radice)
+		k += 1
+
+
+## L'angolo di un tratto di mura più vicino ad «a» (le torri stanno sugli ostacoli dei tratti).
+static func _angolo_mura(mura: Array, a: float) -> float:
+	var meglio := a
+	var d := INF
+	for m in mura:
+		var x := absf(angle_difference(float(m), a))
+		if x < d:
+			d = x
+			meglio = float(m)
+	return meglio
 
 
 # ------------------------------------------------------------------ altopiano centrale

@@ -10,6 +10,7 @@ uniform sampler2DArray strati : source_color, filter_linear_mipmap_anisotropic, 
 uniform sampler2D variazione : filter_linear_mipmap, repeat_enable;
 uniform float meta = 300.0;
 uniform float passo = 5.0;          // metri coperti da un riquadro di texture
+uniform vec2 centro = vec2(0.0);    // centro dei pesi (mappe lontane: il centro della mappa; tiene piccoli i numeri)
 
 varying vec3 pm;   // posizione nel mondo
 
@@ -27,11 +28,12 @@ void vertex() {
 }
 
 void fragment() {
-	vec2 uvm = (pm.xz + meta) / (2.0 * meta);
+	vec2 lp = pm.xz - centro;
+	vec2 uvm = (lp + meta) / (2.0 * meta);
 	vec4 a = texture(pesi_a, uvm);
 	vec4 b = texture(pesi_b, uvm);
-	vec3 var = texture(variazione, pm.xz / 97.0).rgb;
-	vec2 uv = pm.xz / passo;
+	vec3 var = texture(variazione, lp / 97.0).rgb;
+	vec2 uv = lp / passo;
 	vec2 dx = dFdx(uv), dy = dFdy(uv);
 	float tot = a.r + a.g + a.b + a.a + b.r + b.g + b.b;
 	float pesi[8] = float[8](max(0.0, 1.0 - tot), a.r, a.g, a.b, a.a, b.r, b.g, b.b);
