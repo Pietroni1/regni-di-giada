@@ -1,17 +1,20 @@
 class_name Cripta
 extends Node3D
-## La Cripta delle Mille Lanterne (Prove del Sigillo): stanze e muri da DUNGEON in shared/data.js, costruiti
-## all'origine dell'istanza che il server comunica con `dg_start`.
+## Le Prove del Sigillo: stanze e muri dalla definizione della Prova (PROVE in shared/data.js: la Cripta delle Mille
+## Lanterne e la Forgia del Drago Addormentato), costruiti all'origine dell'istanza che il server comunica con `dg_start`.
+## La Forgia ha un suo `tema`: muri bruniti, lumi arancio, canali di lava, incudini e la grande fornace del boss.
 
 const ALTEZZA := 6.5
 
 var origine := Vector2.ZERO
+var definizione: Dictionary = {}
 var _luci: Array = []
 
 
-static func crea(ox: float, oz: float) -> Cripta:
+static func crea(ox: float, oz: float, id := "cripta") -> Cripta:
 	var c := Cripta.new()
 	c.origine = Vector2(ox, oz)
+	c.definizione = Dati.gioco.get("PROVE", {}).get(id, Dati.gioco.DUNGEON)
 	c.position = Vector3(ox, 0, oz)
 	c._costruisci()
 	return c
@@ -21,7 +24,7 @@ static func crea(ox: float, oz: float) -> Cripta:
 func calpestabile(x: float, z: float, margine := 0.5) -> bool:
 	var lx := x - origine.x
 	var lz := z - origine.y
-	for r in Dati.gioco.DUNGEON.rooms:
+	for r in definizione.rooms:
 		if lx >= float(r[0]) + margine and lx <= float(r[2]) - margine and lz >= float(r[1]) + margine and lz <= float(r[3]) - margine:
 			return true
 	return false
@@ -33,7 +36,7 @@ func piu_vicino(x: float, z: float, margine := 0.6) -> Vector2:
 	var lz := z - origine.y
 	var meglio := Vector2(lx, lz)
 	var md := INF
-	for r in Dati.gioco.DUNGEON.rooms:
+	for r in definizione.rooms:
 		var q := Vector2(clampf(lx, float(r[0]) + margine, float(r[2]) - margine), clampf(lz, float(r[1]) + margine, float(r[3]) - margine))
 		var d := q.distance_squared_to(Vector2(lx, lz))
 		if d < md:
@@ -43,13 +46,16 @@ func piu_vicino(x: float, z: float, margine := 0.6) -> Vector2:
 
 
 func _costruisci() -> void:
-	var D: Dictionary = Dati.gioco.DUNGEON
+	var D: Dictionary = definizione
+	var tema: Dictionary = D.get("tema", {})
 	var pav := ShaderMaterial.new()
 	pav.shader = preload("res://shader/pavimento.gdshader")
 	var muro := ShaderMaterial.new()
 	muro.shader = preload("res://shader/roccia.gdshader")
 	muro.set_shader_parameter("muschio_forza", 0.0)
-	muro.set_shader_parameter("tinta", Color(0.55, 0.52, 0.6))
+	muro.set_shader_parameter("tinta", Color.html(String(tema.muro)) if tema.has("muro") else Color(0.55, 0.52, 0.6))
+	var col_lume := Color.html(String(tema.lume)) if tema.has("lume") else Color(1.0, 0.68, 0.36)
+	var col_boss := Color.html(String(tema.lumeBoss)) if tema.has("lumeBoss") else Color(1.0, 0.45, 0.3)
 	var lume := Edifici.mat(Color(1.0, 0.62, 0.25), 0.5, 0.0, 5.0)
 	var ferro := Edifici.mat(Color(0.08, 0.07, 0.07), 0.6, 0.5)
 	var boss: Dictionary = D.boss
@@ -72,7 +78,7 @@ func _costruisci() -> void:
 				# una lanterna appesa ogni due riquadri (sempre nei corridoi stretti)
 				if (i + j + n_stanza) % 2 == 0 or (nx == 1 and j % 2 == 0) or (nz == 1 and i % 2 == 0):
 					var nella_sala_del_boss := absf(c.x - float(boss.x)) < 24.0 and absf(c.z - float(boss.z)) < 22.0
-					_lanterna(c + Vector3(0, 3.6, 0), lume, ferro, Color(1.0, 0.45, 0.3) if nella_sala_del_boss else Color(1.0, 0.68, 0.36))
+					_lanterna(c + Vector3(0, 3.6, 0), lume, ferro, col_boss if nella_sala_del_boss else col_lume)
 		n_stanza += 1
 
 	# muri: scatole lungo i segmenti, con uno zoccolo più largo
@@ -93,6 +99,9 @@ func _costruisci() -> void:
 			var p := a.lerp(b, float(k) / maxf(1.0, quanti))
 			Edifici.scatola(Vector3(0.98, ALTEZZA + 0.3, 0.98), Vector3(p.x, (ALTEZZA + 0.3) * 0.5, p.y), muro, self)
 
+	if tema.has("lava"):
+		_forgia(D, muro, ferro, Color.html(String(tema.lava)))
+		return
 	# altare nella sala del boss
 	var altare := Vector3(float(boss.x), 0, float(boss.z) + 9.0)
 	Edifici.scatola(Vector3(6.0, 0.5, 3.0), altare + Vector3(0, 0.25, 0), muro, self)
@@ -124,3 +133,55 @@ func _process(_dt: float) -> void:
 	var qui := cam.global_position
 	for l: OmniLight3D in _luci:
 		l.visible = l.global_position.distance_squared_to(qui) < 42.0 * 42.0
+
+
+## Arredi della Forgia: canali di lava lungo le stanze, incudini, crogioli e la grande fornace dietro il boss.
+func _forgia(D: Dictionary, muro: Material, ferro: Material, lava: Color) -> void:
+	var m_lava := Edifici.mat(lava, 0.3, 0.0, 6.0)
+	var m_brace := Edifici.mat(lava.darkened(0.35), 0.6, 0.0, 2.5)
+	var boss: Dictionary = D.boss
+	var n := 0
+	for r in D.rooms:
+		var x1 := float(r[0])
+		var z1 := float(r[1])
+		var x2 := float(r[2])
+		var z2 := float(r[3])
+		if x2 - x1 < 12.0 or z2 - z1 < 12.0:
+			continue
+		# canale di lava lungo un lato della stanza, con il bordo di pietra
+		var lungo := (z2 - z1) - 4.0
+		var cx := x1 + 2.2 if n % 2 == 0 else x2 - 2.2
+		Edifici.scatola(Vector3(1.2, 0.06, lungo), Vector3(cx, 0.03, (z1 + z2) * 0.5), m_lava, self)
+		Edifici.scatola(Vector3(0.3, 0.25, lungo), Vector3(cx - 0.75, 0.12, (z1 + z2) * 0.5), muro, self)
+		Edifici.scatola(Vector3(0.3, 0.25, lungo), Vector3(cx + 0.75, 0.12, (z1 + z2) * 0.5), muro, self)
+		var l := OmniLight3D.new()
+		l.light_color = lava
+		l.light_energy = 4.0
+		l.omni_range = 12.0
+		l.position = Vector3(cx, 0.8, (z1 + z2) * 0.5)
+		add_child(l)
+		_luci.append(l)
+		# incudini e crogioli
+		var c := Vector3((x1 + x2) * 0.5, 0, (z1 + z2) * 0.5)
+		if absf(c.x - float(boss.x)) > 10.0 or absf(c.z - float(boss.z)) > 10.0:
+			for k in range(2):
+				var p := c + Vector3((k * 2 - 1) * (x2 - x1) * 0.22, 0, (z2 - z1) * 0.18)
+				Edifici.scatola(Vector3(0.9, 0.6, 0.6), p + Vector3(0, 0.3, 0), ferro, self)
+				Edifici.scatola(Vector3(1.5, 0.3, 0.7), p + Vector3(0, 0.75, 0), ferro, self)
+				Edifici.cilindro(0.5, 0.35, 0.7, p + Vector3(0, 0.35, 1.6), ferro, self, 10)
+				Edifici.cilindro(0.42, 0.42, 0.06, p + Vector3(0, 0.71, 1.6), m_brace, self, 10)
+		n += 1
+	# la grande fornace in fondo al Cuore della Forgia: bocca ardente e due colonne
+	var fondo := Vector3(float(boss.x), 0, float(boss.z) + 11.0)
+	Edifici.scatola(Vector3(14.0, 9.0, 3.0), fondo + Vector3(0, 4.5, 0), muro, self)
+	Edifici.scatola(Vector3(6.0, 4.0, 0.4), fondo + Vector3(0, 2.2, -1.5), m_lava, self)
+	for sx in [-1.0, 1.0]:
+		Edifici.cilindro(0.8, 0.9, 10.0, fondo + Vector3(sx * 6.0, 5.0, -1.8), muro, self, 12)
+		Edifici.scatola(Vector3(1.0, 1.0, 1.0), fondo + Vector3(sx * 6.0, 10.4, -1.8), m_lava, self)
+	var lf := OmniLight3D.new()
+	lf.light_color = lava
+	lf.light_energy = 9.0
+	lf.omni_range = 26.0
+	lf.position = fondo + Vector3(0, 3.0, -4.0)
+	add_child(lf)
+	_luci.append(lf)

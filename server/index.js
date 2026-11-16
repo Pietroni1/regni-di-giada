@@ -105,7 +105,8 @@ wss.on('connection', (ws) => {
       if (prev && prev !== sess) { prev.send({ t: 'kicked', m: 'Il tuo account è stato aperto da un altro dispositivo.' }); prev.ws.close(); }
       online.set(key, sess);
       sess.user = acc.user;
-      sess.gm = cfg.gmAccounts.map(s => s.toLowerCase()).includes(key);
+      // GM_EXTRA (variabile d'ambiente, solo per le prove con più bot): altri account GM oltre a quelli di config.json
+      sess.gm = [...cfg.gmAccounts, ...String(process.env.GM_EXTRA || '').split(',').filter(Boolean)].map(s => s.toLowerCase()).includes(key);
       reply({ t: 'auth_ok', user: acc.user, gm: sess.gm ? 1 : 0 });
       return sendChars();
     }

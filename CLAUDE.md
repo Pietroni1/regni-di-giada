@@ -19,7 +19,7 @@ npm start          # http://localhost:3000 — account GM: "admin" (server/confi
 Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n [raggio]`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/risorsa`, `/punti`, `/suprema`, `/abilita id livello`, `/aiuto`.
 
 ## Struttura
-- `server/` — Node.js (HTTP + WebSocket), logica autoritativa (`world.js`; moduli installati su World: `mappe.js`, `missioni.js`, `bottino.js`), database JSON (`db.js`).
+- `server/` — Node.js (HTTP + WebSocket), logica autoritativa (`world.js`; moduli installati su World: `mappe.js`, `missioni.js`, `bottino.js`, `altolivello.js`), database JSON (`db.js`).
 - `shared/` — dati (`data.js`: classi, abilità, oggetti, mostri, dungeon; `missioni.js`, `mappe.js`) e geografia (`world.js`: terreno, villaggi, strade).
 - `client/js/`
   - `main.js` avvio e caricamento asset; `game.js` gioco ed eventi di rete; `ui.js` interfaccia.
@@ -677,6 +677,65 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   rinnova la finestra di 15 s (immunità continua).
 - Nota per l'orchestrazione con agenti: mai `pkill -f "node server/index.js"` (uccide i server degli altri agenti):
   chiudere solo per porta, `kill $(lsof -ti tcp:PORTA)`.
+
+## Livello alto: boss del mondo, Forgia, stagioni dell'Arena, imprese (fatto)
+Richiesta: contenuto dal 30-40 in su e ragioni per rigiocare. Dati in `shared/altolivello.js` (nessun import: `data.js`
+aggiunge `MOBS_ALTO` a `MOBS`, `OGGETTI_ALTO` a `ITEMS` ed esporta `PROVE = { cripta: DUNGEON, forgia: FORGIA }`), logica
+in `server/altolivello.js` (installato su World come `mappe.js`/`missioni.js`), client in `godot/script/altolivello.gd`.
+- **Meccaniche dei boss** (campo `mecc` del mostro, `bossMecc`): fasi a soglie di vita (annuncio, `rinforzi`, `furia`,
+  `zoneOgni`), lanci interrompibili a rotazione (usano `m.cast` di `updateMob` con `def`: interrotti tolgono `post` di
+  Postura), cerchi a terra sotto ogni giocatore con pozze ardenti (`warn` → colpo, `hazard`; `this.pozze`), anello attorno
+  al boss (`lontano` = allontanarsi, `vicino` = stringersi, fx `warn` con `in: 1`), corazza (`scudo`: danni −85% finché i
+  servitori sono in piedi, poi Squilibrio; `m.riduzione` in `mitigate`), **furia a tempo** (`furiaS`, `FURIA`: onda ogni
+  2 s e cure ricevute −75%, `antiCura` in `heal`). Senza avversari per 6 s un boss con `mecc` torna al suo posto e si
+  ricompone (niente vittorie rinascendo sul posto). Stato al client ogni 0,5 s (`boss`: fase, corazza, secondi alla furia).
+- **Boss del mondo a tempo** (`BOSS_MONDO`): Colosso Ardente (liv. 32, Valle delle Braci a nord, 0/206; modello
+  `terracotta` ×2,8 color brace), Madre delle Canne Cantanti (liv. 40, Selva; `tiger` ×2,6 verde giada), Re del Miraggio
+  Rosso (liv. 50, Distesa; `general` ×2,5 rosso sabbia). Ogni 45-75 min, avvisi a tutti 5 e 1 minuto prima e alla
+  comparsa, `boss_mondo` (elenco con posizione e conto alla rovescia: teschio sulla mappa grande e sulla minimappa). Se
+  nessuno lo sfida se ne va dopo 20 min. Premi personali (`premiBoss`) a chi ha almeno 20 s di presenza in combattimento
+  entro 45 m o il 3% dei danni: 2 pezzi della classe (Rari o meglio), 25% un **pezzo unico** del boss (garantito alla 4ª
+  uccisione senza: `ch.pieta`) con due bonus fissi (`fissi`), trofeo, essenze, gemma, tael, 6% di livello. I pezzi unici
+  (`boss` nella voce) sono esclusi dal bottino normale (`bottino.js`). Le arene dei boss restano libere dai branchi.
+- **Forgia del Drago Addormentato** (`FORGIA`, dal livello 35, 18 min, stesso Sigillo della Cripta): 9 stanze (muri
+  ricavati con `muriDaStanze`), Fabbri di Cenere, Cani di Brace, Spiriti della Fornace (lancio), Martellatori (élite con
+  lancio ad area), boss **Yan, il Cuore della Fornace** (`general` ×2,2 rosso scuro: Colata Ardente da interrompere, Martello
+  del Drago a terra, Cani al 75%, Corazza di Brace al 50% con 3 Mantici Ardenti da spegnere, furia al 20%). Le Prove ora
+  leggono la definizione da `inst.dg` (ex `DUNGEON` fisso); il Custode offre entrambe (`trial` con `prove`, `open` con `p`).
+  Premi della Forgia dal livello 40, un'essenza e il 40% di tael in più; `ch.prove[id]` = migliore superata.
+  Client: `Cripta.crea(ox, oz, id)` con `tema` (muri bruniti, lumi arancio, canali di lava, incudini, fornace).
+- **Arena: stagione settimanale** (`db.data.arena`: `sett`, `cl`, `campioni`, `storico`): 10 punti a uccisione (+2 a
+  uccisione in serie fino a +10, +5 se si spezza una serie ≥3, −2 alla caduta, 2 punti contro chi ha 10 livelli in meno,
+  zero dalla 3ª uccisione della stessa vittima in 10 min). Gli stessi punti diventano **onore** (`ch.onore`), da spendere
+  dall'Araldo (`NEGOZIO_ONORE`: titoli, essenze, gemme, Sigillo dell'Ascensione, tael). A fine settimana i primi tre
+  ricevono onore e tael, il primo il titolo «Campione della Settimana» per la settimana dopo.
+- **Imprese e titoli** (`IMPRESE`, `TITOLI`; `ch.imp`, `ch.impFatte`, `ch.titoli`, `ch.titolo`): boss abbattuti, Forgia,
+  sigillo +8/+15 in tempo, 25/100 abbattuti nell'arena. Il titolo scelto va nelle info (`ti`) e compare sopra il nome.
+  Tasto **J**: imprese, titoli e calendario dei boss. Comando `/titolo [id]`.
+- GM: `/boss` (elenco), `/boss id` (compare ora), `/boss id qui|via|tra minuti|vita 0.6|furia`, `/boss vita 0.5` (boss
+  con meccaniche più vicino, anche nella Forgia), `/onore n`, `/stagione [chiudi|punti n]`, `/impresa id`.
+  Variabile d'ambiente `GM_EXTRA=a,b` (solo prove con più bot) in `server/index.js`.
+- **Prove**: `node tools/prove/altolivello.mjs [porta]` (33 verifiche). **Taratura**: `node tools/sim/boss.mjs --boss id
+  --vie fulmine,arco,tempesta [--livello N] [--goffi] --porte 3977-3978` (bot di `farming.mjs`, ora anche modulo: rinascono
+  sul posto, interrompono, schivano). Misura (velocità 3, una prova, equipaggiamento comune +0 del livello del boss):
+
+  | boss | 3 bot | 2 bot | 1 bot |
+  |---|---|---|---|
+  | Colosso (32) | 155-167 s (goffi 118 s, 4 morti) | 208 s, 1 morto | furia a 300 s, muore, boss si ricompone |
+  | Madre (40) | 146 s | 216 s | furia, al 80% |
+  | Re (50) | 178 s | 256 s, 2 morti | furia, al 77% |
+  | Yan (38, fuori dalla Prova, 180000 vita = sigillo +2 per 4 giocatori) | 70 s | — | 208 s |
+
+  Il bot è perfetto e a latenza zero: i giocatori veri ci metteranno di più. Da sapere: i bot «goffi» (che non schivano)
+  battono il Colosso bevendo più ginseng (le pozioni non hanno ricarica: è il limite del sistema), la Forgia non è stata
+  misurata in una Prova vera con la scala del sigillo.
+- Client: `rete.gd` legge fino a 4 MB a fotogramma (prima 64 KB: a pochi fotogrammi al secondo, vicino a un boss, i
+  messaggi arrivavano con minuti di ritardo); il riquadro della Prova mostra il nome del boss (`bossName` in `dg`).
+  Copione: `imprese`, `esci_prova`, `spendi vit N`, `prova open forgia`. Foto: boss con fasi e lanci, zone, mappa, premi,
+  imprese, finestra del Custode, Forgia (sale, Yan con corazza e mantici), Araldo.
+- **Non verificati**: Forgia giocata da un gruppo vero e il suo tempo, aspetto dei boss (modelli esistenti riscalati e
+  tinti: servono figure proprie), annunci e premi con molti giocatori, chiusura della stagione a cavallo della mezzanotte
+  di lunedì col server acceso a lungo, client nel browser (non mostra nulla di tutto questo).
 
 ## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.

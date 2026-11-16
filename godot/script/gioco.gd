@@ -54,6 +54,7 @@ var _dentro := false
 var mappa: MappaGrande = null      # mappa grande delle zone (tasto M)
 var viaggi: Viaggi = null           # finestra dei viaggi e classifica dell'arena (viaggi.gd)
 var missioni: Missioni = null       # diario, elenco a lato e segni sopra i PNG (missioni.gd)
+var altolivello: AltoLivello = null # boss del mondo, imprese e titoli, onori dell'arena (altolivello.gd)
 var terra: TerraLontana = null      # la mappa lontana in cui si trova il personaggio (terra_lontana.gd)
 var _zona_amb := "-"                # ambiente in uso: "" mondo dei regni, "cripta" o id della mappa
 var _amb_mappe: Dictionary = {}
@@ -80,6 +81,10 @@ func _ready() -> void:
 	missioni.gioco = self
 	hud.radice.add_child(missioni)
 	missioni.aggancia()
+	altolivello = AltoLivello.new()
+	altolivello.gioco = self
+	hud.radice.add_child(altolivello)
+	altolivello.aggancia()
 	mappa = MappaGrande.new()
 	mappa.gioco = self
 	hud.radice.add_child(mappa)
@@ -126,7 +131,7 @@ func nome_zona() -> String:
 	if lontana != "":
 		return lontana
 	if me.x > float(Dati.costanti.DUNGEON_X):
-		return String(Dati.gioco.DUNGEON.name)
+		return String(cripta.definizione.name) if cripta != null else String(Dati.gioco.DUNGEON.name)
 	for kid in Dati.KINGDOMS:
 		var v: Dictionary = Dati.KINGDOMS[kid].village
 		if Vector2(me.x - float(v.x), me.z - float(v.z)).length() < float(Dati.costanti.SAFE_RADIUS):
@@ -340,7 +345,17 @@ func _su_fx(m: Dictionary) -> void:
 			if s != null and s.corpo != null:
 				s.corpo.attacca()
 		"warn":
-			fx.anello(Dati.suolo(float(m.x), float(m.z)), Color(1.0, 0.2, 0.1), float(m.get("r", 4)), float(m.get("ms", 2000)) / 1000.0, 0.06, 1.0)
+			if int(m.get("in", 0)) == 1:
+				# anello di un boss da cui NON uscire: il cerchio sicuro è verde, il resto della zona brucia
+				fx.anello(Dati.suolo(float(m.x), float(m.z)), Color(0.35, 1.0, 0.45), float(m.get("r", 4)), float(m.get("ms", 2000)) / 1000.0, 0.1, 0.35)
+				fx.anello(Dati.suolo(float(m.x), float(m.z)), Color(1.0, 0.2, 0.1), float(m.get("r", 4)) + 18.0, float(m.get("ms", 2000)) / 1000.0, 0.03, 0.0)
+			else:
+				fx.anello(Dati.suolo(float(m.x), float(m.z)), Color(1.0, 0.2, 0.1), float(m.get("r", 4)), float(m.get("ms", 2000)) / 1000.0, 0.06, 1.0)
+		"hazard":
+			# pozza ardente (boss e braci della Prova): disco rosso che resta e fiammelle
+			var pz := Dati.suolo(float(m.x), float(m.z))
+			fx.anello(pz, Color(1.0, 0.32, 0.08), float(m.get("r", 3)), float(m.get("ms", 6000)) / 1000.0, 0.12, 0.55)
+			fx.fiamme(pz, Color(1.0, 0.45, 0.12), 14, float(m.get("r", 3)) * 0.7, 1.4, 1.2)
 		"tp":
 			if s != null:
 				fx.colonna(s.global_position, Color(0.55, 0.82, 1.0), 1.2, 12.0, 1.0)
@@ -483,7 +498,7 @@ func _suono_tecnica(sk: Dictionary, mia: bool) -> void:
 func _su_dg_start(m: Dictionary) -> void:
 	if cripta != null:
 		cripta.queue_free()
-	cripta = Cripta.crea(float(m.ox), float(m.oz))
+	cripta = Cripta.crea(float(m.ox), float(m.oz), String(m.get("dg", "cripta")))
 	add_child(cripta)
 	prova = {"kl": m.get("kl", 2), "affixes": m.get("affixes", [])}
 	bersaglio = null
@@ -802,6 +817,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			hud.finestre.apri_chiudi("abilita")
 		elif k == KEY_L:
 			missioni.apri_chiudi()
+		elif k == KEY_J:
+			altolivello.apri_imprese()
 		elif k == KEY_R:
 			Rete.manda({"t": "mount"})
 		elif k == KEY_Z:

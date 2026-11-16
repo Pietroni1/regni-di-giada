@@ -11,7 +11,7 @@ import { ITEMS, CLASSES, GEM_TYPES, equipSlotOf } from '../shared/data.js';
 import { makeEquip, rollRarity } from './world.js';
 
 const SLOT = ['weapon', 'body', 'head', 'feet'];
-const EQUIP_IDS = Object.keys(ITEMS).filter((id) => equipSlotOf(ITEMS[id]));
+const EQUIP_IDS = Object.keys(ITEMS).filter((id) => equipSlotOf(ITEMS[id]) && !ITEMS[id].boss);   // i pezzi unici dei boss si ottengono solo da loro
 const PROB_CLASSE = 0.75;
 const PROB_STESSA_ARMA = 0.7;
 const CHANCE = { mob: 0.032, elite: 0.3, stone: 0.8, boss: 1 };   // probabilità di un pezzo per tiro

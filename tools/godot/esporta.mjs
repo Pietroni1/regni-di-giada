@@ -128,6 +128,7 @@ const gioco = {
   SKILLS: D.SKILLS, ITEMS: D.ITEMS, RARITIES: D.RARITIES, MOBS: D.MOBS, NPC_ROLES: D.NPC_ROLES,
   EQUIP_NAMES: D.EQUIP_NAMES, STAT_NAMES: D.STAT_NAMES, STAT_DESC: D.STAT_DESC, BONUS_STATS: D.BONUS_STATS, SHOPS: D.SHOPS, UPGRADE: D.UPGRADE,
   DUNGEON: D.DUNGEON, AFFIXES: D.AFFIXES, MOUNT_SKILLS: D.MOUNT_SKILLS,
+  PROVE: D.PROVE, BOSS_MONDO: D.BOSS_MONDO, TITOLI: D.TITOLI, IMPRESE: D.IMPRESE,   // livello alto (shared/altolivello.js)
   HORSE: { minLevel: D.HORSE.minLevel, price: D.HORSE.price, maxLevel: D.HORSE.maxLevel, names: D.HORSE.names, trainPct: D.HORSE.trainPct,
     need: Array.from({ length: D.HORSE.maxLevel + 1 }, (_, l) => D.HORSE.need(l)), trainCost: Array.from({ length: D.HORSE.maxLevel + 1 }, (_, l) => D.HORSE.trainCost(l)) },
   EQUIP_SLOTS: D.EQUIP_SLOTS, SKILL_MAX: D.SKILL_MAX, SKILL_MAX_POINTS: D.SKILL_MAX_POINTS,

@@ -449,7 +449,7 @@ func _aggiorna_prova() -> void:
 		var trascorso: float = float(p.elapsed) + float(p.get("penalty", 0)) + (0.0 if fatto else gioco.ora() - float(p.get("ricevuto", gioco.ora())))
 		righe.append("Tempo  %s / %s" % [_tempo(trascorso), _tempo(float(p.limit))])
 		righe.append("Forze nemiche  %d%%" % int(minf(100.0, float(p.forces) / maxf(1.0, float(p.need)) * 100.0)))
-		righe.append("Custode  %s" % ("sconfitto" if int(p.get("bossDead", 0)) == 1 else "%d%%" % int(float(p.boss))))
+		righe.append("%s  %s" % [String(p.get("bossName", "Custode")), "sconfitto" if int(p.get("bossDead", 0)) == 1 else "%d%%" % int(float(p.boss))])
 		if int(p.get("deaths", 0)) > 0:
 			righe.append("Cadute  %d  (+%d s l'una)" % [int(p.deaths), int(Dati.gioco.DUNGEON.deathPenalty)])
 		if fatto and p.get("result") is Dictionary:

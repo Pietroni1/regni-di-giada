@@ -3,7 +3,7 @@
 import {
   CLASSES, VIE, SKILLS, BUFFS, RESOURCES, ITEMS, MOBS, UPGRADE, SHOPS, NPC_ROLES, WEAPON_TYPES, GUARD_LINES,
   INV_SIZE, QB_SIZE, STACK_MAX, STAT_MAX, EQUIP_SLOTS, MAX_LEVEL, VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BOOK_CHANCE,
-  PTS_MAX, COMBAT, dungeonWalkable, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, weeklyAffixes, trialScale, keyChange, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
+  PTS_MAX, COMBAT, dungeonWalkable, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, weeklyAffixes, trialScale, keyChange, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES, PROVE,
   expToNext, skillVal, upgradedStat, equipSlotOf, SLANCIO, BONUS_RISORSA, SUPREMA, SERIE,
 } from '../shared/data.js';
 import {
@@ -14,6 +14,7 @@ import { POSTURA, posturaBase, posturaColpo } from '../shared/postura.js';
 import { installaMappe, MAPPE, arrivoMappa } from './mappe.js';
 import { installaBottino } from './bottino.js';
 import { installaMissioni } from './missioni.js';
+import { installaAltoLivello, radureBoss } from './altolivello.js';
 
 const VIEW = 105;
 const SEP_BRANCHI = 22;          // metri minimi fra due branchi
@@ -139,6 +140,7 @@ export class World {
     this.initNpcs();
     this.initSpawns();
     this.initMappe();   // mappe da esperienza e arena (server/mappe.js)
+    this.initAltoLivello();   // boss del mondo, stagioni dell'arena, imprese (server/altolivello.js)
   }
 
   start() {
@@ -185,7 +187,7 @@ export class World {
   //  · accanto ai branchi ci sono solitari più forti (élite, vita base ≥ 1000: hanno la Postura) con rinascita singola.
   initSpawns() {
     const rng = mulberry32(20261113);
-    const radura = (x, z) => Math.hypot(x + 228, z + 228) < 50;      // la radura di `npm run sim` (/tp -228 -228) resta libera
+    const radura = (x, z) => Math.hypot(x + 228, z + 228) < 50 || radureBoss(x, z);   // la radura di `npm run sim` (/tp -228 -228) e le arene dei boss restano libere
     const validPos = (x, z) => {
       if (Math.abs(x) > 245 || Math.abs(z) > 245) return false;
       if (heightAt(x, z) < 0.6 || radura(x, z)) return false;
@@ -376,6 +378,7 @@ export class World {
     });
     this.broadcast({ t: 'sys', m: `${p.name} (${KINGDOMS[p.kingdom].short}) è entrato nel mondo.` });
     this.missioniEntra(p);   // missioni (server/missioni.js): stato, incarichi del giorno, segni sui PNG
+    this.altoLivelloEntra(p);   // boss del mondo, titoli, imprese (server/altolivello.js)
     return p;
   }
 
@@ -490,7 +493,7 @@ export class World {
         return { ...base, k: 'p', n: e.name, cls: e.cls, kd: e.kingdom, sx: e.ch.sex === 'f' ? 'f' : 'm', lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp,
           w: eq.weapon ? eq.weapon.id : null, wu: eq.weapon ? eq.weapon.up : 0, wr: eq.weapon ? eq.weapon.r || 0 : 0,
           b: eq.body ? eq.body.id : null, bu: eq.body ? eq.body.up : 0, br: eq.body ? eq.body.r || 0 : 0, h: eq.head ? eq.head.id : null, f: eq.feet ? eq.feet.id : null,
-          gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0, au: e.aura || null, mt: e.mounted && e.ch.horse ? HORSE.tierOf(e.ch.horse.lvl) : 0 };
+          gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0, au: e.aura || null, ti: e.ch.titolo || null, mt: e.mounted && e.ch.horse ? HORSE.tierOf(e.ch.horse.lvl) : 0 };
       }
       case 'mob': {
         const o = { ...base, k: 'm', ty: e.type, n: e.name, lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp };
@@ -586,6 +589,7 @@ export class World {
     }
     this.tickBranchi(t);
     this.tickMissioni(t);
+    this.tickAltoLivello(t);
   }
 
   updatePlayer(p, t, regen, dt) {
@@ -704,13 +708,14 @@ export class World {
     if (m.cast) {
       // sta lanciando: resta fermo; alla fine il colpo parte, a meno che sia stato interrotto
       if (t < m.cast.until) return;
-      const c = d.cast, bers = this.ents.get(m.cast.tid);
+      const c = m.cast.def || d.cast, bers = this.ents.get(m.cast.tid);   // def: lancio di un boss (server/altolivello.js)
       m.cast = null; m.nextCast = t + c.cd;
       this.fx(m, { k: 'mcastend', s: m.id });
       if (c.raggio) {
         this.fx(m, { k: 'slam', s: m.id, x: r1(m.x), z: r1(m.z), r: c.raggio });
         for (const q of this.players) if (this.validMobTarget(q) && dist(q, m) < c.raggio) this.hit(m, q, m.atk * c.mult, {});
       } else if (this.validMobTarget(bers) && dist(bers, m) < (d.range || 2.2) + 8) this.hit(m, bers, m.atk * c.mult, { auto: 3 });
+      if (c.pozze) this.pozzeLancio(m, c);
       return;
     }
     const spd = d.speed * (m.slowUntil > t ? 0.5 : 1);
@@ -733,6 +738,9 @@ export class World {
       if (best) { tgt = best; m.target = best.id; if (!m.chiamato) { m.chiamato = true; this.chiamaBranco(m, best); } }
     }
     if (!tgt && m.chiamato && !m.aggro.size) m.chiamato = false;   // a riposo: potrà chiamare di nuovo il branco
+    // un boss con meccaniche rimasto senza avversari per 6 s (tutti caduti o fuggiti) torna al suo posto e si ricompone:
+    // niente vittorie a forza di rinascere sul posto (server/altolivello.js)
+    if (!tgt && d.mecc && m.hp < m.maxHp && m.state !== 'return' && t - m.lastActive > 6000) { m.state = 'return'; m.aggro.clear(); }
     if (tgt) {
       m.lastActive = t;
       const leash = m.inst ? 9999 : m.temp ? 70 : (d.boss ? 42 : 34);
@@ -750,7 +758,8 @@ export class World {
             this.fx(m, { k: 'mcast', s: m.id, n: d.cast.name, ms: d.cast.ms, r: d.cast.raggio || 0 });
           } else if (t >= m.nextAttack) { m.nextAttack = t + d.aspd * (m.aspdMul || 1); this.mobAttack(m, tgt); }
         }
-        if (d.dungeonBoss) this.trialBossLogic(m, t);
+        if (d.mecc) this.bossMecc(m, t);   // boss con meccaniche (server/altolivello.js)
+        else if (d.dungeonBoss) this.trialBossLogic(m, t);
         else if (d.boss) this.bossLogic(m, t);
         return;
       }
@@ -867,7 +876,7 @@ export class World {
 
   // Riduzioni dei danni subiti (effetti difensivi e scudi).
   mitigate(tgt, dmg, src) {
-    if (tgt.kind !== 'player') return { dmg };
+    if (tgt.kind !== 'player') return { dmg: tgt.riduzione ? Math.max(1, Math.round(dmg * (1 - tgt.riduzione))) : dmg };   // corazza di un boss
     if (tgt.dmgTaken) dmg = Math.max(1, Math.round(dmg * (1 + tgt.dmgTaken / 100)));
     if (src && src.kind === 'mob' && tgt.dmgRed) dmg = Math.max(1, Math.round(dmg * (1 - tgt.dmgRed / 100)));
     let ab = 0;
@@ -909,6 +918,7 @@ export class World {
   heal(q, amt, quiet) {
     if (q.dead) return;
     const before = q.hp;
+    if (q.antiCuraUntil > NOW()) amt *= 1 - (q.antiCura || 0);   // ferita della furia di un boss
     q.hp = Math.min(q.maxHp, q.hp + amt);
     const v = Math.round(q.hp - before);
     if (q.kind === 'player') { q.resDirty = true; }
@@ -1020,15 +1030,16 @@ export class World {
       for (const q of members) { q.ch.tael += each; q.selfDirty = true; this.send(q, { t: 'gain', tael: each }); }
     }
     this.missioniMorte(m, killer);   // server/missioni.js
+    if (d.mondo) this.bossMondoMorto(m, top);   // boss del mondo: premi personali a chi ha partecipato (server/altolivello.js)
     if (m.inst) { this.trialMobDied(m); m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = []; return; }
     const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
     const dmul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100) * (d.bott ?? 1);
     for (const [id, ch, mn = 1, mx = 1] of d.drops || []) {
       if (Math.random() < ch * dmul) this.spawnDrop(id, randi(mn, mx), m.x, m.z, top ? top.id : 0, source);
     }
-    this.extraDrops(m, top);
+    if (!d.mondo) this.extraDrops(m, top);
     if (m.spawner) this.programmaRinascita(m);
-    if (d.boss) this.broadcast({ t: 'notice', m: `${top ? top.name : 'Un eroe'} ha sconfitto ${d.name}!` });
+    if (d.boss && !d.mondo) this.broadcast({ t: 'notice', m: `${top ? top.name : 'Un eroe'} ha sconfitto ${d.name}!` });
     m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = [];
   }
 
@@ -1117,7 +1128,7 @@ export class World {
     } else {
       if (el < 3000) return;
       const inst = p.inst ? this.instances.get(p.inst) : null;
-      const sp = inst ? { x: inst.ox + DUNGEON.spawn[0], z: inst.oz + DUNGEON.spawn[1] } : villageSpawn(p.kingdom);
+      const sp = inst ? { x: inst.ox + inst.dg.spawn[0], z: inst.oz + inst.dg.spawn[1] } : villageSpawn(p.kingdom);
       p.x = sp.x; p.z = sp.z; p.hp = p.maxHp;
       if (p.rtype === 'mana') p.res = p.rmax;
     }
@@ -1128,7 +1139,7 @@ export class World {
 
   clampPos(p, x, z) {
     const inst = p.inst ? this.instances.get(p.inst) : null;
-    if (inst) return [clamp(x, inst.ox + DUNGEON.boundsMin[0], inst.ox + DUNGEON.boundsMax[0]), clamp(z, inst.oz + DUNGEON.boundsMin[1], inst.oz + DUNGEON.boundsMax[1])];
+    if (inst) return [clamp(x, inst.ox + inst.dg.boundsMin[0], inst.ox + inst.dg.boundsMax[0]), clamp(z, inst.oz + inst.dg.boundsMin[1], inst.oz + inst.dg.boundsMax[1])];
     const inMappa = this.limitaPosMappa(x, z);
     if (inMappa) return inMappa;
     return [clamp(x, -PLAY_LIMIT, PLAY_LIMIT), clamp(z, -PLAY_LIMIT, PLAY_LIMIT)];
@@ -1168,10 +1179,11 @@ export class World {
       case 'respawn': return this.respawn(p, msg.mode);
       case 'cancel': if (p.casting) this.cancelCast(p); if (p.mountUntil) { p.mountUntil = 0; this.send(p, { t: 'castend', ok: 0 }); } return;
       case 'mount': return this.onMount(p);
-      case 'trial': return this.onTrial(p, msg.npc, msg.a);
+      case 'trial': return this.onTrial(p, msg.npc, msg.a, msg.p);
       case 'tleave': return this.leaveTrial(p);
       case 'stable': return this.onStable(p, msg.npc, msg.a);
       case 'viaggio': return this.onViaggio(p, msg);
+      case 'alto': return this.onAltoLivello(p, msg);   // titoli, negozio dell'onore, imprese (server/altolivello.js)
       case 'pinv': return this.onPartyInvite(p, msg.id ? this.ents.get(msg.id) : this.playerByName(msg.n));
       case 'preply': return this.onPartyReply(p, !!msg.ok);
       case 'pleave': return this.leaveParty(p);
@@ -1634,7 +1646,7 @@ export class World {
     [x, z] = this.clampPos(p, x, z);
     const inst = p.inst ? this.instances.get(p.inst) : null;
     if (!inst) return [x, z];
-    const ok = (qx, qz) => dungeonWalkable(qx - inst.ox, qz - inst.oz, 0.5);
+    const ok = (qx, qz) => dungeonWalkable(qx - inst.ox, qz - inst.oz, 0.5, inst.dg);
     if (ok(x, z)) return [x, z];
     for (let k = 1; k <= 20; k++) {
       const t = k / 20, qx = x + (p.x - x) * t, qz = z + (p.z - z) * t;
@@ -1647,7 +1659,9 @@ export class World {
   interrompi(p, target) {
     if (!target || !this.canAttack(p, target)) return;
     if (target.kind === 'mob' && target.cast) {
+      const def = target.cast.def;
       target.cast = null;
+      if (def && def.post && target.postMax) this.colpisciPostura(target, target.postMax * def.post);   // lancio di un boss interrotto: barcolla
       target.nextCast = NOW() + (target.d.cast ? target.d.cast.cd : 8000);
       this.fx(target, { k: 'mcastend', s: target.id, int: 1 });
       this.giveRes(p, COMBAT.genInterr);
@@ -1779,13 +1793,16 @@ export class World {
   sendTrialInfo(p, npcId) {
     const key = p.ch.inv.find(s => s && s.id === 'sigillo_prova');
     const party = this.partyOf(p);
+    const migliori = p.ch.prove || {};
     this.send(p, {
       t: 'trial', npc: npcId, key: key ? key.kl : null, best: p.ch.trialBest || 0, week: weeklyAffixes(),
       leader: !party || party.leader === p.id, party: party ? party.members.length : 1, minLevel: DUNGEON.minLevel,
+      // le Prove fra cui scegliere (Cripta e Forgia): stesso sigillo, livelli e premi diversi
+      prove: Object.values(PROVE).map(dg => ({ id: dg.id, n: dg.name, tr: dg.trial, min: dg.minLevel, tl: dg.timeLimit, desc: dg.desc || '', best: dg.id === 'cripta' ? Math.max(p.ch.trialBest || 0, migliori.cripta || 0) : (migliori[dg.id] || 0) })),
     });
   }
 
-  onTrial(p, npcId, action) {
+  onTrial(p, npcId, action, prova) {
     const npc = this.nearNpc(p, npcId, ['custode']);
     if (!npc) return;
     if (action === 'key') {
@@ -1795,11 +1812,12 @@ export class World {
       this.sys(p, `Hai ricevuto un Sigillo della Prova +${DUNGEON.startKey}.`);
       return this.sendTrialInfo(p, npcId);
     }
-    if (action === 'open') return this.openTrial(p, npc);
+    if (action === 'open') return this.openTrial(p, npc, prova);
   }
 
-  openTrial(p, npc) {
+  openTrial(p, npc, prova) {
     if (p.inst) return;
+    const dg = Object.hasOwn(PROVE, String(prova || '')) ? PROVE[prova] : DUNGEON;
     const key = p.ch.inv.find(s => s && s.id === 'sigillo_prova');
     if (!key) return this.err(p, 'Ti serve un Sigillo della Prova');
     const party = this.partyOf(p);
@@ -1807,36 +1825,36 @@ export class World {
     const members = (party ? party.members.map(id => this.ents.get(id)) : [p])
       .filter(q => q && q.kind === 'player' && q.online && !q.dead && !q.inst && dist(q, npc) < 40);
     if (!members.includes(p)) return;
-    const low = members.find(q => q.lvl < DUNGEON.minLevel);
-    if (low) return this.err(p, `${low.name} non ha ancora il livello ${DUNGEON.minLevel}`);
+    const low = members.find(q => q.lvl < dg.minLevel);
+    if (low) return this.err(p, `${low.name} non ha ancora il livello ${dg.minLevel} per la ${dg.name}`);
     let slot = 0;
     while (this.instSlots[slot]) slot++;
-    const ox = DUNGEON.originX + slot * DUNGEON.slotSpacing, oz = 0;
-    const kl = key.kl || DUNGEON.startKey;
+    const ox = dg.originX + slot * dg.slotSpacing, oz = 0;
+    const kl = key.kl || dg.startKey;
     const inst = {
-      id: this.nextInst++, slot, ox, oz, kl, affixes: activeAffixes(kl), members: new Set(members.map(q => q.id)), owner: p.id, key,
+      id: this.nextInst++, slot, ox, oz, kl, dg, affixes: activeAffixes(kl), members: new Set(members.map(q => q.id)), owner: p.id, key,
       players: members.length, start: NOW(), deaths: 0, forces: 0, bossDead: false, bossId: 0, done: false, result: null,
       mobs: new Set(), hazards: [], timers: [], closeAt: 0, lastSend: 0, overtime: false,
     };
     this.instSlots[slot] = inst;
     this.instances.set(inst.id, inst);
     const sc = trialScale(kl, members.length);
-    for (const pack of DUNGEON.packs) {
+    for (const pack of dg.packs) {
       pack.mobs.forEach((type, i) => {
         const a = i / pack.mobs.length * Math.PI * 2;
         this.spawnTrialMob(inst, type, ox + pack.x + Math.cos(a) * 2.4, oz + pack.z + Math.sin(a) * 2.4, sc);
       });
     }
-    const boss = this.spawnTrialMob(inst, DUNGEON.boss.type, ox + DUNGEON.boss.x, oz + DUNGEON.boss.z, sc);
+    const boss = this.spawnTrialMob(inst, dg.boss.type, ox + dg.boss.x, oz + dg.boss.z, sc);
     boss.r = Math.PI;
     inst.bossId = boss.id;
     for (const q of members) {
       q.inst = inst.id;
       if (q.mounted) { q.mounted = false; this.recalc(q); q.vis++; }
       q.known.clear(); q.knownVis.clear();
-      this.teleport(q, ox + DUNGEON.spawn[0] + rand(-2, 2), oz + DUNGEON.spawn[1] + rand(-1, 1));
-      this.send(q, { t: 'dg_start', ox, oz, kl, affixes: inst.affixes });
-      this.send(q, { t: 'notice', m: `${DUNGEON.trial} +${kl}: ${Math.round(DUNGEON.timeLimit / 60)} minuti. Buona fortuna!` });
+      this.teleport(q, ox + dg.spawn[0] + rand(-2, 2), oz + dg.spawn[1] + rand(-1, 1));
+      this.send(q, { t: 'dg_start', ox, oz, kl, affixes: inst.affixes, dg: dg.id });
+      this.send(q, { t: 'notice', m: `${dg.trial} +${kl}: ${Math.round(dg.timeLimit / 60)} minuti. Buona fortuna!` });
     }
     this.sendTrialState(inst);
   }
@@ -1907,10 +1925,11 @@ export class World {
     inst.mobs.delete(m.id);
     if (inst.done) return;
     const d = m.d;
-    inst.forces += DUNGEON.forces[m.type] || 0;
+    const dg = inst.dg;
+    inst.forces += dg.forces[m.type] || 0;
     if (d.dungeonBoss) {
       inst.bossDead = true;
-      if (inst.forces < DUNGEON.forcesNeeded) this.instBroadcast(inst, { t: 'notice', m: `Shen è caduto! Mancano ancora forze nemiche (${Math.round(inst.forces)}%/${DUNGEON.forcesNeeded}%).` });
+      if (inst.forces < dg.forcesNeeded) this.instBroadcast(inst, { t: 'notice', m: `${d.name.split(',')[0]} è caduto! Mancano ancora forze nemiche (${Math.round(inst.forces)}%/${dg.forcesNeeded}%).` });
     }
     if (inst.affixes.includes('brace') && !d.boss && !d.explode) {
       inst.hazards.push({ x: m.x, z: m.z, r: 3, until: NOW() + 6000, dmg: Math.max(1, Math.round(m.atk * 0.35)) });
@@ -1919,32 +1938,35 @@ export class World {
     if (inst.affixes.includes('eco') && !d.boss && !d.explode && m.type !== 'eco_spirito' && Math.random() < 0.25) {
       this.spawnTrialMob(inst, 'eco_spirito', m.x, m.z, trialScale(inst.kl, inst.players));
     }
-    if (inst.bossDead && inst.forces >= DUNGEON.forcesNeeded) this.completeTrial(inst);
+    if (inst.bossDead && inst.forces >= dg.forcesNeeded) this.completeTrial(inst);
   }
 
   completeTrial(inst) {
     inst.done = true;
-    const elapsed = (NOW() - inst.start) / 1000 + inst.deaths * DUNGEON.deathPenalty;
-    const change = keyChange(elapsed, DUNGEON.timeLimit);
-    const oldKl = inst.kl, newKl = clamp(oldKl + change, DUNGEON.startKey, DUNGEON.maxKey);
+    const dg = inst.dg;
+    const elapsed = (NOW() - inst.start) / 1000 + inst.deaths * dg.deathPenalty;
+    const change = keyChange(elapsed, dg.timeLimit);
+    const oldKl = inst.kl, newKl = clamp(oldKl + change, dg.startKey, dg.maxKey);
     if (inst.key) inst.key.kl = newKl;
     const owner = this.ents.get(inst.owner);
     if (owner) owner.invDirty = true;
     inst.result = { elapsed: Math.round(elapsed), change, oldKl, newKl, inTime: change > 0 };
     inst.closeAt = NOW() + 120000;
     for (const q of this.instMembers(inst)) {
-      if (change > 0) q.ch.trialBest = Math.max(q.ch.trialBest || 0, oldKl);
-      this.trialRewards(q, oldKl, change > 0);
+      if (change > 0 && dg.id === 'cripta') q.ch.trialBest = Math.max(q.ch.trialBest || 0, oldKl);
+      if (change > 0) { q.ch.prove = q.ch.prove || {}; q.ch.prove[dg.id] = Math.max(q.ch.prove[dg.id] || 0, oldKl); }
+      this.trialRewards(q, oldKl, change > 0, dg);
       this.missioniEvento(q, 'prova');
+      this.impresaProva(q, dg.id, oldKl, change > 0);   // imprese e titoli (server/altolivello.js)
     }
     const mm = Math.floor(elapsed / 60), ss = String(Math.round(elapsed % 60)).padStart(2, '0');
     this.instBroadcast(inst, { t: 'notice', m: change > 0 ? `Prova completata in ${mm}:${ss}! Sigillo +${oldKl} → +${newKl}` : `Prova completata fuori tempo (${mm}:${ss}). Sigillo +${oldKl} → +${newKl}` });
     const names = this.instMembers(inst).map(q => q.name);
-    if (change >= 2) this.broadcast({ t: 'sys', m: `${names.join(', ')} ${names.length > 1 ? 'hanno' : 'ha'} completato la ${DUNGEON.trial} +${oldKl} in ${mm}:${ss}!` });
+    if (change >= 2) this.broadcast({ t: 'sys', m: `${names.join(', ')} ${names.length > 1 ? 'hanno' : 'ha'} completato la ${dg.trial} +${oldKl} in ${mm}:${ss}!` });
     this.sendTrialState(inst);
   }
 
-  trialRewards(q, kl, inTime) {
+  trialRewards(q, kl, inTime, dg = DUNGEON) {
     const got = [];
     const give = (id, n = 1, inst = null) => {
       const left = this.addItem(q, id, n, 0, inst);
@@ -1956,31 +1978,31 @@ export class World {
       if (kl >= 6) r = Math.max(r, 2);
       if (kl >= 10) r = Math.max(r, 3);
       // pezzi della classe, qualche livello sopra il personaggio (dal 30 in su, il sigillo alto alza il livello)
-      const it = this.premioEquip(q, Math.min(45, Math.max(30, q.lvl + 2) + Math.floor(kl / 4) * 5), null, r);
+      const it = this.premioEquip(q, Math.min(45, Math.max(dg.livPremi || 30, q.lvl + 2) + Math.floor(kl / 4) * 5), null, r);
       if (!it) continue;
       give(it.id, 1, it);
       got.push(`${ITEMS[it.id].name} (${RARITIES[r].name})`);
     }
-    const ess = Math.ceil(kl / 2);
+    const ess = Math.ceil(kl / 2) + (dg.livPremi ? 1 : 0);   // la Forgia rende un'essenza in più
     give('essenza_celeste', ess); got.push(`Essenza Celeste x${ess}`);
     const gems = Object.keys(GEM_TYPES);
     const gem = `gemma_${gems[randi(0, gems.length - 1)]}_${kl >= 8 ? 2 : 1}`;
     give(gem); got.push(ITEMS[gem].name);
     const stones = 1 + Math.floor(kl / 4);
     give('pietra_affinamento', stones); got.push(`Pietra dell'Affinamento x${stones}`);
-    const tael = 1500 * kl * (inTime ? 1 : 0.5);
+    const tael = Math.round(1500 * kl * (inTime ? 1 : 0.5) * (dg.livPremi ? 1.4 : 1));
     q.ch.tael += tael; got.push(`${tael.toLocaleString('it-IT')} tael`);
-    this.gainExp(q, Math.round(expToNext(q.lvl) * 0.05 * (1 + kl * 0.1) * (inTime ? 1 : 0.5)));
+    this.gainExp(q, Math.round(expToNext(q.lvl) * (dg.livPremi ? 0.06 : 0.05) * (1 + kl * 0.1) * (inTime ? 1 : 0.5)));
     q.selfDirty = true;
     this.send(q, { t: 'dg_reward', got });
   }
 
   sendTrialState(inst) {
-    const boss = this.ents.get(inst.bossId);
+    const boss = this.ents.get(inst.bossId), dg = inst.dg;
     const elapsed = NOW() - inst.start;
     this.instBroadcast(inst, {
-      t: 'dg', kl: inst.kl, affixes: inst.affixes, elapsed, limit: DUNGEON.timeLimit * 1000, penalty: inst.deaths * DUNGEON.deathPenalty * 1000,
-      forces: Math.round(inst.forces * 10) / 10, need: DUNGEON.forcesNeeded, deaths: inst.deaths,
+      t: 'dg', dg: dg.id, name: dg.name, kl: inst.kl, affixes: inst.affixes, elapsed, limit: dg.timeLimit * 1000, penalty: inst.deaths * dg.deathPenalty * 1000,
+      forces: Math.round(inst.forces * 10) / 10, need: dg.forcesNeeded, deaths: inst.deaths, bossName: dg.id === 'cripta' ? 'Custode' : boss ? boss.name.split(',')[0] : 'Boss',
       boss: inst.bossDead ? 0 : boss ? Math.round(boss.hp / boss.maxHp * 1000) / 10 : 100, bossDead: inst.bossDead ? 1 : 0,
       done: inst.done ? 1 : 0, result: inst.result, closeIn: inst.closeAt ? Math.max(0, inst.closeAt - NOW()) : 0,
     });
@@ -1997,7 +2019,7 @@ export class World {
         this.applyDamage(q, h.dmg, env);
       }
     }
-    if (!inst.done && !inst.overtime && (t - inst.start) / 1000 + inst.deaths * DUNGEON.deathPenalty > DUNGEON.timeLimit) {
+    if (!inst.done && !inst.overtime && (t - inst.start) / 1000 + inst.deaths * inst.dg.deathPenalty > inst.dg.timeLimit) {
       inst.overtime = true;
       this.instBroadcast(inst, { t: 'notice', m: 'Tempo scaduto! Potete completare la prova, ma il sigillo scenderà.' });
     }
@@ -2012,10 +2034,10 @@ export class World {
     if (inst) {
       inst.members.delete(p.id);
       if (!inst.done && p.id === inst.owner && inst.key) {
-        inst.key.kl = Math.max(DUNGEON.startKey, inst.kl - 1);
+        inst.key.kl = Math.max(inst.dg.startKey, inst.kl - 1);
         p.invDirty = true;
         inst.key = null;
-        if (!silent) this.sys(p, `Hai abbandonato la prova: il sigillo scende a +${Math.max(DUNGEON.startKey, inst.kl - 1)}.`);
+        if (!silent) this.sys(p, `Hai abbandonato la prova: il sigillo scende a +${Math.max(inst.dg.startKey, inst.kl - 1)}.`);
       }
       if (!inst.members.size) this.closeTrial(inst);
     }
@@ -2031,9 +2053,10 @@ export class World {
   closeTrial(inst) {
     for (const q of this.instMembers(inst)) this.leaveTrial(q);
     for (const id of inst.mobs) { const m = this.ents.get(id); if (m) this.remove(m); }
+    this.pozze = this.pozze.filter(z => z.inst !== inst.id);   // pozze ardenti dei boss della Prova
     for (const e of [...this.ents.values()]) {
       if (e.kind === 'mob' && e.inst === inst.id) this.remove(e);
-      if (e.kind === 'drop' && e.x > inst.ox - 30 && e.x < inst.ox + 100) this.remove(e);
+      if (e.kind === 'drop' && e.x > inst.ox - 40 && e.x < inst.ox + 100) this.remove(e);
     }
     this.instSlots[inst.slot] = null;
     this.instances.delete(inst.id);
@@ -2145,8 +2168,8 @@ export class World {
     const sys = m => this.sys(p, m);
     switch (c) {
       case 'aiuto': case 'help':
-        sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /titolo [id], /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo, /boss [id qui|via|tra min], /onore n, /stagione [chiudi|punti n], /impresa id');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -2154,6 +2177,7 @@ export class World {
       case 'online': return sys(`In linea (${this.players.size}): ${[...this.players].map(q => `${q.name} [${q.lvl}]`).join(', ')}`);
       case 'pos': return sys(`Posizione: ${Math.round(p.x)}, ${Math.round(p.z)}`);
     }
+    if (this.comandoAltoLivello(p, c, a)) return;   // /titolo, e per i GM /boss, /onore, /stagione, /impresa
     if (!p.gm) return sys('Comando sconosciuto. Scrivi /aiuto');
     switch (c) {
       case 'item': {
@@ -2467,6 +2491,7 @@ export class World {
     if (n.role === 'fabbro') return this.send(p, { t: 'smith', npc: n.id });
     if (n.role === 'stalliere') return this.send(p, { t: 'stable', npc: n.id });
     if (n.role === 'custode') return this.sendTrialInfo(p, n.id);
+    if (n.role === 'araldo') this.mandaOnori(p, n);   // stagione dell'arena e negozio dell'onore (server/altolivello.js)
     if (n.role === 'guida' || n.role === 'araldo') return this.sendViaggio(p, n);
     let m;
     if (n.role === 'maestro') {
@@ -2627,3 +2652,4 @@ export class World {
 installaMappe(World);
 installaBottino(World);
 installaMissioni(World);
+installaAltoLivello(World);

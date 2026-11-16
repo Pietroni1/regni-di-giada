@@ -17,6 +17,10 @@ func connetti(indirizzo: String) -> void:
 	if not url.ends_with("/ws"):
 		url = url.trim_suffix("/") + "/ws"
 	ws = WebSocketPeer.new()
+	# con il buffer predefinito (64 KB) si legge al massimo quel tanto a fotogramma: a pochi fotogrammi al secondo, in una
+	# zona affollata (boss, branchi, effetti) i messaggi restavano in coda per minuti
+	ws.inbound_buffer_size = 4 * 1024 * 1024
+	ws.max_queued_packets = 16384
 	_aperta = false
 	var err := ws.connect_to_url(url)
 	if err != OK:

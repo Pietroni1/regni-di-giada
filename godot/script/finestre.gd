@@ -32,6 +32,7 @@ var scuderia: PanelContainer
 var prove_png := 0
 var scuderia_png := 0
 var _testo_prove: Label
+var _scelta_prove: VBoxContainer
 var _testo_scuderia: Label
 var _compra_cavallo: Button
 var _addestra: Button
@@ -141,6 +142,8 @@ func chiudi_tutto() -> bool:
 	if gioco != null and gioco.mappa != null and gioco.mappa.chiudi():
 		aperta = true
 	if gioco != null and gioco.missioni != null and gioco.missioni.chiudi():
+		aperta = true
+	if gioco != null and gioco.altolivello != null and gioco.altolivello.chiudi():
 		aperta = true
 	negozio_png = 0
 	fabbro_png = 0
@@ -661,25 +664,23 @@ func _crea_dialogo() -> void:
 
 # ------------------------------------------------------------------ Prove del Sigillo e scuderia
 func _crea_prove() -> void:
-	var f := _finestra("Prove del Sigillo", Vector2(560, 180), 440)
+	var f := _finestra("Prove del Sigillo", Vector2(560, 160), 470)
 	prove = f[0]
 	_testo_prove = _etichetta(f[1], "")
-	_testo_prove.custom_minimum_size = Vector2(420, 0)
+	_testo_prove.custom_minimum_size = Vector2(450, 0)
 	var h := HBoxContainer.new()
 	(f[1] as VBoxContainer).add_child(h)
 	_bottone(h, "Ricevi un Sigillo", func() -> void: Rete.manda({"t": "trial", "npc": prove_png, "a": "key"}))
-	_bottone(h, "Apri la Prova", func() -> void:
-		Rete.manda({"t": "trial", "npc": prove_png, "a": "open"})
-		prove.visible = false)
+	# una riga per Prova (Cripta, Forgia...) con il suo pulsante: la riempie _su_prove
+	_scelta_prove = VBoxContainer.new()
+	_scelta_prove.add_theme_constant_override("separation", 6)
+	(f[1] as VBoxContainer).add_child(_scelta_prove)
 
 
 func _su_prove(m: Dictionary) -> void:
 	prove_png = int(m.npc)
-	var D: Dictionary = Dati.gioco.DUNGEON
-	var righe: Array = ["%s — una corsa a tempo (%d minuti) da soli o in gruppo fino a 5." % [D.name, int(D.timeLimit) / 60]]
-	righe.append("Livello minimo: %d" % int(m.get("minLevel", D.minLevel)))
+	var righe: Array = ["Corse a tempo da soli o in gruppo fino a 5: completale in tempo per far salire il Sigillo."]
 	righe.append("Il tuo Sigillo: %s" % ("+%d" % int(m.key) if m.get("key") != null else "nessuno"))
-	righe.append("Miglior prova superata: %s" % ("+%d" % int(m.best) if int(m.get("best", 0)) > 0 else "—"))
 	righe.append("Gruppo: %d%s" % [int(m.get("party", 1)), "" if m.get("leader", true) else "  (solo il capogruppo può aprire)"])
 	righe.append("")
 	righe.append("Modificatori della settimana (dal +3 il primo, dal +6 entrambi):")
@@ -688,6 +689,27 @@ func _su_prove(m: Dictionary) -> void:
 		if not d.is_empty():
 			righe.append("%s  %s — %s" % [d.glyph, d.name, d.desc])
 	_testo_prove.text = "\n".join(PackedStringArray(righe))
+	for c in _scelta_prove.get_children():
+		c.queue_free()
+	var elenco: Array = m.get("prove", [{"id": "cripta", "n": Dati.gioco.DUNGEON.name, "min": Dati.gioco.DUNGEON.minLevel, "tl": Dati.gioco.DUNGEON.timeLimit, "best": m.get("best", 0), "desc": ""}])
+	var lvl := int(gioco.io.get("lvl", 1)) if gioco != null else 1
+	for pr in elenco:
+		_scelta_prove.add_child(HSeparator.new())
+		var t := _etichetta(_scelta_prove, "%s   ·   dal livello %d   ·   %d minuti" % [String(pr.n), int(pr.min), int(pr.tl) / 60])
+		t.add_theme_color_override("font_color", Color(0.95, 0.85, 0.55))
+		if String(pr.get("desc", "")) != "":
+			var dd := _etichetta(_scelta_prove, String(pr.desc))
+			dd.custom_minimum_size = Vector2(450, 0)
+			dd.add_theme_font_size_override("font_size", 12)
+		var riga := HBoxContainer.new()
+		_scelta_prove.add_child(riga)
+		var best := _etichetta(riga, "Migliore superata: %s" % ("+%d" % int(pr.best) if int(pr.get("best", 0)) > 0 else "—"))
+		best.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var id := String(pr.id)
+		var b := _bottone(riga, "Apri" if lvl >= int(pr.min) else "Serve il livello %d" % int(pr.min), func() -> void:
+			Rete.manda({"t": "trial", "npc": prove_png, "a": "open", "p": id})
+			prove.visible = false)
+		b.disabled = lvl < int(pr.min) or m.get("key") == null
 	prove.visible = true
 
 
@@ -826,7 +848,7 @@ I lanci del Mistico (Dardo, Sfera) si fanno anche camminando.
 Spendendo risorsa si riempie la barra della TECNICA SUPREMA.
 
 FINESTRE
-M: mappa grande delle zone  ·  L: diario delle missioni  ·  I: inventario  ·  C: personaggio e punti statistica  ·  K: abilità e Via (dal livello 5)  ·  O: impostazioni  ·  Esc: chiude / menu
+M: mappa grande delle zone  ·  L: diario delle missioni  ·  J: imprese, titoli e boss del mondo  ·  I: inventario  ·  C: personaggio e punti statistica  ·  K: abilità e Via (dal livello 5)  ·  O: impostazioni  ·  Esc: chiude / menu
 Trascina tecniche e pozioni sulla barra rapida; tasto destro su un tasto della barra per svuotarlo.
 Z: raccoglie il bottino  ·  R: sale o scende da cavallo  ·  Invio: chat
 

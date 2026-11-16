@@ -289,6 +289,9 @@ func _draw() -> void:
 	# obiettivi delle missioni (missioni.gd)
 	if gioco.missioni != null:
 		gioco.missioni.disegna_mappa(self)
+	# boss del mondo: dove sono e fra quanto compaiono (altolivello.gd)
+	if gioco.altolivello != null:
+		gioco.altolivello.disegna_mappa(self)
 
 
 ## Punto sullo schermo di un punto del mondo: nel riquadro dei tre regni o nel disco della sua mappa lontana (null se fuori).
