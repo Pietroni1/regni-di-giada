@@ -240,16 +240,22 @@ func _crea_albero(radice: Node3D) -> void:
 
 
 # ------------------------------------------------------------------ animali
-## Animazioni di una sola specie, con i percorsi delle tracce puntati al suo scheletro (animali.glb contiene
-## cinque scheletri e un solo AnimationPlayer: all'importazione i percorsi non sempre indicano quello giusto).
-static func _libreria_animale(specie: String, ap: AnimationPlayer, sk: Skeleton3D) -> AnimationLibrary:
-	if _librerie.has("animale:" + specie):
-		return _librerie["animale:" + specie]
+## Animazioni di una sola specie, con i percorsi delle tracce puntati al suo scheletro (animali.glb e mostri.glb contengono
+## più scheletri e un solo AnimationPlayer: all'importazione i percorsi non sempre indicano quello giusto).
+const AZIONI_ANIMALI := ["fermo", "passo", "corsa", "attacco", "colpito", "morte"]
+
+
+static func _libreria_animale(file: String, specie: String, ap: AnimationPlayer, sk: Skeleton3D) -> AnimationLibrary:
+	var chiave := "animale:%s:%s" % [file, specie]
+	if _librerie.has(chiave):
+		return _librerie[chiave]
 	var lib := AnimationLibrary.new()
 	for nome in ap.get_animation_list():
 		if not String(nome).begins_with(specie + "_"):
 			continue
 		var corta := String(nome).trim_prefix(specie + "_")
+		if not corta in AZIONI_ANIMALI:
+			continue            # «lupo_capo_fermo» non è un'azione di «lupo»
 		var a: Animation = ap.get_animation(nome).duplicate(true)
 		for i in range(a.get_track_count() - 1, -1, -1):
 			var osso := String(a.track_get_path(i).get_concatenated_subnames())
@@ -259,7 +265,7 @@ static func _libreria_animale(specie: String, ap: AnimationPlayer, sk: Skeleton3
 				a.track_set_path(i, NodePath("%s_scheletro/Skeleton3D:%s" % [specie, osso]))
 		a.loop_mode = Animation.LOOP_LINEAR if corta in CICLICHE or corta == "corsa" else Animation.LOOP_NONE
 		lib.add_animation(corta, a)
-	_librerie["animale:" + specie] = lib
+	_librerie[chiave] = lib
 	return lib
 
 
@@ -267,23 +273,33 @@ static func animale(modello: String, tinta: Color, scala := 1.0) -> Personaggio:
 	var specie: String = SPECIE.get(modello, "")
 	if specie.is_empty():
 		return null
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://shader/pelo.gdshader")
+	m.set_shader_parameter("colore", tinta)
+	m.set_shader_parameter("strisce", 1.0 if specie == "tigre" else 0.0)
+	return quadrupede("animali", specie, m, scala)
+
+
+## Quadrupede con lo scheletro degli animali (19 ossa): file = animali o mostri (modelli/<file>.glb), specie = nome
+## dello scheletro nel file, mat = materiale di tutto il corpo (condiviso fra le figure dello stesso tipo).
+static func quadrupede(file: String, specie: String, mat: Material, scala := 1.0) -> Personaggio:
 	var p := Personaggio.new()
-	var radice: Node3D = _scena("animali").instantiate()
+	var radice: Node3D = _scena(file).instantiate()
 	p.add_child(radice)
 	for n in radice.get_children():
-		if n is Node3D and not String(n.name).begins_with(specie) and not n is AnimationPlayer:
+		if n is Node3D and String(n.name) != specie + "_scheletro" and not n is AnimationPlayer:
 			radice.remove_child(n)
 			n.free()
-	p.scheletro = radice.get_node(specie + "_scheletro/Skeleton3D")
+	var sk := radice.get_node_or_null(specie + "_scheletro/Skeleton3D") as Skeleton3D
+	if sk == null:
+		p.free()
+		return null
+	p.scheletro = sk
 	for n in p.scheletro.get_children():
 		if n is MeshInstance3D:
-			var m := ShaderMaterial.new()
-			m.shader = preload("res://shader/pelo.gdshader")
-			m.set_shader_parameter("colore", tinta)
-			m.set_shader_parameter("strisce", 1.0 if specie == "tigre" else 0.0)
-			n.material_override = m
+			n.material_override = mat
 	var sorgente: AnimationPlayer = radice.find_children("*", "AnimationPlayer", true, false)[0]
-	var lib := _libreria_animale(specie, sorgente, p.scheletro)
+	var lib := _libreria_animale(file, specie, sorgente, p.scheletro)
 	radice.remove_child(sorgente)
 	sorgente.free()
 	p.player = AnimationPlayer.new()
@@ -293,7 +309,8 @@ static func animale(modello: String, tinta: Color, scala := 1.0) -> Personaggio:
 	p._lancio = "attacco"
 	p.attacchi = ["attacco"]
 	radice.scale = Vector3.ONE * scala
-	p.altezza = 1.3 * scala
+	var testa := p.scheletro.find_bone("head")
+	p.altezza = (p.scheletro.get_bone_global_rest(testa).origin.y + 0.35) * scala if testa >= 0 else 1.3 * scala
 	p._suona("fermo", 0.0)
 	return p
 
@@ -616,6 +633,7 @@ func colpito() -> void:
 func muori() -> void:
 	if morto:
 		return
+	_segno_elite(false)
 	if _albero != null:
 		_albero.set("parameters/singola/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
 		_albero.set("parameters/vel_base/scale", 1.0)
@@ -634,6 +652,7 @@ func muori() -> void:
 
 func rialza() -> void:
 	morto = false
+	_segno_elite(true)
 	if _albero != null:
 		_stato = "fermo"
 		_albero.set("parameters/base/transition_request", "fermo")
@@ -642,6 +661,13 @@ func rialza() -> void:
 	_blocco = 0.0
 	_base = ""
 	_suona("fermo", 0.2)
+
+
+## L'anello a terra di élite e capi (mostri.gd) si spegne con la morte.
+func _segno_elite(acceso: bool) -> void:
+	var s := get_node_or_null("SegnoElite") as Node3D
+	if s != null:
+		s.visible = acceso
 
 
 # ------------------------------------------------------------------ figure dei mostri senza modello
