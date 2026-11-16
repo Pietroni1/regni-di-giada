@@ -2105,10 +2105,304 @@ def mistico(S, g):
                 colore=(1, 1, 1), spessore=0.004 * u, coscia=0.7, orlo=(0.022 * u, 'bordo', ORO))
 
 
+# ====================================================================== copricapi per classe
+# Richiesta dell'autore: elmi più piccoli e a tema con la classe. Quattro gradi per classe (`capo_<classe>_e<g>`, g = 1-4
+# = `tier` del copricapo): fasce, frontali, diademi e cerchi che lasciano vedere viso e capelli, niente calotte intere.
+# Si adattano al cranio CON la capigliatura corta (quella che il client mette sotto ogni copricapo).
+GIADA = (0.20, 0.85, 0.55)
+RUBINO = (0.95, 0.18, 0.12)
+ZAFFIRO = (0.35, 0.60, 1.0)
+PT = {'head': 1.0}
+
+
+class Testa:
+    """Misure della testa: raggio attorno all'asse a ogni quota, contro pelle e capelli corti. Angolo «fa» in gradi:
+    0 = fronte, ±90 = tempie, 180 = nuca."""
+
+    def __init__(self, S):
+        self.S = S
+        u = S.u
+        bm = S.bm.copy()
+        for o in bpy.data.objects:
+            if o.type == 'MESH' and o.parent is S.arm and o.name.startswith('capo_capelli_corti'):
+                bm.from_mesh(o.data)
+        bm.faces.ensure_lookup_table()
+        self.bvh = BVHTree.FromBMesh(bm)
+        self.pelle = S.bvh
+        h = S.B['head'].head_local
+        self.z_collo = h.z
+        self.z_cima_pelle = max(v.co.z for v in S.corpo.data.vertices)
+        alt = self.z_cima_pelle - self.z_collo
+        self.zf = self.z_collo + alt * 0.71          # metà fronte
+        self.cy = h.y
+        d, f = self._r(self.zf, 90, self.pelle), self._r(self.zf, -90, self.pelle)
+        self.cy = h.y + (d - f) / 2                   # asse al centro del cranio
+        hit = self.bvh.ray_cast(Vector((0, self.cy, self.z_cima_pelle + 1.0)), Vector((0, 0, -1)))[0]
+        self.cima = hit if hit else Vector((0, self.cy, self.z_cima_pelle))
+        self._cache = {}
+
+    def _r(self, z, ang, bvh):
+        a = math.radians(ang)
+        dd = Vector((math.cos(a), math.sin(a), 0))
+        hit = bvh.ray_cast(Vector((0, self.cy, z)) + dd, -dd)[0]
+        u = self.S.u
+        r = Vector((hit.x, hit.y - self.cy, 0)).length if hit else 0.09 * u
+        return max(0.06 * u, min(0.14 * u, r))
+
+    def r(self, fa, z):
+        """Raggio lisciato (orecchie e ciocche non fanno gobbe)."""
+        k = (round(fa / 6), round(z * 400))
+        if k not in self._cache:
+            vals = [self._r(z, k[0] * 6 - 90 + da, self.bvh) for da in (-12, -6, 0, 6, 12)]
+            self._cache[k] = max(sum(vals) / len(vals), vals[2])
+        a, b = math.floor(fa / 6), math.floor(fa / 6) + 1
+        ka, kb = (a, k[1]), (b, k[1])
+        for kk in (ka, kb):
+            if kk not in self._cache:
+                vals = [self._r(z, kk[0] * 6 - 90 + da, self.bvh) for da in (-12, -6, 0, 6, 12)]
+                self._cache[kk] = max(sum(vals) / len(vals), vals[2])
+        t = fa / 6 - a
+        return self._cache[ka] * (1 - t) + self._cache[kb] * t
+
+    def n(self, fa):
+        a = math.radians(fa - 90)
+        return Vector((math.cos(a), math.sin(a), 0))
+
+    def p(self, fa, z, stacco=0.0):
+        return Vector((0, self.cy, z)) + self.n(fa) * (self.r(fa, z) + stacco)
+
+    def z_anello(self, fa, zf, cala):
+        """Quota di un cerchio inclinato: zf sulla fronte, zf - cala sulla nuca."""
+        return zf - cala * (1 - math.cos(math.radians(fa))) / 2
+
+    def anello(self, zf, cala, stacco, fa0=-180, fa1=180, n=40):
+        fas = [fa0 + (fa1 - fa0) * i / (n - (0 if fa1 - fa0 >= 360 else 1)) for i in range(n)]
+        return fas, [self.p(fa, self.z_anello(fa, zf, cala), stacco) for fa in fas], [self.n(fa) for fa in fas]
+
+
+def _fascia_testa(S, T, C, parte, colore, zf, largo, cala=0.03, stacco=0.006, spessore=0.004, fa0=-180, fa1=180, n=40, arco=0.004):
+    u = S.u
+    fas, P, N = T.anello(zf, cala * u, stacco * u, fa0, fa1, n)
+    if fa1 - fa0 >= 360:
+        P.append(P[0]); N.append(N[0])
+    S.striscia(C, parte, P, largo * u, spessore=spessore * u, colore=colore, pesi=PT, proietta=False, normali=N, arco=arco * u)
+
+
+def _cerchio_testa(S, T, C, parte, colore, zf, r, cala=0.03, stacco=0.008, lati=6, n=36):
+    u = S.u
+    fas, P, N = T.anello(zf, cala * u, (stacco + r) * u, -180, 180, n)
+    S.tubo(C, parte, P, r * u, colore, lati=lati, pesi=PT, chiuso=True)
+
+
+def _code(S, T, C, parte, colore, zf, cala, largo=0.03, lungo=0.16, fa=180, apri=0.035, nodo_r=0.016):
+    """Nodo dietro (o di lato) con due code che pendono."""
+    u = S.u
+    b = T.p(fa, T.z_anello(fa, zf, cala * u), 0.012 * u)
+    nn = T.n(fa)
+    lato = Vector((-nn.y, nn.x, 0))
+    S.sfera(C, parte, b, nodo_r * u, colore, pesi=PT, seg=(8, 5), scala=(1.2, 0.8, 1.0))
+    for s in (1, -1):
+        pts = [b, b + nn * 0.02 * u + lato * s * apri * 0.3 * u + Vector((0, 0, -lungo * 0.4 * u)),
+               b + nn * 0.035 * u + lato * s * apri * u + Vector((0, 0, -lungo * u * (1.0 if s > 0 else 0.8)))]
+        pts = [pts[0], (pts[0] + pts[1]) / 2, pts[1], (pts[1] + pts[2]) / 2, pts[2]]
+        S.striscia(C, parte, pts, [largo * k * u for k in (0.6, 0.85, 1.0, 0.95, 0.85)], spessore=0.003 * u, colore=colore, pesi=PT,
+                   proietta=False, normali=[nn] * 5)
+
+
+def _frontale(S, T, C, parte, colore, zb, alto, mezzo=60, stacco=0.012, spessore=0.004, n=15, cala=0.0, gonfia=0.006):
+    """Piastra sulla fronte: arco da -mezzo a +mezzo gradi; alto(fa) = altezza in metri (già × u)."""
+    u = S.u
+    fas = [-mezzo + 2 * mezzo * i / (n - 1) for i in range(n)]
+    righe = []
+    for k, (t, g) in enumerate(((0.0, 0.0), (0.5, gonfia), (1.0, 0.0))):
+        riga = []
+        for fa in fas:
+            z0 = T.z_anello(fa, zb, cala * u)
+            z = z0 + alto(fa) * t
+            riga.append(T.p(fa, z0 + alto(fa) * min(t, 0.6), (stacco + g) * u) + Vector((0, 0, alto(fa) * max(0.0, t - 0.6))) - T.n(fa) * (0.012 * u if t == 1.0 else 0.0))
+        righe.append(riga)
+    S.griglia(C, parte, righe, colore, spessore=spessore * u, pesi=PT, fuori=lambda p: Vector((p.x, p.y - T.cy, 0.02)))
+    return fas
+
+
+def _maschera(S, C, parte, stacco=0.012, bordo='fascia'):
+    u = S.u
+    h0, h1 = S.ossa('head')
+    zmax = h0.z + 0.10 * u
+    S.guscio(C, parte, lambda co: min(zmax - co.z, co.z - (S.z_collo + 0.0 * u), (h0.y + 0.03 * u) - co.y, 0.12 * u - abs(co.x)),
+             stacco * u, (1, 1, 1), seme=(0, -0.5, zmax - 0.04 * u), bordo=(0.004 * u, bordo, (1, 1, 1)), liscia=4)
+
+
+def _pendente(S, T, C, fa, z, lungo, gemma_col, metallo=ORO, nappa_col=None):
+    u = S.u
+    a = T.p(fa, z, 0.014 * u)
+    S.tubo(C, 'bordo', [a, a + Vector((0, 0, -lungo * u))], 0.0025 * u, metallo, lati=4, pesi=PT)
+    S.gemma(C, 'gemma', a + Vector((0, 0, -lungo * u)), 0.011 * u, T.n(fa), gemma_col, pesi=PT)
+    if nappa_col is not None:
+        nappa(S, C, 'cordone', nappa_col, a + Vector((0, 0, -(lungo + 0.012) * u)), 0.07 * u, r=0.011 * u, pesi=PT)
+
+
+def _guan(S, T, C, metallo, gemma_col=None, alto=0.04, r=0.034, spillone=0.10):
+    """Fermacapelli in cima alla testa: piccolo cilindro svasato con uno spillone di traverso."""
+    u = S.u
+    c = T.cima + Vector((0, 0.03 * u, -0.04 * u))
+    righe = []
+    for rr, dz in ((1.0, 0.0), (0.82, 0.35), (0.9, 0.8), (1.12, 1.0), (0.9, 1.02)):
+        righe.append([c + Vector((math.cos(2 * math.pi * i / 12) * r * rr * u, math.sin(2 * math.pi * i / 12) * r * rr * u * 0.8, dz * alto * u)) for i in range(12)])
+    S.griglia(C, 'bordo', righe, metallo, chiusa=True, pesi=PT, fuori=lambda p: Vector((p.x - c.x, p.y - c.y, 0.01)), orli=None)
+    m = c + Vector((0, 0, alto * 0.5 * u))
+    S.tubo(C, 'bordo', [m - Vector((spillone * u, 0, 0)), m + Vector((spillone * u, 0, 0))], 0.004 * u, metallo, lati=5, pesi=PT)
+    for s in (1, -1):
+        S.sfera(C, 'bordo', m + Vector((s * spillone * u, 0, 0)), 0.008 * u, metallo, pesi=PT, seg=(6, 4))
+    if gemma_col is not None:
+        S.gemma(C, 'gemma', c + Vector((0, -r * 0.8 * u, alto * 0.5 * u)), 0.012 * u, (0, -1, 0), gemma_col, pesi=PT)
+
+
+def copricapo(S, T, classe, g):
+    u = S.u
+    C = f'{classe}_e{g}'
+    zf = T.zf
+    AV = Vector((0, -1, 0))
+    if classe == 'lama':
+        # fascia del guerriero → frontale di ferro → frontale con mezzaluna e guanciali → corona da guerra nera e oro
+        if g == 1:
+            _fascia_testa(S, T, C, 'regno', (1, 1, 1), zf, 0.034)
+            _code(S, T, C, 'regno', (1, 1, 1), zf, 0.03, lungo=0.17)
+            placca(S, C, 'piastre', ACCIAIO, T.p(0, zf, 0.011 * u), 0.05 * u, 0.028 * u, AV, SU, PT, spessore=0.005)
+            return
+        met = {2: ACCIAIO, 3: (0.34, 0.36, 0.40), 4: (0.045, 0.045, 0.055)}[g]
+        bo = {2: BRONZO, 3: ORO, 4: ORO}[g]
+        mezzo = {2: 62, 3: 84, 4: 92}[g]
+        picco = {2: 0.030, 3: 0.040, 4: 0.046}[g]
+        alto = lambda fa: (0.034 + picco * max(0.0, 1 - abs(fa) / 34) ** 1.5) * u
+        _fascia_testa(S, T, C, 'cuoio', CUOIO, zf, 0.026, fa0=mezzo - 8, fa1=360 - mezzo + 8, n=28)
+        fas = _frontale(S, T, C, 'piastre', met, zf - 0.017 * u, alto, mezzo=mezzo, cala=0.03)
+        S.tubo(C, 'bordo', [T.p(fa, T.z_anello(fa, zf - 0.019 * u, 0.03 * u), 0.017 * u) for fa in fas], 0.004 * u, bo, lati=5, pesi=PT)
+        for fa in (-mezzo + 6, mezzo - 6):
+            S.borchia(C, 'bordo', T.p(fa, T.z_anello(fa, zf, 0.03 * u), 0.018 * u), 0.008 * u, T.n(fa), colore=bo, pesi=PT)
+        cen = T.p(0, zf + 0.02 * u, 0.02 * u)
+        if g == 2:
+            S.lama(C, 'bordo', cen, cen + Vector((0, 0.012, 0.085)) * u, 0.022 * u, AV, spessore=0.005 * u, colore=bo, pesi=PT)
+        if g >= 3:
+            # mezzaluna: due corni corti che si aprono dalla fronte
+            for s in (1, -1):
+                S.lama(C, 'bordo', cen + Vector((s * 0.008, 0, 0.012)) * u, cen + Vector((s * (0.085 if g == 3 else 0.095), 0.02, 0.062 if g == 3 else 0.075)) * u,
+                       0.036 * u, AV, spessore=0.005 * u, colore=bo, pesi=PT, n=6, forma=lambda t: math.sin(math.pi * (0.25 + 0.75 * t)) ** 0.8)
+            for s in (1, -1):       # guanciali corti davanti alle orecchie
+                fa = s * (mezzo - 10)
+                a = T.p(fa, zf - 0.02 * u, 0.014 * u)
+                S.lama(C, 'piastre', a, T.p(fa * 0.82, zf - 0.105 * u, 0.012 * u), 0.05 * u, T.n(fa), spessore=0.004 * u, colore=met, pesi=PT, n=5,
+                       forma=lambda t: (1 - t * 0.75))
+        if g == 3:
+            S.gemma(C, 'gemma', cen + Vector((0, -0.004, 0.004)) * u, 0.013 * u, AV, RUBINO, pesi=PT)
+        if g == 4:
+            S.gemma(C, 'gemma', cen + Vector((0, -0.004, 0.006)) * u, 0.017 * u, AV, RUBINO, pesi=PT, lati=8)
+            S.lama(C, 'bordo', cen + Vector((0, 0, 0.02)) * u, cen + Vector((0, 0.03, 0.115)) * u, 0.034 * u, AV, spessore=0.005 * u, colore=bo, pesi=PT, n=6,
+                   forma=lambda t: math.sin(math.pi * (0.2 + 0.8 * t)) ** 0.7)
+            for s in (1, -1):       # alette di gru alle tempie, rivolte all'indietro
+                base = T.p(s * 70, zf + 0.005 * u, 0.016 * u)
+                nn = T.n(s * 70)
+                for k in range(3):
+                    d = Vector((s * 0.02, 0.085 + 0.02 * k, 0.075 - 0.038 * k)) * u
+                    S.lama(C, 'bordo', base + Vector((0, 0, -0.012 * k * u)), base + d * (1.15 - 0.12 * k), 0.026 * u, nn, spessore=0.003 * u, colore=bo,
+                           pesi=PT, n=5, forma=lambda t: math.sin(math.pi * (0.2 + 0.8 * t)) ** 0.7)
+    elif classe == 'ombra':
+        # bandana → maschera di stoffa → maschera e placca dentata → maschera, diadema scuro con lama e penne
+        if g == 1:
+            _fascia_testa(S, T, C, 'stoffa2', (1, 1, 1), zf + 0.004 * u, 0.05, cala=0.035)
+            _code(S, T, C, 'stoffa2', (1, 1, 1), zf + 0.004 * u, 0.035, lungo=0.13, fa=150, largo=0.034)
+            return
+        _maschera(S, C, 'stoffa2', stacco=0.014 if g == 4 else 0.012)
+        if g == 2:
+            _fascia_testa(S, T, C, 'regno', (1, 1, 1), zf, 0.022, cala=0.03)
+            _code(S, T, C, 'regno', (1, 1, 1), zf, 0.03, lungo=0.20, fa=165, largo=0.022, apri=0.02, nodo_r=0.011)
+            return
+        met = {3: (0.16, 0.17, 0.20), 4: (0.07, 0.07, 0.085)}[g]
+        bo = {3: ARGENTO, 4: (0.62, 0.62, 0.68)}[g]
+        _fascia_testa(S, T, C, 'cuoio', (0.05, 0.04, 0.045), zf, 0.026, cala=0.03)
+        mezzo = 40 if g == 3 else 58
+        alto = lambda fa: (0.03 + 0.014 * max(0.0, 1 - abs(fa) / 22)) * u
+        fas = _frontale(S, T, C, 'piastre', met, zf - 0.015 * u, alto, mezzo=mezzo, cala=0.03, n=11)
+        cima = [T.p(fa, T.z_anello(fa, zf - 0.015 * u, 0.03 * u) + alto(fa) * 0.6, 0.014 * u) + Vector((0, 0, alto(fa) * 0.4)) for fa in fas[1:-1:2]]
+        denti(S, C, 'bordo', bo, cima, (0, 0, 1), 0.022 * u, 0.016 * u, PT, normale=AV)
+        if g == 4:
+            S.gemma(C, 'gemma', T.p(0, zf + 0.002 * u, 0.02 * u), 0.011 * u, AV, (0.7, 0.25, 1.0), pesi=PT)
+            base = T.p(-48, zf + 0.012 * u, 0.016 * u)      # una sola lama, di lato: l'asimmetria dell'Ombra
+            S.lama(C, 'bordo', base, base + Vector((-0.03, 0.06, 0.15)) * u, 0.032 * u, T.n(-48), spessore=0.004 * u, colore=bo, pesi=PT, n=6,
+                   forma=lambda t: math.sin(math.pi * (0.2 + 0.8 * t)) ** 0.6)
+            pb = T.p(105, zf - 0.02 * u, 0.012 * u)
+            piume(S, C, pb, Vector((0.25, 0.75, 0.3)), 3, 0.15 * u, PT, fuori=T.n(105))
+    elif classe == 'monaco':
+        # corda annodata → giro di grani → cerchio d'oro con disco di giada → cerchio doppio con fiamma e sonagli
+        if g == 1:
+            fas, P, N = T.anello(zf, 0.03 * u, 0.016 * u, -180, 180, 36)
+            cordone(S, C, P, 0.009 * u, pesi=PT, chiuso=True)
+            b = T.p(180, zf - 0.03 * u, 0.02 * u)
+            nodo(S, C, b, 0.028 * u, (0, 1, 0), PT, nappa_lunga=0.09 * u)
+            return
+        if g == 2:
+            fas, P, N = T.anello(zf, 0.03 * u, 0.02 * u, -180, 180, 24)
+            for k, p in enumerate(P):
+                if k % 6:
+                    S.sfera(C, 'grani', p, 0.0145 * u, (0.30, 0.13, 0.05), pesi=PT, seg=(8, 5))
+                else:
+                    S.sfera(C, 'gemma', p, 0.019 * u, GIADA, pesi=PT, seg=(8, 5))
+            return
+        _cerchio_testa(S, T, C, 'bordo', ORO, zf, 0.0075, cala=0.03)
+        cen = T.p(0, zf, 0.02 * u)
+        if g == 3:
+            _disco(S, C, 'bordo', cen, 0.026 * u, AV, ORO, spessore=0.006 * u, pesi=PT)
+            S.gemma(C, 'gemma', cen + AV * 0.006 * u, 0.015 * u, AV, GIADA, pesi=PT, lati=8, alto=0.4)
+        else:
+            _cerchio_testa(S, T, C, 'bordo', ORO, zf + 0.02 * u, 0.005, cala=0.03, stacco=0.006)
+            for dx, h, w in ((0, 0.105, 0.034), (0.03, 0.065, 0.024), (-0.03, 0.065, 0.024)):     # fiamma a tre lingue
+                S.lama(C, 'bordo', cen + Vector((dx, 0, 0.006)) * u, cen + Vector((dx * 1.5, 0.02, h)) * u, w * u, AV, spessore=0.005 * u, colore=ORO,
+                       pesi=PT, n=6, forma=lambda t: math.sin(math.pi * (0.22 + 0.78 * t)) ** 0.7)
+            S.gemma(C, 'gemma', cen + Vector((0, -0.007, 0.012)) * u, 0.016 * u, AV, (1.0, 0.55, 0.12), pesi=PT, lati=8)
+            for s in (1, -1):
+                sonaglio(S, C, T.p(s * 80, zf - 0.012 * u, 0.02 * u), 0.011 * u, PT)
+    elif classe == 'mistico':
+        # nastro con talismano → fermacapelli con spillone → diadema di giada con pendenti → coroncina con stella
+        if g == 1:
+            _fascia_testa(S, T, C, 'fascia', (1, 1, 1), zf, 0.02, cala=0.03)
+            _code(S, T, C, 'fascia', (1, 1, 1), zf, 0.03, lungo=0.20, largo=0.02, apri=0.02, nodo_r=0.01)
+            a = T.p(62, zf - 0.012 * u, 0.012 * u)
+            nn = T.n(62)
+            S.striscia(C, 'carta', [a, a + Vector((0, 0, -0.085 * u)) + nn * 0.006 * u], 0.032 * u, spessore=0.0, colore=(0.93, 0.86, 0.62), pesi=PT,
+                       proietta=False, normali=[nn, nn])
+            return
+        _guan(S, T, C, ARGENTO if g == 2 else ORO, None if g == 2 else (GIADA if g == 3 else ZAFFIRO),
+              alto={2: 0.035, 3: 0.04, 4: 0.05}[g], spillone={2: 0.09, 3: 0.10, 4: 0.115}[g])
+        if g == 2:
+            _fascia_testa(S, T, C, 'regno', (1, 1, 1), zf, 0.016, cala=0.03)
+            return
+        mezzo = 70 if g == 3 else 86
+        fas, P, N = T.anello(zf, 0.03 * u, 0.013 * u, -mezzo, mezzo, 19)
+        S.striscia(C, 'bordo', P, [(0.014 + 0.012 * max(0.0, 1 - abs(fa) / 40)) * u for fa in fas], spessore=0.004 * u, colore=ORO, pesi=PT,
+                   proietta=False, normali=N, arco=0.003 * u)
+        _fascia_testa(S, T, C, 'regno', (1, 1, 1), zf, 0.012, fa0=mezzo - 6, fa1=360 - mezzo + 6, n=26)
+        for fa, w in ((0, 0.03), (-32, 0.02), (32, 0.02)):
+            placca(S, C, 'gemma', GIADA if g == 3 else ZAFFIRO, T.p(fa, T.z_anello(fa, zf, 0.03 * u), 0.017 * u), w * u, w * 0.8 * u, T.n(fa), SU, PT,
+                   spessore=0.005)
+        for s in (1, -1):
+            _pendente(S, T, C, s * (mezzo - 8), zf - 0.012 * u, 0.055 if g == 3 else 0.07, GIADA if g == 3 else ZAFFIRO,
+                      nappa_col=None if g == 3 else (0.55, 0.08, 0.06))
+        if g == 4:
+            cen = T.p(0, zf + 0.03 * u, 0.02 * u)
+            S.gemma(C, 'gemma', cen + Vector((0, 0, 0.03 * u)), 0.017 * u, AV, (0.75, 0.9, 1.0), pesi=PT, lati=8)
+            for k in range(8):      # stella a otto raggi attorno alla gemma
+                a = math.pi / 4 * k
+                d = Vector((math.cos(a), 0.06, math.sin(a)))
+                L = (0.058 if k % 2 == 0 else 0.034) * (1.35 if k == 2 else 1.0)
+                S.lama(C, 'bordo', cen + Vector((0, 0, 0.03 * u)) + d * 0.012 * u, cen + Vector((0, 0, 0.03 * u)) + d * L * u, 0.016 * u, AV,
+                       spessore=0.003 * u, colore=ORO, pesi=PT, n=4, forma=lambda t: 1 - t)
+            S.tubo(C, 'bordo', [T.p(0, zf + 0.008 * u, 0.018 * u), cen + Vector((0, 0, 0.02 * u))], 0.004 * u, ORO, lati=5, pesi=PT)
+
+
 DISEGNI = {'lama': lama, 'ombra': ombra, 'monaco': monaco, 'mistico': mistico}
 
 
-def crea_completi(corpo, arm, H, classi=CLASSI, gradi=('base', 0, 1, 2, 3, 4), donna=False):
+def crea_completi(corpo, arm, H, classi=CLASSI, gradi=('base', 0, 1, 2, 3, 4), donna=False, elmi=True):
     """Costruisce tutti i completi sul corpo; ritorna i nomi dei capi (lama_base, lama_0 ... mistico_4)."""
     S = Sarto(corpo, arm, H, donna)
     for c in classi:
@@ -2116,4 +2410,9 @@ def crea_completi(corpo, arm, H, classi=CLASSI, gradi=('base', 0, 1, 2, 3, 4), d
             continue
         for g in gradi:
             DISEGNI[c](S, g)
+    T = Testa(S)
+    for c in classi:
+        if c in DISEGNI and elmi:
+            for g in (1, 2, 3, 4):
+                copricapo(S, T, c, g)
     return S.oggetti()

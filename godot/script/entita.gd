@@ -242,7 +242,15 @@ func _giocatore() -> Personaggio:
 	else:
 		wear["sandali"] = true          # senza calzari equipaggiati: sandali, non piedi nudi
 	if info.get("h") != null:
-		wear[String(Dati.ITEMS.get(String(info.h), {}).get("aspetto", info.h))] = true
+		# copricapo della classe (fasce, frontali, diademi: tools/blender/completi.py) secondo il grado del pezzo;
+		# sui modelli che non li hanno resta l'elmo uguale per tutti
+		var voce_h: Dictionary = Dati.ITEMS.get(String(info.h), {})
+		var capo_h := "%s_e%d" % [classe, clampi(int(voce_h.get("tier", 1)), 1, 4)]
+		if (Dati.indice.get("modelli", {}).get(modello, {}).get("capi", []) as Array).has(capo_h):
+			wear[capo_h] = {"stoffa": Dati.colore(look.get("robe", 0x555555)), "stoffa2": Dati.colore(look.get("pants", 0x333333)),
+					"fascia": Dati.colore(look.get("trim", 0x8a7a5a)), "regno": regno}
+		else:
+			wear[String(voce_h.get("aspetto", info.h))] = true
 	var tipo_arma := "fists"
 	var grado_arma := 1
 	var arma = info.get("w")

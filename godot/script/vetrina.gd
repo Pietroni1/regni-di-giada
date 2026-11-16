@@ -29,16 +29,24 @@ func _ready() -> void:
 	var colori := {"stoffa": Dati.colore(look.get("robe", 0x555555)), "stoffa2": Dati.colore(look.get("pants", 0x333333)),
 			"fascia": Dati.colore(look.get("trim", 0x8a7a5a)), "regno": regno}
 	var modello := "base_donna" if donna else "base_uomo"
-	var passo := 1.5
+	var passo := float(_arg.get("passo", "1.5"))
 	var yaw := float(_arg.get("yaw", "0"))
 	for i in range(gradi.size()):
 		var g: int = gradi[i]
 		var wear := Entita.completo(classe, g, colori)
 		wear[String(_arg.get("piedi", "sandali"))] = true
+		if _arg.has("elmo"):
+			# --elmo=1: ogni figura porta il copricapo della classe del suo grado (1-4); --elmo=vecchio: gli elmi di prima
+			if String(_arg.elmo) == "vecchio":
+				wear[["cappello_paglia", "elmo_bronzo", "elmo_cornuto", "elmo_drago"][clampi(g, 1, 4) - 1]] = true
+			else:
+				wear["%s_e%d" % [classe, clampi(g, 1, 4)]] = colori
 		var p := Personaggio.umano(modello, wear, ARMI.get(classe, "sword"), clampi(g, 1, 4), Color(0.8, 0.56, 0.4), colori.fascia)
 		var stile := String(look.get("hairStyle", "short"))
 		if donna and stile in ["topknot", "bald"]:
 			stile = "long"
+		if _arg.has("elmo"):
+			stile = "short" if stile != "bald" else "bald"
 		p.metti_testa(stile, Dati.colore(look.get("hair", 0x1a1210)) if look.get("hair") != null else Color(0.1, 0.08, 0.07), colori.stoffa)
 		if _arg.has("up"):
 			# --up=7,9,12,15: un potenziamento per figura (arma e armatura), per provare gli effetti
