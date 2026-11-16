@@ -24,6 +24,7 @@ func _ready() -> void:
 		numeri_danno = c.get_value("comandi", "numeri_danno", numeri_danno)
 		server = c.get_value("accesso", "server", server)
 		utente = c.get_value("accesso", "utente", utente)
+		Tasti.carica(c)
 	applica.call_deferred()
 
 
@@ -36,6 +37,7 @@ func salva() -> void:
 	c.set_value("comandi", "numeri_danno", numeri_danno)
 	c.set_value("accesso", "server", server)
 	c.set_value("accesso", "utente", utente)
+	Tasti.salva(c)
 	c.save(FILE)
 
 

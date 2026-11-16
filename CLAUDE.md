@@ -824,6 +824,43 @@ Loto, un estraneo dello stesso regno e uno straniero, tutti di livello 40. Il se
   basta. Con pezzi +9 Pregiati la difesa sale da 235 a 368 e i danni subiti scendono ancora. **Da sapere per la taratura**:
   con la formula `60 / (60 + difesa)` un difensore del 40 quasi non sente i mostri del 47-48 nel mondo aperto; il
   bisogno del guaritore va misurato nelle Prove a sigillo alto e contro i boss (non fatto).
+## Comodità sociali: scambio, deposito, amici, tasti (fatto)
+Richiesta dell'autore: le comodità di un gruppo di amici. Server in `server/sociale.js` (modulo installato su World come
+`mappe.js`/`missioni.js`; dati in `shared/sociale.js`), client Godot in `godot/script/sociale.gd`, `tasti.gd`, `pannello_tasti.gd`.
+Il client nel browser non ne sa nulla.
+- **Scambio** (`{t:'scambio', a:...}`: `chiedi` id|n, `rispondi` ok, `offri` i n, `togli` k, `tael` n, `conferma` v, `annulla`; il
+  server manda `richiesta`, `stato` con le due colonne e `fine`). Come evita i duplicati: l'oggetto offerto LASCIA la borsa e va nel
+  «pegno» `ch.escrow = { o: [{ it, slot }], tael }` (tael compresi); torna indietro solo se lo scambio si annulla (casella d'origine,
+  se non c'è posto cade a terra solo per lui). Lo scambio riuscito (`scambioEsegui`) è una funzione sincrona che controlla lo spazio
+  di entrambi (`entrano`) e sposta i pegni: un oggetto sta sempre in un solo posto, quindi spostare/usare/buttare/vendere la casella
+  offerta non fa nulla. La conferma vale per la versione `v` dell'offerta e ogni modifica la azzera per tutti e due. Si annulla da
+  solo se uno muore, entra in una Prova o nell'Arena, si allontana oltre 16 m (richiesta entro 10 m) o esce; il pegno è salvato col
+  personaggio e al login (`socialeEntra`) torna nella borsa. Borsa piena: non si conclude, resta aperto. Massimo 8 oggetti per parte.
+- **Deposito**: PNG `magazziniere` (Cassiere Zhou, in ogni villaggio accanto allo Scrivano, `VILLAGE_LAYOUT.npcs`), `acc.deposito` =
+  48 caselle per ACCOUNT (condiviso fra i personaggi). Messaggi `{t:'dep', a: metti|prendi|sposta|ordina, npc, i, s, n}` → `dep`/`stato`.
+  Client: caselle `Finestre.Casella` (sottoclasse `Sociale.CasellaS`), trascinamento (anche tra le caselle del deposito; sopra una
+  casella occupata si scambiano di posto), clic destro (deposita dall'inventario aperto, ritira dal deposito), quantità per le pile.
+- **Amici**: `acc.amici` = nomi di personaggi (per account, massimo 50). `{t:'amico', a: aggiungi|rimuovi}` e `{t:'amici'}` → `amici`
+  (in linea, livello, classe, zona; fuori linea: ultimo livello) aggiornata a ogni entrata/uscita e ogni 4 s a finestra aperta;
+  `amico_on` + riga di sistema quando un amico entra. Sussurri: `/s nome testo`, `/r testo` (e `@nome` di prima); nomi cliccabili in
+  chat (menu: Sussurra, Invita nel gruppo, Scambia, Amici), «Scambia» e «Amico» nel riquadro del bersaglio, tasto **F** (finestra Amici),
+  anche `/amico nome`, `/amici`, `/scambia nome`.
+- **Tasti rimappabili**: `Tasti` (`tasti.gd`: tabella `AZIONI`, `codice`, `azione_di`, `premuto`, `assegna` che scambia i due tasti se
+  uno è occupato, salvataggio in `impostazioni.cfg` sezione `tasti` via `Impostazioni`). `gioco.gd` non usa più `KEY_*` direttamente
+  (restano fissi Esc, F1, F11, frecce). Pagina «Tasti…» nelle impostazioni (`PannelloTasti`). I testi hanno segnaposto `{azione}` e si
+  registrano con `Tasti.registra(controllo, modello)`: titoli delle finestre, aiuto (H), numeri della barra rapida, «Tecnica Suprema [V]».
+- **Extra**: «Ordina» nell'inventario (`{t:'ordina'}`: raggruppa le pile, ordina per tipo/livello/nome/rarità; anche il deposito),
+  «Vendi comuni» nel negozio (`{t:'vendi_comuni', npc}`: equipaggiamento bianco senza potenziamenti né gemme e trofei «Si vende ai
+  mercanti»; non tocca materiali del fabbro, pozioni, gemme), Maiusc+clic su un oggetto dell'inventario lo mostra in chat (`[[3]]` →
+  `⟦json⟧` allegato dal server, nel client «[Nome]» colorato con la descrizione al passaggio del mouse).
+- Prove: `node tools/prove/sociale.mjs [porta]` (71 verifiche: scambio riuscito/annullato/rifiutato, doppia offerta, spostare-usare-
+  buttare con lo scambio aperto, tael, conferma vecchia, conferme azzerate, disconnessione a metà, troppo lontani, borsa piena, limite di
+  8 oggetti, deposito fra due personaggi dello stesso account e da lontano, deposito pieno, amici, sussurri, `/r`, ordinamento, vendita,
+  oggetti in chat, salvataggio e conservazione delle quantità nel database). Copione Godot: `sociale apri amici|tasti|deposito`,
+  `sociale scambia nome`, `sociale offri i [n]`, `sociale tael n`, `sociale conferma`, `sociale aspetta_scambio`, `sociale deposita i`,
+  `sociale tasto azione codice`… (vedi `Sociale.copione`).
+- **Non verificato**: trascinamento col mouse vero (il copione non muove il puntatore), clic sui nomi in chat e passaggio del mouse sugli
+  oggetti collegati, pagina «Tasti…» con la tastiera vera, tasti con layout non QWERTY, scambio tra due client Godot veri.
 
 ## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.

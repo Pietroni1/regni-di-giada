@@ -239,6 +239,7 @@ func _prova_automatica() -> void:
 				# spendi vit|str|dex|int N: spende N punti statistica (per le prove con personaggi alzati con /level)
 				for _k in range(int(p[2])):
 					Rete.manda({"t": "stat", "s": p[1]})
+			"sociale": await gioco.sociale.copione(p)   # scambio, deposito, amici, tasti (sociale.gd)
 			"missione":
 				# missione accetta|consegna id: risponde al dialogo delle missioni aperto («*» = la prima voce del dialogo)
 				var mid := p[2]

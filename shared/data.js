@@ -4,6 +4,7 @@ import { MOBS_MAPPE, NPC_MAPPE } from './mappe.js';
 import { NPC_MISSIONI } from './missioni.js';
 import { MOBS_ALTO, OGGETTI_ALTO, FORGIA } from './altolivello.js';
 export { BOSS_MONDO, BOSS_IDS, PREMI_BOSS, FURIA, ARENA, NEGOZIO_ONORE, TITOLI, IMPRESE, FORGIA } from './altolivello.js';
+import { NPC_SOCIALE } from './sociale.js';
 export { CATENA, INCARICHI, MISSIONI, PNG_INCARICHI, ZONE_MISSIONI, SBLOCCHI } from './missioni.js';
 
 export const MAX_LEVEL = 99;
@@ -647,3 +648,4 @@ Object.assign(ITEMS, OGGETTI_ALTO);
 // Prove del Sigillo disponibili dal Custode (la Cripta e la Forgia): id → definizione con stanze, muri, branchi e boss.
 export const PROVE = { cripta: DUNGEON, forgia: FORGIA };
 
+Object.assign(NPC_ROLES, NPC_SOCIALE);

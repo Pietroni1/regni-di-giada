@@ -176,7 +176,7 @@ func _ready() -> void:
 	suprema.max_value = 100
 	v.add_child(suprema)
 	suprema_txt = _scritta_su(suprema)
-	suprema_txt.text = "Tecnica Suprema  [V]"
+	suprema_txt.text = "Tecnica Suprema  [%s]" % Tasti.nome("suprema")
 	riq_effetti = HBoxContainer.new()
 	riq_effetti.add_theme_constant_override("separation", 3)
 	riq_effetti.custom_minimum_size = Vector2(0, 30)
@@ -514,10 +514,10 @@ func _aggiorna_suprema() -> void:
 	var tot := float(Dati.gioco.SUPREMA.get("cd", 30))
 	suprema.value = 100.0 * clampf(1.0 - manca / tot, 0.0, 1.0)
 	if manca <= 0.0:
-		suprema_txt.text = "TECNICA SUPREMA PRONTA  [V]"
+		suprema_txt.text = "TECNICA SUPREMA PRONTA  [%s]" % Tasti.nome("suprema")
 		suprema.modulate = Color(1, 1, 1).lerp(Color(1.5, 1.35, 0.9), 0.5 + 0.5 * sin(float(gioco.ora()) / 160.0))
 	else:
-		suprema_txt.text = "Tecnica Suprema  [V]  %d s" % int(ceil(manca))
+		suprema_txt.text = "Tecnica Suprema  [%s]  %d s" % [Tasti.nome("suprema"), int(ceil(manca))]
 		suprema.modulate = Color(1, 1, 1)
 
 
@@ -981,8 +981,8 @@ class Tasto:
 			var cb: Color = Hud.RUOLI.get(ruolo, Color.WHITE)
 			draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color(cb.r, cb.g, cb.b, p), false, 3.0)
 			draw_rect(Rect2(3, 3, size.x - 6, size.y - 6), Color(cb.r, cb.g, cb.b, p * 0.18), true)
-		draw_string_outline(f, Vector2(5, 14), str((indice + 1) % 10), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 4, Color(0, 0, 0, 0.9))
-		draw_string(f, Vector2(5, 14), str((indice + 1) % 10), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.9, 0.85))
+		draw_string_outline(f, Vector2(5, 14), Tasti.nome_barra(indice), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 4, Color(0, 0, 0, 0.9))
+		draw_string(f, Vector2(5, 14), Tasti.nome_barra(indice), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.9, 0.85))
 		if Hud.RUOLI.has(ruolo):
 			draw_rect(Rect2(8, size.y - 6, size.x - 16, 3), Hud.RUOLI[ruolo])
 
