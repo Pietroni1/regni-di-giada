@@ -2265,10 +2265,8 @@ export class World {
     const sys = m => this.sys(p, m);
     switch (c) {
       case 'aiuto': case 'help':
-        sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /titolo [id], /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
+        sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /titolo [id], /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo o /s nome testo = sussurro, /r = rispondi, [[3]] = mostra l\'oggetto della casella 3. Amici e scambi: /amico nome, /amici, /scambia nome.');
         if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /vita %, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo, /boss [id qui|via|tra min], /onore n, /stagione [chiudi|punti n], /impresa id');
-        sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo o /s nome testo = sussurro, /r = rispondi, [[3]] = mostra l\'oggetto della casella 3. Amici e scambi: /amico nome, /amici, /scambia nome.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -2276,8 +2274,8 @@ export class World {
       case 'online': return sys(`In linea (${this.players.size}): ${[...this.players].map(q => `${q.name} [${q.lvl}]`).join(', ')}`);
       case 'pos': return sys(`Posizione: ${Math.round(p.x)}, ${Math.round(p.z)}`);
     }
+    if (this.comandoAltoLivello(p, c, a)) return;   // /titolo, e per i GM /boss, /onore, /stagione, /impresa
     if (this.comandoSociale(p, c, a)) return;   // /s /r /amico /amici /scambia (server/sociale.js)
-
     if (!p.gm) return sys('Comando sconosciuto. Scrivi /aiuto');
     switch (c) {
       case 'item': {
