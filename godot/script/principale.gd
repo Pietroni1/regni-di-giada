@@ -233,6 +233,12 @@ func _prova_automatica() -> void:
 			"tecnica": gioco.usa_tecnica(p[1])
 			"mappa": gioco.mappa.apri_chiudi()
 			"diario": gioco.missioni.apri_chiudi()
+			"imprese": gioco.altolivello.apri_imprese()
+			"esci_prova": Rete.manda({"t": "tleave"})
+			"spendi":
+				# spendi vit|str|dex|int N: spende N punti statistica (per le prove con personaggi alzati con /level)
+				for _k in range(int(p[2])):
+					Rete.manda({"t": "stat", "s": p[1]})
 			"missione":
 				# missione accetta|consegna id: risponde al dialogo delle missioni aperto («*» = la prima voce del dialogo)
 				var mid := p[2]
@@ -349,7 +355,7 @@ func _prova_automatica() -> void:
 			"prova":
 				for e: Entita in gioco.ents.values():
 					if e.tipo == "n" and String(e.info.get("role", "")) == "custode":
-						Rete.manda({"t": "trial", "npc": e.id, "a": p[1]})
+						Rete.manda({"t": "trial", "npc": e.id, "a": p[1], "p": p[2] if p.size() > 2 else "cripta"})
 						break
 			"impara": Rete.manda({"t": "skup", "s": p[1]})
 			"cammina": gioco.intento = {"tipo": "muovi", "x": float(p[1]), "z": float(p[2])}

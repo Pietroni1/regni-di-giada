@@ -2,6 +2,8 @@
 // Modifica questo file per bilanciare classi, abilità, oggetti e mostri.
 import { MOBS_MAPPE, NPC_MAPPE } from './mappe.js';
 import { NPC_MISSIONI } from './missioni.js';
+import { MOBS_ALTO, OGGETTI_ALTO, FORGIA } from './altolivello.js';
+export { BOSS_MONDO, BOSS_IDS, PREMI_BOSS, FURIA, ARENA, NEGOZIO_ONORE, TITOLI, IMPRESE, FORGIA } from './altolivello.js';
 export { CATENA, INCARICHI, MISSIONI, PNG_INCARICHI, ZONE_MISSIONI, SBLOCCHI } from './missioni.js';
 
 export const MAX_LEVEL = 99;
@@ -349,7 +351,7 @@ export const ITEMS = {
   tomo_tecnica: { name: 'Tomo della Tecnica', type: 'book', price: 5000, stack: true, glyph: '書', color: '#2a6a4a', desc: "Permette di studiare un'abilità oltre il livello 10 (50% di successo). Si usa dal tasto + nella finestra Abilità." },
   sigillo_fabbro: { name: 'Sigillo del Fabbro', type: 'seal', price: 15000, stack: true, glyph: '印', color: '#8a7a2a', desc: "Se un potenziamento rischioso fallisce, l'oggetto non viene distrutto (da +9 in su scende di un livello). Il sigillo si consuma solo se il potenziamento fallisce." },
   essenza_celeste: { name: 'Essenza Celeste', type: 'material', price: 6000, stack: true, glyph: '霊', color: '#3a8ac0', desc: 'Il fabbro la richiede per i potenziamenti da +10 a +15. La lasciano i boss e gli obelischi più potenti.' },
-  sigillo_prova: { name: 'Sigillo della Prova', type: 'key', price: 0, glyph: '鍵', color: '#a02a2a', tier: 4, desc: 'Apre una Prova del Sigillo nella Cripta delle Mille Lanterne (dal Custode Yun). Completala in tempo per far salire il livello del sigillo.' },
+  sigillo_prova: { name: 'Sigillo della Prova', type: 'key', price: 0, glyph: '鍵', color: '#a02a2a', tier: 4, desc: 'Apre una Prova del Sigillo dal Custode Yun: la Cripta delle Mille Lanterne (dal livello 20) o la Forgia del Drago Addormentato (dal 35). Completala in tempo per far salire il livello del sigillo.' },
   // Modificatori: si trascinano su un'arma o un'armatura
   pietra_affinamento: { name: "Pietra dell'Affinamento", type: 'mod', mod: 'refine', price: 2500, stack: true, glyph: '磨', color: '#5a7a8a', desc: "Trascinala su un oggetto: rilancia i valori dei bonus casuali mantenendone i tipi." },
   pergamena_mutamento: { name: 'Pergamena del Mutamento', type: 'mod', mod: 'reroll', price: 6000, stack: true, glyph: '変', color: '#7a5a2a', desc: "Trascinala su un oggetto: rimescola completamente i bonus casuali (tipi e valori)." },
@@ -566,7 +568,8 @@ export const GUARD_LINES = [
 // ------------------------------------------------------------------ Prove del Sigillo
 // Coordinate locali rispetto all'origine dell'istanza. rooms: rettangoli calpestabili [x1, z1, x2, z2].
 export const DUNGEON = {
-  name: 'Cripta delle Mille Lanterne', trial: 'Prova del Sigillo',
+  id: 'cripta', name: 'Cripta delle Mille Lanterne', trial: 'Prova del Sigillo',
+  desc: "Un labirinto di sale funebri dove le lanterne non si spengono mai. In fondo veglia Shen, il Custode Insonne.",
   minLevel: 20, startKey: 2, timeLimit: 900, deathPenalty: 5, forcesNeeded: 100, maxKey: 30,
   originX: 1200, slotSpacing: 400, boundsMin: [-15, -15], boundsMax: [82, 125],
   spawn: [0, -5],
@@ -626,8 +629,8 @@ export function keyChange(elapsed, limit) {
 }
 
 // Il punto (coordinate locali della cripta) è calpestabile? margin = raggio del personaggio.
-export function dungeonWalkable(lx, lz, margin = 0.5) {
-  for (const [x1, z1, x2, z2] of DUNGEON.rooms) {
+export function dungeonWalkable(lx, lz, margin = 0.5, dg = DUNGEON) {
+  for (const [x1, z1, x2, z2] of dg.rooms) {
     if (lx >= x1 + margin && lx <= x2 - margin && lz >= z1 + margin && lz <= z2 - margin) return true;
   }
   return false;
@@ -637,3 +640,10 @@ export function dungeonWalkable(lx, lz, margin = 0.5) {
 Object.assign(MOBS, MOBS_MAPPE);
 Object.assign(NPC_ROLES, NPC_MAPPE);
 Object.assign(NPC_ROLES, NPC_MISSIONI);
+
+// Contenuto per il livello alto (shared/altolivello.js): boss del mondo, Forgia, pezzi unici e trofei.
+Object.assign(MOBS, MOBS_ALTO);
+Object.assign(ITEMS, OGGETTI_ALTO);
+// Prove del Sigillo disponibili dal Custode (la Cripta e la Forgia): id → definizione con stanze, muri, branchi e boss.
+export const PROVE = { cripta: DUNGEON, forgia: FORGIA };
+

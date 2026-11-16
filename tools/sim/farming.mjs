@@ -38,7 +38,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import WebSocket from 'ws';
-import { CLASSES, VIE, SKILLS, BUFFS, ITEMS, MOBS, PTS_MAX, SUPREMA, supremaOf, expToNext, equipSlotOf } from '../../shared/data.js';
+import { CLASSES, VIE, SKILLS, BUFFS, ITEMS, MOBS, PTS_MAX, SUPREMA, STAT_MAX, supremaOf, expToNext, equipSlotOf } from '../../shared/data.js';
 import { KINGDOMS, CENTER } from '../../shared/world.js';
 
 const QUI = path.dirname(fileURLToPath(import.meta.url));
@@ -112,7 +112,7 @@ process.on('exit', () => { for (const f of figli) try { f.kill(); } catch { /* g
 process.on('SIGINT', () => process.exit(130));
 let portaOccupata = Promise.resolve();   // le porte si scelgono una alla volta, così due prove non prendono la stessa
 
-async function avviaServer(velocita) {
+async function avviaServer(velocita, envExtra = {}) {
   let rilascia;
   const precedente = portaOccupata;
   portaOccupata = new Promise((r) => { rilascia = r; });
@@ -127,7 +127,7 @@ async function avviaServer(velocita) {
     porta = await portaLibera();
     figlio = spawn(process.execPath, args, {
       cwd: RADICE, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, PORT: String(porta), DB_FILE: path.join(dir, 'db.json'), SIM_VELOCITA: String(velocita) },
+      env: { ...process.env, PORT: String(porta), DB_FILE: path.join(dir, 'db.json'), SIM_VELOCITA: String(velocita), ...envExtra },
     });
     figli.add(figlio);
     figlio.stderr.on('data', (d) => { errori += d; });
@@ -328,10 +328,10 @@ class Bot {
   async prepara() {
     const c = CLASSES[this.cls], L = this.livello;
     await this.collega();
-    this.manda({ t: 'register', user: 'admin', pass: 'farming' });
+    this.manda({ t: 'register', user: this.utente || 'admin', pass: 'farming' });   // utente: tools/sim/boss.mjs (più bot nello stesso server)
     await this.attendi('accesso', () => this.autenticato && this.personaggi);
     this.personaggi = null;
-    this.manda({ t: 'create', name: 'Fa' + this.via[0].toUpperCase() + this.via.slice(1) + this.zonaId[0], cls: this.cls, kd: 'fenice', sex: 'm' });
+    this.manda({ t: 'create', name: this.nome || 'Fa' + this.via[0].toUpperCase() + this.via.slice(1) + this.zonaId[0], cls: this.cls, kd: 'fenice', sex: 'm' });
     const lista = await this.attendi('creazione del personaggio', () => this.personaggi && this.personaggi.length && this.personaggi);
     this.manda({ t: 'play', id: lista[0].id });
     await this.attendi('ingresso nel mondo', () => this.id && this.me && this.inv);
@@ -353,18 +353,25 @@ class Bot {
     const prim = c.primary === 'dex' ? 'dex' : c.primary === 'int' ? 'int' : 'str';
     let n = this.me.sp;
     const quotaVit = this.rot.vitalita ?? 1 / 3;
+    // oltre il massimo di un valore (STAT_MAX, dal livello ~45) i punti vanno all'altro, poi a destrezza o forza
+    const st = { ...this.me.st };
     for (let i = 0, vit = 0; i < n; i++) {
-      const inVit = (vit + 1) / (i + 1) <= quotaVit + 1e-9;
-      if (inVit) vit++;
-      this.manda({ t: 'stat', s: inVit ? 'vit' : prim });
+      let k = (vit + 1) / (i + 1) <= quotaVit + 1e-9 ? 'vit' : prim;
+      if (st[k] >= STAT_MAX) k = k === 'vit' ? prim : 'vit';
+      if (st[k] >= STAT_MAX) k = ['dex', 'str', 'int'].find((x) => x !== prim && st[x] < STAT_MAX);
+      if (!k) break;
+      if (k === 'vit') vit++;
+      st[k]++;
+      this.manda({ t: 'stat', s: k });
       if (i % 20 === 19) await this.dormi(450);
     }
     await this.attendi('punti statistica', () => this.me.sp === 0);
     // punti abilità: in parti uguali fra le tecniche con ruolo (e la Suprema)
     const mie = Object.values(SKILLS).filter((s) => s.cls === this.cls && (!s.via || s.via === this.via) && s.lvl <= L && (s.ruolo || s.sup) && !s.finoVia).map((s) => s.id);
     n = this.me.kp;
-    for (let i = 0; i < n && mie.length; i++) { this.manda({ t: 'skup', s: mie[i % mie.length] }); if (i % 20 === 19) await this.dormi(450); }
-    if (mie.length) await this.attendi('punti abilità', () => this.me.kp === 0);
+    const spesi = Math.min(n, mie.length * 9);   // oltre il livello 10 servono i Tomi: i punti in più restano da parte
+    for (let i = 0; i < spesi && mie.length; i++) { this.manda({ t: 'skup', s: mie[i % mie.length] }); if (i % 20 === 19) await this.dormi(450); }
+    if (mie.length) await this.attendi('punti abilità', () => this.me.kp === n - spesi);
     // scorta di ginseng (il più forte che si trova a questo livello)
     const gin = L >= 20 ? 'ginseng_g' : L >= 8 ? 'ginseng_m' : 'ginseng_p';
     this.chat(`/item ${gin} 99 0 0`);
@@ -625,4 +632,7 @@ async function main() {
   if (opt.json) fs.writeFileSync(opt.json, JSON.stringify({ opzioni: opt, righe, risultati }, null, 1));
   process.exit(0);
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+// usato anche come modulo da tools/sim/boss.mjs (bot e server di prova)
+export { Bot, avviaServer, ROTAZIONI, ZONE };
+export function usaPorte(da, a) { PORTE = [da, a || da]; }
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main().catch((e) => { console.error(e); process.exit(1); });

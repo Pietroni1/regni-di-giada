@@ -3,6 +3,7 @@
 import { NPC_ROLES } from '../shared/data.js';
 import { KINGDOMS, villageSpawn, mulberry32 } from '../shared/world.js';
 import { MAPPE, MAPPE_IDS, mappaAt, limitaMappa, arrivoMappa, portaArena, zonaSicuraMappa } from '../shared/mappe.js';
+import { BOSS_MONDO } from '../shared/altolivello.js';
 
 const RINASCITA_ARENA_MS = 5000;   // nell'arena si rinasce da soli dopo 5 secondi
 const CLASSIFICA_RIGHE = 10;
@@ -28,6 +29,8 @@ const metodi = {
       const presi = [];
       const libero = (x, z, dmin) => presi.every(([px, pz]) => Math.hypot(x - px, z - pz) >= dmin);
       for (const [lx, lz] of m.obelischi.map(o => [o[1], o[2]])) presi.push([lx, lz]);
+      // l'arena del boss del mondo di questa mappa (server/altolivello.js) resta sgombra
+      for (const b of Object.values(BOSS_MONDO)) if (b.luogo === id) { presi.push([b.x, b.z]); presi.push([b.x + 14, b.z]); presi.push([b.x - 14, b.z]); }
       for (const [tipo, gruppi, [nmin, nmax], dmin, dmax] of m.branchi) {
         let fatti = 0, tentativi = 0;
         while (fatti < gruppi && tentativi++ < 600) {
@@ -123,6 +126,7 @@ const metodi = {
       ka.u++; ka.s++; ka.best = Math.max(ka.best, ka.s);
       this.missioniEvento(killer, 'arena');
     }
+    this.puntiArena(ka ? killer : null, vittima, ka ? ka.s : 0, serieSpezzata);   // stagione e onore (server/altolivello.js)
     const nome = (q) => `${q.name} (${KINGDOMS[q.kingdom] ? KINGDOMS[q.kingdom].short : '?'})`;
     let testo = ka ? `${nome(killer)} ha abbattuto ${nome(vittima)}` : `${nome(vittima)} è caduto`;
     if (ka && ka.s >= 3) testo += ` — ${ka.s} di fila!`;
