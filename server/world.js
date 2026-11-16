@@ -19,6 +19,7 @@ const VIEW = 105;
 const SEP_BRANCHI = 22;          // metri minimi fra due branchi
 const RAGGIO_BRANCO = 10;        // metri entro cui i compagni accorrono se ne colpisci uno
 const RAGGIO_DISPERSIONE = 3.4;  // raggio entro cui compaiono i mostri di un branco
+const RIENTRO_MS = 5 * 60000;    // chi si disconnette ritrova gruppo e Prova se rientra entro 5 minuti
 const NOW = () => Date.now();
 const rand = (a, b) => a + Math.random() * (b - a);
 const randi = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
@@ -131,6 +132,7 @@ export class World {
     this.spawners = [];
     this.nextId = 1;
     this.parties = new Map();
+    this.assenti = new Map();   // nome (minuscolo) → { party, inst, until }: disconnessi che possono rientrare
     this.instances = new Map();
     this.instSlots = [];
     this.nextInst = 1;
@@ -331,17 +333,18 @@ export class World {
     });
   }
 
-  spawnDrop(id, n, x, z, owner, source = 'mob') {
+  // solo: il bottino è soltanto di owner, non del suo gruppo (oggetti delle missioni «raccogli»)
+  spawnDrop(id, n, x, z, owner, source = 'mob', solo = false) {
     const it = ITEMS[id];
-    if (it.stack) return this.dropInstance({ id, n, up: 0 }, x, z, owner);
-    for (let i = 0; i < n; i++) this.dropInstance(makeEquip(id, rollRarity(source)), x, z, owner);
+    if (it.stack) return this.dropInstance({ id, n, up: 0 }, x, z, owner, solo);
+    for (let i = 0; i < n; i++) this.dropInstance(makeEquip(id, rollRarity(source)), x, z, owner, solo);
   }
 
-  dropInstance(inst, x, z, owner) {
+  dropInstance(inst, x, z, owner, solo = false) {
     const op = owner ? this.ents.get(owner) : null;
     return this.add({
       kind: 'drop', item: inst, x: x + rand(-1.8, 1.8), z: z + rand(-1.8, 1.8),
-      owner: owner || 0, ownerParty: (op && op.party) || 0, ownerUntil: NOW() + 20000, expire: NOW() + 120000,
+      owner: owner || 0, ownerParty: (!solo && op && op.party) || 0, ownerUntil: NOW() + (solo ? 60000 : 20000), expire: NOW() + 120000,
     });
   }
 
@@ -376,17 +379,51 @@ export class World {
     });
     this.broadcast({ t: 'sys', m: `${p.name} (${KINGDOMS[p.kingdom].short}) è entrato nel mondo.` });
     this.missioniEntra(p);   // missioni (server/missioni.js): stato, incarichi del giorno, segni sui PNG
+    this.rientra(p);         // disconnesso da poco: torna nel gruppo e nella Prova
     return p;
   }
 
   removePlayer(p) {
-    this.leaveTrial(p, true);
-    this.leaveParty(p, true);
+    // chi si disconnette può rientrare entro RIENTRO_MS nel suo gruppo e nella Prova in corso (rientra, in addPlayer)
+    const assente = { party: p.party || 0, inst: p.inst || 0, until: NOW() + RIENTRO_MS };
+    this.leaveTrial(p, true, true);
+    this.leaveParty(p, true, true);
+    if (assente.party || assente.inst) this.assenti.set(p.name.toLowerCase(), assente);
     p.online = false;
     this.saveChar(p);
     this.remove(p);
     this.players.delete(p);
     this.broadcast({ t: 'sys', m: `${p.name} ha lasciato il mondo.` });
+    // lo stesso personaggio è già rientrato da un'altra sessione (la vecchia si chiude dopo): torna subito al suo posto
+    const altro = [...this.players].find(q => q.name === p.name);
+    if (altro) this.rientra(altro);
+  }
+
+  // Rientro dopo una disconnessione: di nuovo nel gruppo (se esiste ancora e ha posto) e nella Prova non ancora finita.
+  rientra(p) {
+    const nome = p.name.toLowerCase(), a = this.assenti.get(nome);
+    if (!a) return;
+    this.assenti.delete(nome);
+    const party = a.party ? this.parties.get(a.party) : null;
+    if (party && party.assenti) party.assenti.delete(nome);
+    if (NOW() > a.until) return;
+    if (party && !p.party && party.members.length < 5) {
+      party.members.push(p.id);
+      p.party = party.id;
+      party.last = '';
+      this.partySys(party, `${p.name} è tornato nel gruppo.`);
+    }
+    const inst = a.inst ? this.instances.get(a.inst) : null;
+    if (inst && !inst.done && !p.inst) {
+      inst.members.add(p.id);
+      p.inst = inst.id;
+      if (inst.ownerName === p.name) inst.owner = p.id;
+      if (p.mounted) { p.mounted = false; this.recalc(p); p.vis++; }
+      p.known.clear(); p.knownVis.clear();
+      this.teleport(p, inst.ox + DUNGEON.spawn[0], inst.oz + DUNGEON.spawn[1]);
+      this.send(p, { t: 'dg_start', ox: inst.ox, oz: inst.oz, kl: inst.kl, affixes: inst.affixes });
+      this.sendTrialState(inst);
+    }
   }
 
   saveChar(p) {
@@ -518,7 +555,8 @@ export class World {
       atk: p.atk, matk: p.matk, def: p.def, crit: r1(p.crit), ev: r1(p.evade), aspd: p.aspd, spd: r2(p.speed), range: p.range,
       haste: r1(p.haste), gcd: this.gcdMs(p), dmgPct: r1(p.dmgPct),
       sp: ch.statPts, kp: ch.skillPts, st: ch.stats, via: ch.via, sk: ch.skills, tael: ch.tael, qb: ch.qb,
-      buffs: p.buffs.map(b => ({ b: b.id, ms: b.until - t })), dead: p.dead ? 1 : 0,
+      // l'aura di un compagno dura 2,5 s ma si rinnova senza avvisare il client: la si manda come le auree (senza scadenza)
+      buffs: p.buffs.map(b => ({ b: b.id, ms: b.compagno ? 1e11 : b.until - t })), dead: p.dead ? 1 : 0,
       g: p.gear, cm: r2(p.critMult),
       mounted: p.mounted ? 1 : 0, horse: p.ch.horse ? { lvl: p.ch.horse.lvl, exp: Math.floor(p.ch.horse.exp), need: HORSE.need(p.ch.horse.lvl) } : null,
     };
@@ -534,11 +572,23 @@ export class World {
         id: q.id, n: q.name, cls: q.cls, lvl: q.lvl, hp: Math.round(q.hp), mhp: q.maxHp, res: Math.floor(q.res), rmax: q.rmax, rt: q.rtype,
         dead: q.dead ? 1 : 0, x: r1(q.x), z: r1(q.z), via: q.ch.via,
       })),
+      // disconnessi che possono ancora rientrare
+      off: party.assenti && party.assenti.size ? [...party.assenti.values()].map(a => ({ n: a.n, cls: a.cls, lvl: a.lvl })) : undefined,
     };
   }
 
+  // Toglie i disconnessi che non sono rientrati in tempo; un gruppo rimasto con un solo membro (e nessuno da aspettare) si scioglie.
+  controllaAssenti(party) {
+    if (party.assenti) for (const [k, a] of party.assenti) if (NOW() > a.until) { party.assenti.delete(k); party.last = ''; }
+    if (party.members.length > 1 || (party.members.length && party.assenti && party.assenti.size)) return false;
+    for (const id of party.members) { const q = this.ents.get(id); if (q) { q.party = null; this.send(q, { t: 'party', none: 1 }); this.sys(q, 'Il gruppo si è sciolto.'); } }
+    this.parties.delete(party.id);
+    return true;
+  }
+
   netTick() {
-    for (const party of this.parties.values()) {
+    for (const party of [...this.parties.values()]) {
+      if (party.assenti && party.assenti.size && this.controllaAssenti(party)) continue;
       const st = this.partyState(party);
       const key = JSON.stringify(st);
       if (key === party.last) continue;
@@ -733,6 +783,18 @@ export class World {
       if (best) { tgt = best; m.target = best.id; if (!m.chiamato) { m.chiamato = true; this.chiamaBranco(m, best); } }
     }
     if (!tgt && m.chiamato && !m.aggro.size) m.chiamato = false;   // a riposo: potrà chiamare di nuovo il branco
+    // minaccia: ogni mezzo secondo passa a chi ha più del 110% della minaccia del bersaglio attuale (così il
+    // difensore, minaccia ×4, si riprende i mostri anche senza provocarli)
+    if (tgt && m.aggro.size > 1 && t >= (m.minacciaAt || 0)) {
+      m.minacciaAt = t + 500;
+      let bv = (m.aggro.get(tgt.id) || 0) * 1.1;
+      for (const [pid, v] of m.aggro) {
+        if (v <= bv || pid === tgt.id) continue;
+        const q = this.ents.get(pid);
+        if (this.validMobTarget(q) && dist(q, m) <= 45) { tgt = q; bv = v; }
+      }
+      m.target = tgt.id;
+    }
     if (tgt) {
       m.lastActive = t;
       const leash = m.inst ? 9999 : m.temp ? 70 : (d.boss ? 42 : 34);
@@ -921,11 +983,13 @@ export class World {
   stun(e, sec) {
     if (e.kind === 'player') {
       // rendimenti decrescenti: entro 15 s il secondo stordimento dura la metà, il terzo un quarto, poi immune
+      // (la finestra dei 15 s riparte solo dagli stordimenti andati a segno: un tentativo respinto non la rinnova,
+      // altrimenti in uno scontro lungo con più storditori l'immunità non finirebbe mai)
       const t0 = NOW();
-      e.drN = t0 < (e.drUntil || 0) ? (e.drN || 0) + 1 : 0;
-      e.drUntil = t0 + 15000;
-      sec *= [1, 0.5, 0.25][e.drN] || 0;
+      const n = t0 < (e.drUntil || 0) ? (e.drN || 0) + 1 : 0;
+      sec *= [1, 0.5, 0.25][n] || 0;
       if (sec <= 0) return;
+      e.drN = n; e.drUntil = t0 + 15000;
     }
     const until = NOW() + sec * 1000;
     if (e.d && (e.d.boss || e.d.stone || e.d.dummy)) return;
@@ -1026,7 +1090,10 @@ export class World {
     for (const [id, ch, mn = 1, mx = 1] of d.drops || []) {
       if (Math.random() < ch * dmul) this.spawnDrop(id, randi(mn, mx), m.x, m.z, top ? top.id : 0, source);
     }
-    this.extraDrops(m, top);
+    // in gruppo i pezzi della classe vanno a turno ai compagni vicini (non sempre a chi fa più danni)
+    const vicini = groupOf(top), party = top && top.party ? this.parties.get(top.party) : null;
+    const perChi = party && vicini.length > 1 ? vicini[(party.turnoBottino = (party.turnoBottino || 0) + 1) % vicini.length] : top;
+    this.extraDrops(m, top, perChi);
     if (m.spawner) this.programmaRinascita(m);
     if (d.boss) this.broadcast({ t: 'notice', m: `${top ? top.name : 'Un eroe'} ha sconfitto ${d.name}!` });
     m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = [];
@@ -1611,6 +1678,12 @@ export class World {
     const t = NOW(), chi = new Set();
     if (killer && killer.kind === 'player') chi.add(killer);
     for (const pid of m.aggro.keys()) { const q = this.ents.get(pid); if (q && q.kind === 'player') chi.add(q); }
+    // anche i compagni di gruppo vicini (il guaritore che cura e non colpisce): in serie si corre più veloci e il
+    // gruppo deve restare insieme
+    for (const q of [...chi]) {
+      const party = q.party ? this.parties.get(q.party) : null;
+      if (party) for (const id of party.members) { const c = this.ents.get(id); if (c && c.kind === 'player') chi.add(c); }
+    }
     for (const q of chi) {
       if (q.dead || !q.online || dist(q, m) > 40) continue;
       q.serie = t <= q.serieUntil ? q.serie + 1 : 1;
@@ -1712,7 +1785,8 @@ export class World {
   /** Aura di classe: effetto senza scadenza (BUFFS[..].aura); id nullo la spegne. Chi è in vista lo sa da `au` nelle info
    *  e dall'effetto `aura`; con `raggio` i compagni di gruppo vicini la ricevono finché restano nel raggio (tickAure). */
   mettiAura(p, id, lvl = 1, raggio = 0) {
-    p.buffs = p.buffs.filter(b => !b.aura);
+    // via la propria aura e la copia della stessa aura ricevuta da un compagno (non si sommano)
+    p.buffs = p.buffs.filter(b => !b.aura && !(id && b.id === id));
     p.aura = id || null;
     p.auraLvl = lvl; p.auraRaggio = raggio;
     if (id) {
@@ -1737,7 +1811,7 @@ export class World {
       for (const k in def.stats) stats[k] = Math.round(skillVal(def.stats[k], p.auraLvl) * 10) / 10;
       const nuovo = !q.buffs.some(b => b.id === p.aura);
       q.buffs = q.buffs.filter(b => b.id !== p.aura);
-      q.buffs.push({ id: p.aura, stats, until: t + 2500 });
+      q.buffs.push({ id: p.aura, stats, until: t + 2500, compagno: p.id });   // rinnovata ogni secondo finché si resta nel raggio
       if (nuovo) { this.recalc(q); q.selfDirty = true; }
     }
   }
@@ -1814,7 +1888,7 @@ export class World {
     const ox = DUNGEON.originX + slot * DUNGEON.slotSpacing, oz = 0;
     const kl = key.kl || DUNGEON.startKey;
     const inst = {
-      id: this.nextInst++, slot, ox, oz, kl, affixes: activeAffixes(kl), members: new Set(members.map(q => q.id)), owner: p.id, key,
+      id: this.nextInst++, slot, ox, oz, kl, affixes: activeAffixes(kl), members: new Set(members.map(q => q.id)), owner: p.id, ownerName: p.name, key,
       players: members.length, start: NOW(), deaths: 0, forces: 0, bossDead: false, bossId: 0, done: false, result: null,
       mobs: new Set(), hazards: [], timers: [], closeAt: 0, lastSend: 0, overtime: false,
     };
@@ -2005,13 +2079,15 @@ export class World {
     if (inst.closeAt && t >= inst.closeAt) this.closeTrial(inst);
   }
 
-  leaveTrial(p, silent) {
+  // disconnesso: chi cade dalla rete non abbassa il sigillo (può rientrare, vedi rientra); se la prova si chiude
+  // incompiuta senza più nessuno dentro, il sigillo scende in closeTrial
+  leaveTrial(p, silent, disconnesso = false) {
     if (!p.inst) return;
     const inst = this.instances.get(p.inst);
     p.inst = null;
     if (inst) {
       inst.members.delete(p.id);
-      if (!inst.done && p.id === inst.owner && inst.key) {
+      if (!inst.done && p.id === inst.owner && inst.key && !disconnesso) {
         inst.key.kl = Math.max(DUNGEON.startKey, inst.kl - 1);
         p.invDirty = true;
         inst.key = null;
@@ -2030,6 +2106,12 @@ export class World {
 
   closeTrial(inst) {
     for (const q of this.instMembers(inst)) this.leaveTrial(q);
+    if (!inst.done && inst.key) {   // chiusa incompiuta (il capo si era disconnesso): il sigillo scende come per un abbandono
+      inst.key.kl = Math.max(DUNGEON.startKey, inst.kl - 1);
+      inst.key = null;
+      const capo = this.ents.get(inst.owner);
+      if (capo) capo.invDirty = true;
+    }
     for (const id of inst.mobs) { const m = this.ents.get(id); if (m) this.remove(m); }
     for (const e of [...this.ents.values()]) {
       if (e.kind === 'mob' && e.inst === inst.id) this.remove(e);
@@ -2082,21 +2164,22 @@ export class World {
     this.partySys(party, `${q.name} si è unito al gruppo.`);
   }
 
-  leaveParty(p, silent) {
+  // disconnesso: il posto resta tenuto per RIENTRO_MS (party.assenti) e il gruppo non si scioglie nel frattempo
+  leaveParty(p, silent, disconnesso = false) {
     const party = this.partyOf(p);
     if (!party) return;
     party.members = party.members.filter(id => id !== p.id);
     p.party = null;
     this.send(p, { t: 'party', none: 1 });
     if (!silent) this.sys(p, 'Hai lasciato il gruppo.');
-    if (party.members.length <= 1) {
-      for (const id of party.members) { const q = this.ents.get(id); if (q) { q.party = null; this.send(q, { t: 'party', none: 1 }); this.sys(q, 'Il gruppo si è sciolto.'); } }
-      this.parties.delete(party.id);
-      return;
+    if (disconnesso) {
+      party.assenti = party.assenti || new Map();
+      party.assenti.set(p.name.toLowerCase(), { n: p.name, cls: p.cls, lvl: p.lvl, until: NOW() + RIENTRO_MS });
     }
+    if (this.controllaAssenti(party)) return;
     if (party.leader === p.id) party.leader = party.members[0];
     party.last = '';
-    this.partySys(party, `${p.name} ha lasciato il gruppo.`);
+    this.partySys(party, disconnesso ? `${p.name} si è disconnesso: se rientra entro 5 minuti torna nel gruppo.` : `${p.name} ha lasciato il gruppo.`);
   }
 
   onPartyKick(p, id) {
@@ -2146,7 +2229,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /vita %, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -2196,6 +2279,13 @@ export class World {
       }
       case 'heal': p.hp = p.maxHp; if (p.rtype !== 'ira') p.res = p.rmax; p.selfDirty = true; this.touch(p); return;
       case 'risorsa': p.res = p.rmax; p.selfDirty = true; return;
+      case 'vita': {                                                             // per le prove: /vita % (0 = cadi)
+        const v = clamp(parseFloat(a[0]), 0, 100);
+        if (!Number.isFinite(v) || p.dead) return;
+        if (v <= 0) return this.playerDie(p, { kind: 'env', id: 0, name: 'GM' });
+        p.hp = Math.max(1, Math.round(p.maxHp * v / 100)); p.resDirty = true; this.touch(p);
+        return;
+      }
       case 'abilita': {                                                          // per le prove: /abilita id livello
         const sk = SKILLS[a[0]];
         if (!sk || sk.cls !== p.cls) return sys('Abilità inesistente o di un\'altra classe.');

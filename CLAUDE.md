@@ -673,10 +673,50 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
 - Revisione del server (controllore): corretti viaggio con mappa inesistente (faceva cadere il server; ora `Object.hasOwn`
   e try/catch attorno a `world.handle`), sostegno dalle nicchie dell'arena (`alleato`), finale della Via nella barra al
   login (`autoQuickbar` in `addPlayer`), veleni e ondate azzerati da `viaggia` e alla morte, `interrompi` con `canAttack`.
-  Lasciati così, da decidere: l'arena resta PvP anche con `cfg.pvp` spento; in PvP un tentativo di stordimento respinto
-  rinnova la finestra di 15 s (immunità continua).
+  Deciso: l'arena resta PvP anche con `cfg.pvp` spento (ci si entra apposta dall'Araldo; `cfg.pvp` vale per il mondo
+  aperto). Corretto: un tentativo di stordimento respinto in PvP non rinnova più la finestra di 15 s (prima l'immunità
+  con più storditori non finiva mai); la finestra riparte solo dagli stordimenti andati a segno.
 - Nota per l'orchestrazione con agenti: mai `pkill -f "node server/index.js"` (uccide i server degli altri agenti):
   chiudere solo per porta, `kill $(lsof -ti tcp:PORTA)`.
+
+## Gioco in gruppo (prova con bot)
+L'autore gioca con 2-3 amici: `node tools/prove/gruppo.mjs [porta]` (65 verifiche, ~6 min; `--solo gruppo,auree,cure,
+difensore,serie,bottino,missioni,prova,arena,disconnessione`) con difensore Montagna, guaritrice Benedizione, Monaco del
+Loto, un estraneo dello stesso regno e uno straniero, tutti di livello 40. Il server di prova dà il GM agli account in
+`GM_ACCOUNTS` (variabile d'ambiente, non va in `config.json`); comando GM nuovo `/vita %` (0 = cadi).
+- Difetti trovati e corretti: (1) la minaccia non contava: un mostro restava su chi l'aveva preso per primo finché non
+  moriva o veniva provocato (la «minaccia ×4» della Montagna non serviva) → `updateMob` ogni 0,5 s passa a chi ha più del
+  110% della minaccia del bersaglio; (2) la Serie toccava solo chi aveva colpito: il guaritore restava indietro senza la
+  corsa in più → valgono anche i compagni di gruppo entro 40 m; (3) i pezzi della classe cadevano quasi sempre per chi fa
+  più danni → in gruppo la classe va a turno fra i compagni vicini (`extraDrops(m, top, perChi)`), il bottino resta del
+  gruppo; (4) l'oggetto delle missioni «raccogli» caduto per un compagno lo poteva raccogliere chiunque del gruppo (e
+  contava per lui) → `spawnDrop(..., solo)` solo per chi ha la missione (per 60 s); (5) una disconnessione toglieva dal
+  gruppo (sciogliendo quello di due) e dalla Prova, e se era il capo il sigillo scendeva → `removePlayer` lascia il posto
+  per 5 minuti (`assenti`, `rientra` in `addPlayer`): si rientra nel gruppo e nella Prova non finita; il sigillo scende
+  solo se la Prova si chiude incompiuta; nel riquadro del gruppo i disconnessi compaiono in grigio (`off` nel messaggio
+  `party`); (6) stordimenti in PvP (vedi sopra); (7) la propria aura e la stessa aura ricevuta da un compagno si sommavano
+  per 2,5 s (`mettiAura`); (8) l'icona dell'aura ricevuta da un compagno spariva dopo 2,5 s nel client (l'effetto si
+  rinnova ogni secondo senza un nuovo `me`) → mandata senza scadenza come le auree; (9) client Godot: il riquadro del
+  bersaglio offriva «Invita nel gruppo» anche sui compagni e a chi non è capogruppo → solo se si può invitare.
+- Client Godot con due bot accanto (foto con il copione): riquadri dei compagni con vita e risorsa, aura degli Astri e del
+  Drago dei compagni, tecniche del monaco sul fantoccio, riquadro e targhetta dell'alleato selezionato, cura ricevuta.
+  Copione nuovo: `accetta` aspetta l'invito, `finche_gruppo N`, `finche_vita < 50`, `finche_cura`, `seleziona Nome`.
+- Verificato e funzionante: inviti, capogruppo, uscita, espulsione; auree ai compagni nel raggio e non agli estranei,
+  `au` per chi arriva, spegnimento e morte; cure sull'alleato scelto, sul più ferito, Grazia, Risonanza che cura il gruppo,
+  Scudo di Giada, maestria del Loto (il `chainHeal` del Loto non esiste più dalla fase 4), niente cure a un altro regno;
+  Radici della Montagna su élite e branco; Occasione di ciascuno; esperienza (40% a testa in tre) e tael divisi; missioni
+  dei compagni entro 80 m; Prova del Sigillo in tre con una morte, un rientro e le ricompense a tutti; arena.
+- Lasciati: le cure non generano minaccia (i mostri non si girano sul guaritore); chi viene espulso dal gruppo resta
+  nella Prova; il compagno lontano più di 80 m non prende esperienza né missioni.
+- Misura della tenuta (`--misura [--secondi 60] [--ripeti N] [--senza-guaritore] [--elite …] [--branco …] [--equip
+  up,rarità]`): difensore e guaritrice di livello 40 con pezzi del 40 comuni +0, contro un Campione d'Arenaria (élite
+  48) e branchi di 5 Guerrieri d'Arenaria (47) rimessi appena cadono, 60 s (2 prove): ~100 colpi ricevuti, danni in
+  arrivo 26-32 al secondo (meno dell'1% della vita di 3445 al secondo), tutti assorbiti dallo Scudo di Giada; cure
+  effettive 0-2 al secondo (non c'è niente da curare), vita minima 95-100%, nessuna morte; il difensore infligge 615-636
+  danni al secondo e abbatte 8 branchi al minuto. Senza guaritore: 33 danni al secondo, vita minima 88%, la Pelle di Pietra
+  basta. Con pezzi +9 Pregiati la difesa sale da 235 a 368 e i danni subiti scendono ancora. **Da sapere per la taratura**:
+  con la formula `60 / (60 + difesa)` un difensore del 40 quasi non sente i mostri del 47-48 nel mondo aperto; il
+  bisogno del guaritore va misurato nelle Prove a sigillo alto e contro i boss (non fatto).
 
 ## Altri passi grafici in sospeso (client nel browser)
 - Fatto: occlusione ambientale (GTAO, solo qualità Alta) e correzione colore finale (`GradeShader`) in `post.js`.

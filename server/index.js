@@ -25,6 +25,8 @@ const DEFAULT_CONFIG = {
 const cfg = { ...DEFAULT_CONFIG, ...(fs.existsSync(CONFIG_FILE) ? JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) : {}) };
 cfg.rates = { ...DEFAULT_CONFIG.rates, ...cfg.rates };
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : cfg.port;
+// account GM in più solo per i server di prova (tools/prove): non finiscono in config.json
+const GM_PROVE = String(process.env.GM_ACCOUNTS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 const saveConfig = () => fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2) + '\n');
 if (!fs.existsSync(CONFIG_FILE)) saveConfig();
 
@@ -105,7 +107,7 @@ wss.on('connection', (ws) => {
       if (prev && prev !== sess) { prev.send({ t: 'kicked', m: 'Il tuo account è stato aperto da un altro dispositivo.' }); prev.ws.close(); }
       online.set(key, sess);
       sess.user = acc.user;
-      sess.gm = cfg.gmAccounts.map(s => s.toLowerCase()).includes(key);
+      sess.gm = cfg.gmAccounts.map(s => s.toLowerCase()).includes(key) || GM_PROVE.includes(key);
       reply({ t: 'auth_ok', user: acc.user, gm: sess.gm ? 1 : 0 });
       return sendChars();
     }
