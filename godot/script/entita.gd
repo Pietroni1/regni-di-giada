@@ -23,33 +23,81 @@ var corpo: Personaggio = null
 var raggio := 0.5
 var velocita := 0.0
 var ostile_base := false
-var sella := 0            # grado del destriero su cui è in sella (0 = a piedi)
+var sella := 0            # livello del destriero su cui è in sella (0 = a piedi)
 var cavallo: Personaggio = null
 var _aff: Afflizioni = null       # effetti visibili addosso (afflizioni.gd)
 var colore_nome := Color(0.95, 0.9, 0.6)     # oggetti a terra: colore della rarità
 var rarita := 0
+var _quota_seduta := 0.55    # quota dei fianchi del cavaliere nella posa «sella»
+var _fianchi_letti := false
 
 const MANTELLI := [Color(0.54, 0.37, 0.22), Color(0.54, 0.37, 0.22), Color(0.29, 0.18, 0.11), Color(0.12, 0.1, 0.11)]
+## il cavaliere rispetto al seggio della sella: un po' sopra (spessore della sella) e un filo indietro
+const SEGGIO := Vector3(0.0, 0.11, 0.0)
 
 
-## Sale o scende da cavallo (grado 0 = a piedi).
-func in_sella(grado: int) -> void:
-	if grado == sella or corpo == null:
+## Sale o scende da cavallo (livello del destriero, 0 = a piedi). Il destriero è quello della classe (destrieri.gd):
+## bardatura secondo il livello, effetti al livello massimo. Salendo in sella il cavallo si impenna.
+func in_sella(livello: int) -> void:
+	if livello == sella or corpo == null:
 		return
-	sella = grado
+	var era := sella
+	sella = livello
 	if cavallo != null:
 		cavallo.queue_free()
 		cavallo = null
-	corpo.in_sella = grado > 0
-	corpo.position = Vector3.ZERO
-	if grado > 0:
-		var scala := 1.0 + 0.08 * (grado - 1)
-		cavallo = Personaggio.animale("horse", MANTELLI[clampi(grado, 0, 3)], scala)
+	corpo.in_sella = livello > 0
+	corpo.transform = Transform3D.IDENTITY
+	if livello > 0:
+		var k: Dictionary = Dati.KINGDOMS.get(String(info.get("kd", "")), {})
+		cavallo = Destrieri.crea(String(info.get("cls", "lama")), livello, Dati.colore(k.get("hex", 0x888888)))
 		if cavallo != null:
 			add_child(cavallo)
-			corpo.position = Vector3(0, 0.62 * scala, -0.1)
+			_quota_seduta = Destrieri.quota_seduta(corpo)
+			corpo.metti_posa_sella(true)
+			_siedi()
+			if era == 0:
+				(cavallo as Destrieri.Destriero).impenna()
+		else:
+			# senza destrieri.glb: il cavallo di prima
+			var grado := Destrieri.passo_di(livello)
+			var scala := 1.0 + 0.08 * (mini(grado, 3) - 1)
+			cavallo = Personaggio.animale("horse", MANTELLI[clampi(grado - 1, 0, 3)], scala)
+			if cavallo != null:
+				add_child(cavallo)
+				corpo.position = Vector3(0, 0.62 * scala, -0.1)
 	else:
+		corpo.metti_posa_sella(false)
 		corpo._stato = ""
+
+
+## Il cavaliere segue la sella: tutta la posizione (sobbalzi del galoppo) e buona parte dell'inclinazione (impennata).
+## I fianchi del cavaliere (dove li mette la posa «sella») vanno sul seggio.
+func _siedi() -> void:
+	var d := cavallo as Destrieri.Destriero
+	if d == null or corpo == null:
+		return
+	var t := d.posto()
+	var inclina := Basis.IDENTITY.slerp(t.basis.orthonormalized(), 0.75)
+	var fianchi := Vector3(0, _quota_seduta, 0)
+	var sk := corpo.scheletro
+	if sk != null and sk.is_inside_tree():
+		var i := sk.find_bone("hips")
+		if i >= 0:
+			var h := corpo.global_transform.affine_inverse() * (sk.global_transform * sk.get_bone_global_pose(i).origin)
+			fianchi = fianchi.lerp(Vector3(0, h.y, h.z), 0.5) if _fianchi_letti else Vector3(0, h.y, h.z)
+			_fianchi_letti = true
+			_quota_seduta = fianchi.y
+	corpo.transform = Transform3D(inclina, t.origin + inclina * (SEGGIO - fianchi))
+
+
+## Un fotogramma di animazione di cavaliere e cavallo (chiamato da _process; la scuderia lo chiama da sé).
+func passo_sella(dt: float) -> void:
+	if corpo != null:
+		corpo.muovi(velocita, dt)
+	if cavallo != null:
+		cavallo.muovi(velocita, dt)
+		_siedi()
 
 
 static func da_info(i: Dictionary, mio := false) -> Entita:
@@ -195,9 +243,12 @@ func _costruisci() -> void:
 		if morto:
 			corpo.muori()
 	if tipo == "p":
-		var grado := sella
+		# in sella: livello del destriero (`ml`); i server vecchi mandano solo il grado `mt` (1-3)
+		var liv := sella
 		sella = -1
-		in_sella(grado if grado > 0 else int(info.get("mt", 0)))
+		if liv <= 0:
+			liv = int(info.get("ml", [0, 1, 10, 20][clampi(int(info.get("mt", 0)), 0, 3)]))
+		in_sella(liv)
 
 
 ## Completo di una classe (tools/blender/completi.py): vesti di sotto «<classe>_base» + sopravveste o armatura del grado
@@ -325,7 +376,7 @@ func guarda(verso: Entita) -> void:
 
 
 func testa() -> Vector3:
-	return global_position + Vector3(0, (corpo.altezza if corpo != null else 2.0) * scale.y + (0.62 if sella > 0 else 0.0), 0)
+	return global_position + Vector3(0, ((corpo.altezza if corpo != null else 2.0) + (corpo.position.y if corpo != null and sella > 0 else 0.0)) * scale.y, 0)
 
 
 func petto() -> Vector3:
@@ -348,7 +399,4 @@ func _process(dt: float) -> void:
 		var v := Vector2(x - px, z - pz).length() / maxf(dt, 1e-4)
 		velocita = lerpf(velocita, v, minf(1.0, dt * 8.0))
 	_posa()
-	if corpo != null:
-		corpo.muovi(velocita, dt)
-	if cavallo != null:
-		cavallo.muovi(velocita, dt)
+	passo_sella(dt)

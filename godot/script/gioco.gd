@@ -164,11 +164,10 @@ func _su_me(m: Dictionary) -> void:
 			me.corpo.muori()
 		elif era and not me.morto:
 			me.corpo.rialza()
-		var grado := 0
+		var lv_destriero := 0
 		if int(m.get("mounted", 0)) == 1 and m.get("horse") is Dictionary:
-			var lv := int(m.horse.lvl)
-			grado = 3 if lv >= 20 else (2 if lv >= 10 else 1)
-		me.in_sella(grado)
+			lv_destriero = maxi(1, int(m.horse.lvl))
+		me.in_sella(lv_destriero)
 		hud.aggiorna_io(io, me.nome)
 
 

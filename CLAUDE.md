@@ -768,6 +768,63 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   danno ±7% fra una prova e l'altra), dalla porta scendono dell'8-10%; ms invariati entro il rumore.
   Visti a schermo: le tre mappe (arrivo, dall'alto), i tre villaggi (porta e piazza). Non visti: Forward+, l'interno delle
   mappe lontano dall'arrivo, i villaggi di notte; le lanterne di carta non fanno luce vera (solo emissione).
+- **Destrieri per classe** (richiesta dell'autore: «cavalli veri e in base alla classe, tematizzati; a livello massimo
+  effetti sempre tematizzati molto importanti»; niente cerchi o linee a terra: «proprio effetti»).
+  `tools/blender/destrieri.py` → `client/assets/modelli/destrieri.glb` (`python3 tools/blender/destrieri.py --
+  client/assets/modelli/destrieri.glb [--solo lama] [--anteprima cartella] [--niente-glb]`, ~15 s; poi `npm run godot:dati`
+  e `--import`). Il corpo nasce da sezioni anatomiche (tronco, collo, testa, zampe con ginocchia, garretti e nodelli,
+  masse di spalla e groppa) fuse in una pelle sola col Remesh a voxel, lisciata (molto sul tronco, poco su zampe e muso)
+  e ridotta a ~2700 triangoli con le normali della pelle fitta; pesi col calore delle ossa di Blender. Parametri per
+  classe (`CLASSI`: tronco, fondo, zampe, collo, collo_alto, testa, muscoli, crini): **Lama** destriero da guerra massiccio,
+  baio scuro con lista e balzane; **Ombra** corsiero nero asciutto, criniera rasata a cresta, occhi accesi; **Monaco** sauro
+  compatto dai crini biondi, quattro balzane; **Mistico** bianco pomellato slanciato, collo alto, crini lunghissimi.
+  Scheletro proprio (30 ossa: `hips, spine, chest, neck1, neck2, head, spalla/avambraccio/stinco_a/piede_a_L/R,
+  coscia/gamba/stinco_p/piede_p_L/R, tail1-3, ear_L/R`, più `crini` = vento della criniera, `sella` = seggio, `muso`).
+  **Godot rinomina le ossa degli scheletri dopo il primo dello stesso file (`hips_2`, `hips_3`…)**: usare
+  `Destrieri.osso(sk, nome)` / `Destrieri.suffisso(sk)`, mai `find_bone` col nome nudo.
+  Azioni `<classe>:fermo|passo|corsa|impennata` (classe `Andatura`: il corpo si muove come deciso e le zampe seguono
+  il nodello con la cinematica inversa, zoccoli fermi in appoggio; corsa = galoppo a tre tempi con sospensione, 14
+  fotogrammi: a 12-16 m/s la falcata è di 6-7 m come un cavallo vero).
+  Finimenti in oggetti `<classe>_tAB` (visibili dal passo A al passo B; passi = livelli 1-5, 6-12, 13-19, 20:
+  `Destrieri.PASSI`), costruiti con `p_avvolgi` (gusci attorno a un asse, anche a file di lamelle), `p_drappo` (stoffa che
+  pende a piombo), `p_cinghia`, `p_tubo3d`, `p_arcione`, `p_nappa`, `p_anello`, `p_placca`. Lama: sella laccata → pettorale
+  con lo specchio → pettiera e groppiera a lamelle, gualdrappa del regno, frontale di ferro → gorgiera a lamelle, corna
+  d'oro, pennacchio, stendardi. Ombra: cuoio borchiato e bisacce → maschera d'acciaio, collare a punte, sciarpa del
+  regno → mantello rosso lacero, lame sulla cresta, pugnali. Monaco: cavezza e corde, grani e nappe → collana di grani,
+  sonagli, stuoia → anelli d'oro alle zampe, disco del sole. Mistico: gualdrappa ricamata → pendenti di giada, disco di
+  giada, talismani → drappo del regno sulla groppa, diadema, mezzaluna, nastri.
+  Dati per lo shader (niente texture): UV.x = casella della parte (`SLOT`), UV.y = curvatura o metri dal bordo × 2,
+  UV2 = (metri lungo il pezzo / 4, occlusione), colore dei vertici = posizione a riposo (macchie, balzane, lista e
+  pomelli restano fermi sul mantello) e in alfa quanto il crine è libero. `destriero.gdshaderinc` + `destriero.gdshader`
+  (corpo) e `destriero_finimenti.gdshader` (due facce); orli ricamati col motivo della classe.
+  Client: `destrieri.gd` (`Destrieri.crea(classe, livello, regno)` → `Destrieri.Destriero`, un `Personaggio` con `muovi`,
+  `impenna()`, `posto()`; tabella `CLASSI` con mantelli, materiali e taglia; materiali condivisi per classe e regno).
+  `Entita.in_sella(livello)` prende ora il **livello** del destriero (`sella` = livello): sceglie il destriero dalla classe
+  (`info.cls`), impenna alla salita, e a ogni fotogramma siede il cavaliere sull'osso `sella` (`_siedi`: segue sobbalzi e
+  impennata; i fianchi letti dalla posa vanno sul seggio). `posa_sella.gd` apre e abbassa le cosce sopra l'animazione
+  «sella». Il server manda il livello agli altri in `ml` (accanto a `mt`, che resta per il browser).
+  **Effetti del livello 20** (`Destrieri.EffettiDestriero`, shader `destriero_fx` con fiamma / stella / ciuffo di saette
+  su quadrati rivolti alla visuale, `destriero_sagoma`): Lama saette agli zoccoli, sugli stinchi, lungo la criniera e
+  attorno al corpo, scintille e scie elettriche al galoppo; Ombra fumo che cola da criniera e coda, lingue viola, occhi
+  di brace, sbuffi agli zoccoli e tre sagome in ritardo al galoppo (copie della pelle sullo stesso scheletro); Monaco
+  fiamme su zoccoli, criniera e coda, faville, veli caldi, strisce di fuoco; Mistico stelle in orbita con la scia, stelle
+  su criniera e coda, corona di stelle sopra la testa, polvere di stelle. Criniera, coda e zoccoli hanno luce propria
+  nello shader (`stile_luce`). Nessuna luce dinamica, nessun segno a terra; ~40-90 particelle e 10-25 quadrati a destriero.
+  Triangoli (corpo con crini e zoccoli / con i finimenti ai passi 1-4): Lama 4,1k / 4,8k-5,9k; Ombra 3,5k / 4,1k-4,8k;
+  Monaco 4,0k / 4,7k-6,3k; Mistico 4,1k / 4,7k-5,9k. `destrieri.glb` 1,6 MB.
+  **Scuderia** senza server: `godot --path godot res://scene/scuderia.tscn --fixed-fps 30 -- [--classi=lama,ombra]
+  [--livelli=1,6,13,20] [--cavaliere=1 --equip=1] [--posa=fermo|passo|galoppo|impennata] [--corre=1] [--fasi=7
+  --azione=corsa] [--vecchio=1] [--spento=1] [--yaw=1.1 --zoom=1 --mira=1.3 --su=0.2 --cx=0] --foto=x.png [--film=4]`.
+  `tools/blender/anteprima.py`: anteprima di una mesh con numpy, senza GPU (usata da `--anteprima`).
+  Visti a schermo (scuderia): le 4 classi ai 4 passi, con e senza cavaliere, fermi, galoppo (anche in movimento con le
+  scie), impennata, fasi del galoppo; in gioco col server Lama, Ombra e Mistico al livello 20 (salita con impennata,
+  galoppo con sagome e fumo). **Non verificati**: destrieri degli altri giocatori in gioco (`ml`), il passo (solo le
+  fasi), prestazioni con molti destrieri al 20, Forward+, tecniche a cavallo sopra il destriero nuovo, cavaliere donna
+  su tutte le classi (vista solo la Mistica), client nel browser (usa ancora `animali.glb`).
+  Difetti noti: barda e drappi sono rigidi (al galoppo le zampe li attraversano un poco), le mani non reggono le
+  redini e l'arma resta in pugno, ciocche della criniera piatte viste da vicino, la criniera lunga del Mistico al
+  galoppo si alza troppo compatta, le fiamme perse dagli zoccoli del Monaco sono globi tondi, Ombra ai passi 1-2 poco
+  diversa (nero su nero).
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 

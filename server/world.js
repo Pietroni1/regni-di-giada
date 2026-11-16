@@ -533,7 +533,7 @@ export class World {
         return { ...base, k: 'p', n: e.name, cls: e.cls, kd: e.kingdom, sx: e.ch.sex === 'f' ? 'f' : 'm', lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp,
           w: eq.weapon ? eq.weapon.id : null, wu: eq.weapon ? eq.weapon.up : 0, wr: eq.weapon ? eq.weapon.r || 0 : 0,
           b: eq.body ? eq.body.id : null, bu: eq.body ? eq.body.up : 0, br: eq.body ? eq.body.r || 0 : 0, h: eq.head ? eq.head.id : null, f: eq.feet ? eq.feet.id : null,
-          gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0, au: e.aura || null, ti: e.ch.titolo || null, mt: e.mounted && e.ch.horse ? HORSE.tierOf(e.ch.horse.lvl) : 0 };
+          gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0, au: e.aura || null, ti: e.ch.titolo || null, mt: e.mounted && e.ch.horse ? HORSE.tierOf(e.ch.horse.lvl) : 0, ml: e.mounted && e.ch.horse ? e.ch.horse.lvl : 0 };
       }
       case 'mob': {
         const o = { ...base, k: 'm', ty: e.type, n: e.name, lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp };

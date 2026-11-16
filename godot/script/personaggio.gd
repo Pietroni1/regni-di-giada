@@ -511,6 +511,19 @@ func metti_aura(id: String) -> void:
 			add_child(a)
 
 
+## Posa da cavaliere sopra l'animazione «sella»: gambe aperte attorno al destriero (posa_sella.gd).
+var _posa_sella: SkeletonModifier3D = null
+func metti_posa_sella(attiva: bool) -> void:
+	if scheletro == null:
+		return
+	if attiva and _posa_sella == null:
+		_posa_sella = (load("res://script/posa_sella.gd") as GDScript).new()
+		scheletro.add_child(_posa_sella)
+	elif not attiva and _posa_sella != null:
+		_posa_sella.queue_free()
+		_posa_sella = null
+
+
 ## Toglie i capi non indossati: ogni modello ne porta un centinaio nascosti (tutti i completi di tutte le classi);
 ## tenerli costa memoria e tempo a ogni personaggio in vista. Quando cambia l'equipaggiamento il personaggio viene rifatto.
 func sfoltisci() -> void:
