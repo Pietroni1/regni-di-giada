@@ -319,6 +319,15 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   I bot di `sim` e `farming` la accendono una volta. Misura (30 s, velocità 4): Vie da danno −5% … +5%.
   Viste a schermo in gioco le quattro auree accese. Non visti: spegnimento, aura vista da un altro giocatore, gruppo.
   Il client nel browser non le mostra. `SERIE.potS` non serve più (nessuna tecnica `potenziamento`).
+- **Tecnica Suprema nella rotazione** (l'autore: «non voglio che si carichi ma che faccia parte della rotazione, con del
+  cd»): niente più barra che si riempie spendendo risorsa. `SUPREMA = { cd: 30, finaleS: 2 }`: ricarica di 30 s che ogni
+  colpo finale accorcia di 2 s (`p.supAt` in `server/world.js`; `supPct` → `su` 0-100 e `sums` millisecondi nei messaggi
+  `me`/`r`, così bot e client restano compatibili). Torna pronta ogni 14-15 s (Mistico 18-22 s, fa meno finali). Danni
+  ridotti del 15% (Lama 2,2, Ombra 0,94, Monaco 3,05; Mistico invariato) e **Mille Ombre** ora colpisce anche attorno al
+  bersaglio (`splash: 5`: su un gruppo l'Ombra restava indietro). Client: la barra sotto la risorsa si riempie col tempo,
+  mostra i secondi e lampeggia «PRONTA» (`Hud._aggiorna_suprema`). GM `/suprema` la rende pronta.
+  Misura (40 s, velocità 4, una prova, macchina carica): 1 bersaglio Vie da danno −4% … +5%, Montagna 67%, Benedizione
+  60%, Suprema al 10-19% dei danni; 5 bersagli −12% … +11%, Suprema 8-31%. **Non visto a schermo** (macchina satura).
 - **Postura** di élite e boss: fatta (`shared/postura.js`, `colpisciPostura`/`tickPostura` nel server, barre nel client).
 - **Simulazione senza browser**: `npm run sim` (`tools/sim/simula.mjs`). Avvia da sé un server di prova, crea un personaggio
   per Via (livello, arma, punti statistica e abilità), lo porta davanti ai fantocci e gioca una rotazione sensata (tabella

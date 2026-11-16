@@ -141,6 +141,7 @@ func nome_zona() -> String:
 func _su_me(m: Dictionary) -> void:
 	io = m
 	io["_t"] = ora()
+	io["_su_t"] = io["_t"]
 	io["_se_t"] = io["_t"]
 	if me != null:
 		me.hp = float(m.hp)
@@ -161,11 +162,13 @@ func _su_me(m: Dictionary) -> void:
 
 
 func _su_r(m: Dictionary) -> void:
-	for k in ["hp", "res", "pts", "sl", "su", "se", "sems"]:
+	for k in ["hp", "res", "pts", "sl", "su", "sums", "se", "sems"]:
 		if m.has(k):
 			io[k] = m[k]
 	if m.has("se"):
 		io["_se_t"] = ora()
+	if m.has("sums"):
+		io["_su_t"] = ora()
 	if me != null:
 		me.hp = float(io.get("hp", 0))
 		hud.aggiorna_io(io, me.nome)

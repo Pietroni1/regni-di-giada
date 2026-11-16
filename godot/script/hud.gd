@@ -31,6 +31,7 @@ var punti: Label
 var slancio: HBoxContainer
 var serie: Label                # serie di uccisioni: «Serie ×N»
 var suprema: ProgressBar
+var suprema_txt: Label
 var riq_bersaglio: PanelContainer
 var nome_b: Label
 var vita_b: ProgressBar
@@ -174,7 +175,8 @@ func _ready() -> void:
 	suprema = _barra(Color(0.95, 0.75, 0.25), 12)
 	suprema.max_value = 100
 	v.add_child(suprema)
-	_scritta_su(suprema).text = "Tecnica Suprema  [V]"
+	suprema_txt = _scritta_su(suprema)
+	suprema_txt.text = "Tecnica Suprema  [V]"
 	riq_effetti = HBoxContainer.new()
 	riq_effetti.add_theme_constant_override("separation", 3)
 	riq_effetti.custom_minimum_size = Vector2(0, 30)
@@ -493,6 +495,22 @@ func _riempi_effetti(riga: HBoxContainer, voci: Array, firma_vecchia: String) ->
 	return firma
 
 
+## La Suprema è una tecnica con ricarica: la barra si riempie col tempo (i colpi finali la accorciano) e mostra i secondi.
+func _aggiorna_suprema() -> void:
+	if suprema == null or not suprema.visible:
+		return
+	var io: Dictionary = gioco.io
+	var manca := maxf(0.0, float(io.get("sums", 0)) - (float(gioco.ora()) - float(io.get("_su_t", gioco.ora())))) / 1000.0
+	var tot := float(Dati.gioco.SUPREMA.get("cd", 30))
+	suprema.value = 100.0 * clampf(1.0 - manca / tot, 0.0, 1.0)
+	if manca <= 0.0:
+		suprema_txt.text = "TECNICA SUPREMA PRONTA  [V]"
+		suprema.modulate = Color(1, 1, 1).lerp(Color(1.5, 1.35, 0.9), 0.5 + 0.5 * sin(float(gioco.ora()) / 160.0))
+	else:
+		suprema_txt.text = "Tecnica Suprema  [V]  %d s" % int(ceil(manca))
+		suprema.modulate = Color(1, 1, 1)
+
+
 func _aggiorna_effetti() -> void:
 	var ora := gioco.ora() as float
 	# su di me: potenziamenti comunicati dal server con `me.buffs`
@@ -589,7 +607,6 @@ func aggiorna_io(io: Dictionary, nome: String) -> void:
 	for i in range(slancio.get_child_count()):
 		(slancio.get_child(i) as ColorRect).color = Color(1.0, 0.72, 0.25) if i < sl else Color(0, 0, 0, 0.6)
 	_aggiorna_serie(io)
-	suprema.value = float(io.get("su", 0))
 	suprema.visible = int(io.get("lvl", 1)) >= int(Dati.gioco.SUPREMA.lvl)
 	morte.visible = int(io.get("dead", 0)) == 1
 	var qb: Array = gioco.barra()
@@ -644,6 +661,7 @@ func _process(dt: float) -> void:
 	_aggiorna_gruppo()
 	_aggiorna_prova()
 	_aggiorna_effetti()
+	_aggiorna_suprema()
 	if morte.visible:
 		var da: float = (gioco.ora() - gioco.morto_da) / 1000.0
 		bott_qui.disabled = da < 8.0

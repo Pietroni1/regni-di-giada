@@ -624,8 +624,8 @@ function obiettivi(ris, opt, rif) {
   righe.push(`${esito(!fuoriFin.length)}colpo finale al 25-50% dei danni${fuoriFin.length ? ': fuori ' + fuoriFin.map((r) => `${r.via} ${num(quota(r, 'potente'), 0)}%`).join(', ') : ''}`);
   const conBarra = ris.filter((r) => r.suprema !== null);
   if (conBarra.length) {
-    const fuori = conBarra.filter((r) => r.suprema < 44.5 || r.suprema > 60.5);
-    righe.push(`${esito(!fuori.length)}barra Suprema piena in 45-60 s${fuori.length ? ': fuori ' + fuori.map((r) => `${r.via} ${num(r.suprema, 0)} s`).join(', ') : ''}`);
+    const fuori = conBarra.filter((r) => r.suprema < 11.5 || r.suprema > 24.5);
+    righe.push(`${esito(!fuori.length)}Suprema di nuovo pronta in 12-24 s${fuori.length ? ': fuori ' + fuori.map((r) => `${r.via} ${num(r.suprema, 0)} s`).join(', ') : ''}`);
     if (area) {
       const troppo = conBarra.filter((r) => quota(r, 'suprema') > 20);
       righe.push(`${esito(!troppo.length)}Suprema entro il 15-20% dei danni su un gruppo${troppo.length ? ': fuori ' + troppo.map((r) => `${r.via} ${num(quota(r, 'suprema'), 0)}%`).join(', ') : ''}`);

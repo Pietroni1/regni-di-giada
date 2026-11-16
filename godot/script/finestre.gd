@@ -823,7 +823,7 @@ ogni uccisione accorcia di 2 s la ricarica dello scatto; le auree di classe rest
 Scatti: Carica (Lama), Passo d'Ombra o Ala di Vento (Ombra), Calcio Volante (Monaco), Passo di Luce (Mistico, verso dove guardi).
 I lanci del Mistico (Dardo, Sfera) si fanno anche camminando.
 Élite e boss hanno la POSTURA (barra gialla): gli scarichi la abbassano; a zero il nemico è Squilibrato, stordito e fragile.
-Spendendo risorsa si riempie la barra della TECNICA SUPREMA.
+La TECNICA SUPREMA (tasto V) ha una ricarica di 30 secondi: ogni colpo finale la accorcia di 2.
 
 FINESTRE
 M: mappa grande delle zone  ·  L: diario delle missioni  ·  I: inventario  ·  C: personaggio e punti statistica  ·  K: abilità e Via (dal livello 5)  ·  O: impostazioni  ·  Esc: chiude / menu

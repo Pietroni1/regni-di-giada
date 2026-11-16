@@ -514,7 +514,7 @@ export class World {
     const chain = this.chainOf(p) && t - p.chainAt < 6000 ? p.chainIdx : 0;
     return {
       t: 'me', lvl: p.lvl, exp: ch.exp, need: expToNext(p.lvl), hp: Math.round(p.hp), mhp: p.maxHp,
-      res: Math.floor(p.res), rmax: p.rmax, rt: p.rtype, pts: p.pts, sl: p.slancio, su: Math.floor(p.sup), chain, ...this.serieMsg(p, t), shield: Math.round(p.shieldUntil > t ? p.shield : 0),
+      res: Math.floor(p.res), rmax: p.rmax, rt: p.rtype, pts: p.pts, sl: p.slancio, su: this.supPct(p), sums: Math.max(0, Math.round((p.supAt || 0) - NOW())), chain, ...this.serieMsg(p, t), shield: Math.round(p.shieldUntil > t ? p.shield : 0),
       atk: p.atk, matk: p.matk, def: p.def, crit: r1(p.crit), ev: r1(p.evade), aspd: p.aspd, spd: r2(p.speed), range: p.range,
       haste: r1(p.haste), gcd: this.gcdMs(p), dmgPct: r1(p.dmgPct),
       sp: ch.statPts, kp: ch.skillPts, st: ch.stats, via: ch.via, sk: ch.skills, tael: ch.tael, qb: ch.qb,
@@ -562,7 +562,7 @@ export class World {
       for (const id of p.known.keys()) if (!seen.has(id)) { rms.push(id); p.known.delete(id); p.knownVis.delete(id); }
       if (adds.length || ups.length || rms.length) this.send(p, { t: 'v', a: adds, u: ups, r: rms });
       if (p.selfDirty) { p.selfDirty = false; p.resDirty = false; this.send(p, this.meMsg(p)); }
-      else if (p.resDirty) { p.resDirty = false; this.send(p, { t: 'r', hp: Math.round(p.hp), res: Math.floor(p.res), pts: p.pts, sl: p.slancio, su: Math.floor(p.sup), ...this.serieMsg(p, NOW()) }); }
+      else if (p.resDirty) { p.resDirty = false; this.send(p, { t: 'r', hp: Math.round(p.hp), res: Math.floor(p.res), pts: p.pts, sl: p.slancio, su: this.supPct(p), sums: Math.max(0, Math.round((p.supAt || 0) - NOW())), ...this.serieMsg(p, NOW()) }); }
       if (p.invDirty) { p.invDirty = false; this.send(p, { t: 'inv', inv: p.ch.inv, eq: p.ch.equip }); }
     }
   }
@@ -594,6 +594,7 @@ export class World {
     p.buffs = p.buffs.filter(b => b.until > t);
     if (p.buffs.length !== before) this.recalc(p);
     this.tickAure(p, t);
+    if (!p.supPronta && t >= (p.supAt || 0)) { p.supPronta = true; p.resDirty = true; }      // avvisa il client che la Suprema è pronta
     if (p.debuffs.length) p.debuffs = p.debuffs.filter(d => d.until > t);
     this.tickDots(p, t);
     if (p.dead) return;
@@ -1292,7 +1293,7 @@ export class World {
       if (!w || ITEMS[w.id].wt !== sk.req) return { err: sk.req === 'bow' ? 'Serve un arco equipaggiato' : 'Servono dei pugnali equipaggiati' };
     }
     if (this.costOf(p, sk) > p.res + 0.001) return { err: `${RESOURCES[p.rtype].name} insufficiente` };
-    if (sk.sup && p.sup < SUPREMA.max) return { err: 'La Tecnica Suprema non è ancora carica' };
+    if (sk.sup && NOW() < (p.supAt || 0)) return { err: 'La Tecnica Suprema non è ancora pronta' };
     if (sk.spend && sk.type !== 'heal_aoe' && p.pts < (sk.minPts || 1)) return { err: `Servono almeno ${sk.minPts || 1} ${(CLASSES[p.cls].pts || {}).name || 'punti'}` };
     const range = sk.range === 'weapon' ? p.range : (sk.range || 0);
     const target = tid ? this.ents.get(tid) : null;
@@ -1381,8 +1382,8 @@ export class World {
     if (ris) p.buffs = p.buffs.filter(b => b.id !== 'risonanza');
     const mae = (p.ch.via && VIE[p.ch.via].maestria) || {};
     // la barra Suprema si riempie spendendo risorsa e punti; la Suprema stessa la svuota
-    if (sk.sup) p.sup = 0;
-    else if (p.lvl >= SUPREMA.lvl) p.sup = Math.min(SUPREMA.max, p.sup + (p.rtype === 'mana' ? speso / Math.max(1, p.rmax) * 100 * SUPREMA.perManaPct : speso * SUPREMA.perRes) + n * SUPREMA.perPt);
+    if (sk.sup) { p.supAt = NOW() + SUPREMA.cd * 1000; p.supPronta = false; }
+    else if (sk.finale && (p.supAt || 0) > NOW()) p.supAt -= SUPREMA.finaleS * 1000;      // ogni finale avvicina la prossima Suprema
     let bonus = 0;
     for (const b of p.buffs) {
       const d = BUFFS[b.id];
@@ -1663,7 +1664,7 @@ export class World {
 
   // Punti consumati da cure e scudi (`spendBonus`): riempiono la barra Suprema come quelli degli scarichi.
   supDaPunti(p, n) {
-    if (p.lvl >= SUPREMA.lvl) p.sup = Math.min(SUPREMA.max, p.sup + n * SUPREMA.perPt);
+    // (la Suprema ora ha una ricarica: i punti non la riempiono più)
   }
 
   // Monaco: Pugno → Calcio → Palmo in ordine attiva la Forma Perfetta.
@@ -1740,6 +1741,12 @@ export class World {
       q.buffs.push({ id: p.aura, stats, until: t + 2500 });
       if (nuovo) { this.recalc(q); q.selfDirty = true; }
     }
+  }
+
+  /** Ricarica della Suprema in percentuale (100 = pronta), per la barra del client e per i bot. */
+  supPct(p) {
+    const manca = (p.supAt || 0) - NOW();
+    return manca <= 0 ? SUPREMA.max : Math.max(0, Math.floor(SUPREMA.max * (1 - manca / (SUPREMA.cd * 1000))));
   }
 
   addBuff(p, id, lvl = 1, notify = false) {
@@ -2204,7 +2211,7 @@ export class World {
         return sys(`${sk.name} portata al livello ${p.ch.skills[a[0]]}.`);
       }
       case 'punti': p.pts = PTS_MAX; p.lastCombat = NOW(); p.selfDirty = true; return;                 // per le prove: punti combo/sfere/cariche al massimo
-      case 'suprema': p.sup = SUPREMA.max; p.selfDirty = true; return;           // per le prove: barra Suprema piena
+      case 'suprema': p.supAt = 0; p.selfDirty = true; return;           // per le prove: barra Suprema piena
       case 'uccidi': {
         let best = null, bd = 20;
         for (const e of this.ents.values()) {
