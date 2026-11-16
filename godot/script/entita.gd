@@ -89,7 +89,12 @@ func _costruisci() -> void:
 			raggio = 0.6 * scala
 			var colore := Dati.colore(d.get("color", 0x777777))
 			var modello := String(d.get("model", ""))
-			if d.get("dummy", false):
+			# figure dei mostri (mostri.gd): bestie, spiriti, banditi, statue, capi; sotto i ripieghi di prima
+			if not d.get("dummy", false) and modello != "obelisk":
+				corpo = Mostri.crea(String(info.get("ty", "")), d)
+			if corpo != null:
+				pass
+			elif d.get("dummy", false):
 				corpo = Personaggio.fantoccio()
 			elif Personaggio.SPECIE.has(modello):
 				corpo = Personaggio.animale(modello, colore, scala)

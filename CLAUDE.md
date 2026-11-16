@@ -648,8 +648,48 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   capi non indossati (erano un centinaio di mesh nascoste per personaggio); visuale fino a 620 m, nebbia un po' più fitta.
   Visti a schermo: villaggio, strada, campagna, altopiano. Non visti: altri due villaggi, neve e sabbia da vicino, mappe
   lontane (usano ancora `terreno_mappa` con il rumore). Restano ~1200 disegni nel villaggio: personaggi, PNG e obelischi.
-- Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
-  modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
+- **Figure dei mostri** (richiesta dell'autore: ogni famiglia riconoscibile dalla sagoma, élite e capi col loro segno):
+  `godot/script/mostri.gd` (`Mostri.crea(ty, voce)`, chiamato da `Entita._costruisci` prima dei ripieghi di prima) ha una
+  ricetta per ogni tipo di `MOBS` (tabelle `BESTIE`, `LANTERNE`, `OMBRE`, `UMANI`, `STATUE`; ripiego per `model`).
+  - Bestie: `tools/blender/mostri.py` → `client/assets/modelli/mostri.glb` (`python3 tools/blender/mostri.py --
+    client/assets/modelli/mostri.glb`, poi `npm run godot:dati` e `--import`): stesso scheletro e stesse azioni di
+    `animali.py` (`animali.glb` resta a cavallo e browser), 3400 triangoli a specie (suddivisione e poi Decimate; i pezzi a
+    punta — orecchie, artigli, zanne, cresta — restano fuori dalla suddivisione, `netto=True`). Specie: `lupo` (con
+    criniera corta), `lupo_capo` (alfa e anziano: petto e criniera grandi), `sciacallo` (snello, orecchie enormi),
+    `cinghiale` (zanne ricurve, cresta irta), `cinghiale_ferro` (zanne di ferro e piastra borchiata), `orso`, `tigre`
+    (basette), `scimmia` e `scimmia_urlatrice` (spalle alte, braccia lunghe sulle nocche, faccia nuda, coda arricciata;
+    l'urlatrice con mantello di pelo e barba; attacco: si alza e schiaccia a due braccia). Orso e tigre attaccano di zampata,
+    il cinghiale di zanne. Nel glTF: UV.x = casella della parte, UV.y = curvatura, UV2.y = occlusione dipinta.
+    `Personaggio.quadrupede(file, specie, materiale, scala)` (prima era dentro `animale`; la libreria delle azioni ora
+    tiene solo le sei azioni della specie esatta). Shader `bestia.gdshader` (+ `bestia.gdshaderinc`): colore per parte
+    (pelo, ventre, criniera, occhi accesi, zanne, faccia, metallo, artigli), dorso scuro, ciuffi, strisce, sella scura,
+    mezzaluna sul petto dell'orso, ventre luminoso; `bestia_spettro.gdshader` per la Tigre Spettrale (traslucida, strisce
+    e contorno di luce). Un materiale per tipo di mostro, condiviso dal branco.
+  - Lanterne (`Mostri.Lanterna`): carta a tornio con costole, volto arrabbiato ritagliato e luce da dentro
+    (`lanterna_spirito.gdshader`: `crepe` per instabili e della cripta, `canne` per gli spiriti del canneto, `tremolio`),
+    fiammella dello spirito sopra (`fiammella.gdshader`, quadrato rivolto alla visuale), nastri o catene che ondeggiano
+    (`nastro.gdshader`). Ombre (`Mostri.Ombra`): veste e cappuccio traslucidi che si sfrangiano in fumo (`spettro.gdshader`),
+    occhi accesi, maniche con artigli. Entrambe si animano da codice (`Mostri.Fluttuante`: fluttuare, inclinarsi in corsa,
+    affondo, scossa da colpo, morte: la lanterna si spegne e cade, l'ombra si scioglie nel suolo).
+  - Banditi: completi delle classi nei loro colori più accessori agganciati alla testa o al petto (`_accessorio`:
+    `fazzoletto`, `velo`, `turbante`, `fascia_fronte`, `pittura`, `pelliccia`, `foglie`, `pennacchio`, `stendardi`) e capi
+    del modello (cappello di paglia, elmo cornuto). Armi nuove sulla presa del bastone (`_arma_speciale`: `lancia`,
+    `falcione`, `cerbottana`; il bastone resta di grado 1, quelli più alti hanno parti animate che si romperebbero).
+  - Statue (`STATUE`): corpo e vesti con `statua.gdshader` (`materia` 0 argilla con resti di pittura, 1 bronzo con patina,
+    2 arenaria a strati, 3 pietra scura; crepe che possono brillare, foglia d'oro), occhi accesi per le élite; il Custode
+    Insonne ha l'aureola di rune. Generale: corazza nera e oro, falcione, pennacchio e due stendardi sulla schiena.
+  - Élite (vita ≥ 1000, come il server) e capi: figura più grande dell'8-12% e anello a terra (`alone_mostro.gdshader`,
+    additivo, doppio con punte per i capi). Nessuna luce dinamica, mesh e materiali condivisi (`Mostri._cil`, `_sfera`).
+  - **Bestiario** senza server: `godot --path godot res://scene/bestiario.tscn --fixed-fps 30 -- --gruppo=lupi|bestie|
+    spiriti|banditi|statue|capi [--lista=id,id] [--posa=fermo|passo|corsa|attacco|morte] [--yaw=3.6] --foto=x.png`.
+  L'anello si spegne alla morte (`Personaggio._segno_elite`). Visti a schermo: tutte le figure nel bestiario (davanti e
+  dietro per capi e banditi; bestie in corsa, attacco e morte; lanterne e ombre in attacco e morte); in gioco col server
+  un branco di lupi, branchi di cinghiali, banditi e lanterne che combattono. Non visti: in gioco scimmie, statue, tigri,
+  ombre e capi (i `/spawn` in fila del copione ne fanno nascere solo i primi); camminata delle figure fluttuanti;
+  prestazioni con molti branchi in vista; resa Forward+. Gli obelischi restano quelli di `obelischi.gd`.
+  Difetti noti: niente stivali sui corpi (i capi `stivali_*` del modello sono solo piastre: piedi nudi anche per
+  generale e statue), criniere dei lupi a ciocche un po' regolari, la morte delle bestie è quella di `animali.py`.
+- Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 
 ## Mappe da esperienza e Arena PvP
 - Definizioni in `shared/mappe.js` (nessun import: lo importano `data.js`, che aggiunge `MOBS_MAPPE` a `MOBS` e
