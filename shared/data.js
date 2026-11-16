@@ -107,7 +107,7 @@ export const CLASSES = {
     desc: 'Agile e letale, con pugnali o arco. Il Colpo Rapido spende Energia e dà Punti combo; gli scarichi li consumano: Taglio Gemello a raffica, un colpo pesante e una danza di lame con ricariche brevi, il Ventaglio sui gruppi. Flusso: non ripetere mai la stessa tecnica due volte di fila.',
     // Flusso: +% ai danni di ogni tecnica diversa dalla precedente. Ferita: il segno che le tecniche `affligge` lasciano sui
     // nemici (danni nel tempo; la Via dei Pugnali la cambia in Veleno). occasionePct: probabilità d'Occasione del Colpo Rapido.
-    flusso: 15, occasionePct: 14, ferita: { mult: [0.2, 0.01], dur: 10, every: 1 },
+    flusso: 15, occasionePct: 14, ferita: { mult: [0.4, 0.02], dur: 10, every: 2 },
     start: { vit: 3, str: 4, dex: 7, int: 2 }, hp: [105, 21, 18], mp: [0, 0, 0],
     primary: 'dex', autoMagic: false, weapons: ['daggers', 'bow'], res: 'energia', pts: { name: 'Punti combo', glyph: '◆' },
     vie: ['pugnali', 'arco'], baseSkills: ['colpo_rapido', 'taglio_gemello', 'colpo_gola', 'ventaglio', 'taglio_netto', 'velo_ombra'], startWeapon: 'pugnali_osso', extraItems: ['arco_bambu'],
@@ -140,7 +140,7 @@ export const CLASSES = {
 export const VIE = {
   fulmine: { cls: 'lama', name: 'Via del Fulmine', role: 'Danni', desc: 'Danni devastanti. Maestria — Tempesta Crescente: il colpo finale infligge il 6% in più per ogni tacca di Slancio.', passive: {}, maestria: { slancio: 6 } },
   montagna: { cls: 'lama', name: 'Via della Montagna', role: 'Difensore', desc: 'Regge i colpi e tiene su di sé i nemici. Vita +15%, minaccia ×4. Maestria — Baluardo: dopo il colpo finale subisci il 25% di danni in meno per 6 secondi.', passive: { hpPct: 15, threat: 4 }, maestria: { baluardo: true } },
-  pugnali: { cls: 'ombra', name: 'Via dei Pugnali', role: 'Danni', desc: 'Veleni e colpi alle spalle. Maestria — Lame Avvelenate: al posto della Ferita le tue tecniche lasciano il Veleno, che fa più male e si vede colare dal nemico. Richiede pugnali.', passive: {}, maestria: { veleno: { mult: [0.34, 0.017], dur: 10, every: 1 } } },
+  pugnali: { cls: 'ombra', name: 'Via dei Pugnali', role: 'Danni', desc: 'Veleni e colpi alle spalle. Maestria — Lame Avvelenate: al posto della Ferita le tue tecniche lasciano il Veleno, che fa più male e si vede colare dal nemico. Richiede pugnali.', passive: {}, maestria: { veleno: { mult: [0.68, 0.034], dur: 10, every: 2 } } },
   arco: { cls: 'ombra', name: "Via dell'Arco", role: 'Danni a distanza', desc: 'Combatte dalla distanza. Maestria — Occhio Lungo: +12% ai danni sui bersagli a più di 8 metri. Richiede un arco.', passive: {}, maestria: { distanza: { m: 8, pct: 12 } } },
   ferro: { cls: 'monaco', name: 'Via del Pugno di Ferro', role: 'Danni', desc: 'Raffiche ravvicinate. Maestria — Ritmo: un colpo base diverso dal precedente infligge il 15% in più.', passive: {}, maestria: { ritmo: 15 } },
   loto: { cls: 'monaco', name: 'Via del Loto Interiore', role: 'Danni magici', desc: "Chi che colpisce a media distanza e sostiene. Maestria — Fiore di Loto: il colpo finale ti cura del 6% della vita massima.", passive: {}, maestria: { cura: 6 } },

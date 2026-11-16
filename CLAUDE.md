@@ -349,7 +349,7 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
     `ptsCost` (Punti consumati; l'Occasione rende gratuito lo scarico), `affligge`, `riduceCd`, `bonusAfflitto`, `perAfflitto`.
     Niente più `finale`/Risonanza per l'Ombra. `CLASSES.ombra`: `flusso: 15`, `occasionePct: 14`, `ferita`.
   - **Flusso** (`resolveSkill`, `p.ultimaTecnica`): ogni tecnica con `ruolo` diversa dalla precedente fa +15%; ripeterla
-    toglie l'effetto `flusso` (fx `flusso` con `rotto: 1`). **Ferita** (effetto `ferita`, danni ogni secondo) lasciata dalle
+    toglie l'effetto `flusso` (fx `flusso` con `rotto: 1`). **Ferita** (effetto `ferita`, danni ogni 2 secondi) lasciata dalle
     tecniche `affligge`; con la Via dei Pugnali diventa **Veleno** (maestria `veleno`, più forte). La Suprema torna prima
     anche con i Punti spesi (`SUPREMA.puntoS` 0,8 s a Punto); Mille Ombre dà 2 Punti.
   - **Effetti addosso ai nemici** (`godot/script/afflizioni.gd`, `Entita.afflizione`): il server manda a tutti i vicini
