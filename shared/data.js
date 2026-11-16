@@ -30,7 +30,7 @@ export const SERIE = { finestraMs: 7000, velPct: 4, velMax: 24, scattoS: 2, potS
 // (Mana: ~3% al secondo), quindi la barra si riempie in 50-58 secondi contro un bersaglio e in 45-55 contro un gruppo.
 // Tecnica Suprema: non si carica più spendendo risorsa. È una tecnica della rotazione con una ricarica (`cd` secondi)
 // che ogni colpo finale accorcia di `finaleS` secondi. `max` resta per il client: `su` = percentuale di ricarica (100 = pronta).
-export const SUPREMA = { max: 100, cd: 30, finaleS: 2, lvl: 15 };
+export const SUPREMA = { max: 100, cd: 30, finaleS: 2, puntoS: 0.8, lvl: 15 };   // puntoS: secondi tolti per ogni Punto speso dalle tecniche `ptsCost`
 export const GCD_MS = 1000;       // tempo globale fra due tecniche (provato a 500: l'autore l'ha trovato troppo frenetico)
 export const GCD_MIN_MS = 750;
 export const EQUIP_SLOTS = ['weapon', 'head', 'body', 'feet'];
@@ -86,7 +86,7 @@ export const WEAPON_TYPES = {
 // Mana: grande riserva che cala lentamente.
 export const RESOURCES = {
   ira: { name: 'Ira', color: '#c8402a', fixedMax: 100, start: 0, decay: 3 },
-  energia: { name: 'Energia', color: '#d8b830', fixedMax: 100, start: 100, regen: 5.5 },
+  energia: { name: 'Energia', color: '#d8b830', fixedMax: 100, start: 100, regen: 10 },
   chi: { name: 'Chi', color: '#3fae8a', fixedMax: 100, start: 100, regen: 7 },
   mana: { name: 'Mana', color: '#3a6ad0', start: 1, regenPct: 1.0, regenPctOoc: 4 },
 };
@@ -104,10 +104,13 @@ export const CLASSES = {
   },
   ombra: {
     name: 'Ombra', title: 'Lama dei vicoli', glyph: '影',
-    desc: 'Agile e letale, con pugnali o arco. Colpo Rapido e Ventaglio accumulano Energia e Punti combo, il colpo finale li scarica; ha un colpo che interrompe e una mossa di Via.',
+    desc: 'Agile e letale, con pugnali o arco. Il Colpo Rapido spende Energia e dà Punti combo; gli scarichi li consumano: Taglio Gemello a raffica, un colpo pesante e una danza di lame con ricariche brevi, il Ventaglio sui gruppi. Flusso: non ripetere mai la stessa tecnica due volte di fila.',
+    // Flusso: +% ai danni di ogni tecnica diversa dalla precedente. Ferita: il segno che le tecniche `affligge` lasciano sui
+    // nemici (danni nel tempo; la Via dei Pugnali la cambia in Veleno). occasionePct: probabilità d'Occasione del Colpo Rapido.
+    flusso: 15, occasionePct: 14, ferita: { mult: [0.2, 0.01], dur: 10, every: 1 },
     start: { vit: 3, str: 4, dex: 7, int: 2 }, hp: [105, 21, 18], mp: [0, 0, 0],
     primary: 'dex', autoMagic: false, weapons: ['daggers', 'bow'], res: 'energia', pts: { name: 'Punti combo', glyph: '◆' },
-    vie: ['pugnali', 'arco'], baseSkills: ['colpo_rapido', 'ventaglio', 'taglio_netto', 'colpo_gola', 'velo_ombra'], startWeapon: 'pugnali_osso', extraItems: ['arco_bambu'],
+    vie: ['pugnali', 'arco'], baseSkills: ['colpo_rapido', 'taglio_gemello', 'colpo_gola', 'ventaglio', 'taglio_netto', 'velo_ombra'], startWeapon: 'pugnali_osso', extraItems: ['arco_bambu'],
     look: { robe: 0x26293a, trim: 0x7a1e22, pants: 0x1c1e28, hair: 0x0e0e10, hairStyle: 'hood' },
   },
   monaco: {
@@ -137,7 +140,7 @@ export const CLASSES = {
 export const VIE = {
   fulmine: { cls: 'lama', name: 'Via del Fulmine', role: 'Danni', desc: 'Danni devastanti. Maestria — Tempesta Crescente: il colpo finale infligge il 6% in più per ogni tacca di Slancio.', passive: {}, maestria: { slancio: 6 } },
   montagna: { cls: 'lama', name: 'Via della Montagna', role: 'Difensore', desc: 'Regge i colpi e tiene su di sé i nemici. Vita +15%, minaccia ×4. Maestria — Baluardo: dopo il colpo finale subisci il 25% di danni in meno per 6 secondi.', passive: { hpPct: 15, threat: 4 }, maestria: { baluardo: true } },
-  pugnali: { cls: 'ombra', name: 'Via dei Pugnali', role: 'Danni', desc: 'Veleni e colpi alle spalle. Maestria — Lame Avvelenate: i colpi base avvelenano e il colpo finale fa il 20% in più sui bersagli avvelenati. Richiede pugnali.', passive: {}, maestria: { veleno: { mult: [0.12, 0.006], dur: 8, every: 2, bonus: 20 } } },
+  pugnali: { cls: 'ombra', name: 'Via dei Pugnali', role: 'Danni', desc: 'Veleni e colpi alle spalle. Maestria — Lame Avvelenate: al posto della Ferita le tue tecniche lasciano il Veleno, che fa più male e si vede colare dal nemico. Richiede pugnali.', passive: {}, maestria: { veleno: { mult: [0.34, 0.017], dur: 10, every: 1 } } },
   arco: { cls: 'ombra', name: "Via dell'Arco", role: 'Danni a distanza', desc: 'Combatte dalla distanza. Maestria — Occhio Lungo: +12% ai danni sui bersagli a più di 8 metri. Richiede un arco.', passive: {}, maestria: { distanza: { m: 8, pct: 12 } } },
   ferro: { cls: 'monaco', name: 'Via del Pugno di Ferro', role: 'Danni', desc: 'Raffiche ravvicinate. Maestria — Ritmo: un colpo base diverso dal precedente infligge il 15% in più.', passive: {}, maestria: { ritmo: 15 } },
   loto: { cls: 'monaco', name: 'Via del Loto Interiore', role: 'Danni magici', desc: "Chi che colpisce a media distanza e sostiene. Maestria — Fiore di Loto: il colpo finale ti cura del 6% della vita massima.", passive: {}, maestria: { cura: 6 } },
@@ -163,7 +166,7 @@ export const BUFFS = {
   occhio_ciclone: { name: 'Occhio del Ciclone', glyph: '旋', dur: 15, stats: { hastePct: [30, 1], dmgPct: [10, 0.5] }, desc: 'Rapidità e danni aumentati.' },
   benedizione: { name: 'Benedizione', glyph: '福', dur: 300, stats: { defPct: [12, 1.2], atkPct: [6, 0.6], matkPct: [6, 0.6] }, desc: 'Difesa e attacco aumentati.' },
   risonanza: { name: 'Risonanza', glyph: '響', dur: 8, proc: true, desc: 'Il prossimo colpo finale colpisce (o cura) ad area.' },
-  occasione: { name: 'Occasione', glyph: '機', dur: 8, proc: true, finaleGratis: true, desc: 'Il prossimo colpo finale non costa risorsa e vale come se avessi la Concentrazione piena.' },
+  occasione: { name: 'Occasione', glyph: '機', dur: 8, proc: true, finaleGratis: true, desc: 'Il prossimo colpo finale non costa risorsa e vale come se avessi la Concentrazione piena. Per l\'Ombra: il prossimo scarico non consuma Punti combo.' },
   baluardo: { name: 'Baluardo', glyph: '塁', dur: 6, stats: { dmgTaken: [-25, -0.3] }, desc: 'Danni subiti ridotti.' },
   // potenziamenti di classe (uno per classe, livello 8; quelli con «gruppo» valgono anche per i compagni vicini)
   grido_guerra: { name: 'Aura di Guerra', glyph: '吼', aura: true, dur: 0, stats: { dmgPct: [5, 0.2], dmgTaken: [-5, -0.15] }, desc: 'Aura: danni aumentati e danni subiti ridotti finché resta accesa.' },
@@ -171,7 +174,9 @@ export const BUFFS = {
   respiro_drago: { name: 'Aura del Drago', glyph: '龍', aura: true, dur: 0, stats: { hastePct: [6, 0.2], lifesteal: [3, 0.12] }, desc: 'Aura: rapidità aumentata e i tuoi colpi ti curano di una parte dei danni, finché resta accesa.' },
   benedizione_astri: { name: 'Aura degli Astri', glyph: '星', aura: true, dur: 0, stats: { matkPct: [5, 0.2], atkPct: [4, 0.15], resRegenPct: [15, 0.5] }, desc: 'Aura: attacco e rigenerazione della risorsa aumentati finché resta accesa.' },
   // effetti sui nemici
-  veleno: { name: 'Veleno', glyph: '毒', dur: 8, debuff: true, desc: 'Subisce danni nel tempo; i colpi finali dei Pugnali fanno più male.' },
+  veleno: { name: 'Veleno', glyph: '毒', dur: 10, debuff: true, tipo: 'veleno', desc: 'Subisce danni nel tempo. Morso e Ventaglio fanno più male ai bersagli avvelenati.' },
+  ferita: { name: 'Ferita', glyph: '血', dur: 10, debuff: true, tipo: 'sangue', desc: 'Sanguina: subisce danni nel tempo. I colpi pesanti e il Ventaglio dell\'Ombra fanno più male ai bersagli feriti.' },
+  flusso: { name: 'Flusso', glyph: '流', dur: 8, proc: true, desc: 'Stai alternando le tecniche: ognuna fa più danni. Ripetere la stessa tecnica due volte di fila lo spezza.' },
   marchio_morte: { name: 'Marchio della Morte', glyph: '死', dur: 15, debuff: true, vuln: [20, 1], desc: "Subisce più danni da chi l'ha marchiato." },
 };
 
@@ -218,15 +223,21 @@ export const SKILLS = {
   martello_monte: { name: 'Martello della Montagna', cls: 'lama', via: 'montagna', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.5, 0.125], cost: 40, threat: 3, stun: [1, 0.02], buff: 'baluardo', glyph: '槌', color: 0xc0a070, fx: 'quake', desc: 'Colpo finale: schiaccia e stordisce il bersaglio, attira la minaccia e ti dà il Baluardo. Con la Risonanza la terra frana su tutti i nemici vicini.' },
 
   // ======================= OMBRA (Energia) — 5 tasti
-  colpo_rapido: { name: 'Colpo Rapido', cls: 'ombra', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.3, 0.065], gen: 9, pts: 1, glyph: '速', color: 0xd0d0e0, fx: 'slash', desc: 'Colpo base: un colpo veloce su un bersaglio. Genera Energia e 1 Punto combo.' },
-  ventaglio: { name: 'Ventaglio di Lame', cls: 'ombra', lvl: 1, ruolo: 'accumulo', type: 'aoe_target', range: 'weapon', radius: 4.5, dmg: 'phys', mult: [0.78, 0.039], gen: 7, risonanza: true, glyph: '扇', color: 0xa0d070, fx: 'rain', desc: 'Colpo base ad area: lame o frecce a ventaglio attorno al bersaglio. Se prende 3 o più nemici accende la Risonanza.' },
-  taglio_netto: { name: 'Taglio Netto', cls: 'ombra', lvl: 2, ruolo: 'potente', finale: true, finoVia: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.5, 0.125], cost: 40, glyph: '斬', color: 0xe06a4a, fx: 'slash', desc: 'Colpo finale: scarica Energia e Punti combo. Con la Risonanza colpisce tutti i nemici attorno al bersaglio.' },
+  // ======================= OMBRA (Energia + Punti combo) — genera con l'Energia, scarica i Punti; Flusso: mai due volte la stessa
+  // ptsCost: Punti combo consumati. riduceCd: secondi tolti alle ricariche indicate. affligge: lascia Ferita (o Veleno).
+  // bonusAfflitto: +% sui bersagli feriti/avvelenati. perAfflitto: +% per ogni nemico afflitto preso dall'area (fino a max).
+  colpo_rapido: { name: 'Colpo Rapido', cls: 'ombra', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.15, 0.058], cost: 40, pts: 2, affligge: true, glyph: '速', color: 0xd0d0e0, fx: 'slash', desc: 'Generatore: un colpo veloce. Spende Energia, dà 2 Punti combo e lascia una Ferita. A volte apre un\'Occasione (prossimo scarico gratuito).' },
+  taglio_gemello: { name: 'Taglio Gemello', cls: 'ombra', lvl: 2, ruolo: 'medio', type: 'strike', range: 'weapon', dmg: 'phys', mult: [0.95, 0.048], hits: 2, ptsCost: 1, affligge: true, riduceCd: { ids: ['taglio_netto', 'taglio_finale', 'freccia_perforante', 'danza_lame', 'pioggia_frecce'], s: 1 }, glyph: '双', color: 0xc8a8ff, fx: 'gemello', desc: 'Scarico rapido (1 Punto combo): due tagli incrociati. Ogni uso toglie 1 secondo alle ricariche del colpo pesante e della danza.' },
+  ventaglio: { name: 'Ventaglio di Lame', cls: 'ombra', lvl: 4, ruolo: 'medio', type: 'aoe_target', range: 'weapon', radius: 5, dmg: 'phys', mult: [1.2, 0.06], ptsCost: 2, affligge: true, perAfflitto: { pct: 12, max: 5 }, glyph: '扇', color: 0xa0d070, fx: 'ventaglio', desc: 'Scarico ad area (2 Punti combo): lame o frecce a ventaglio attorno al bersaglio. +12% per ogni nemico già ferito o avvelenato (fino a 5) e ferisce tutti quelli che prende.' },
+  taglio_netto: { name: 'Taglio Netto', cls: 'ombra', lvl: 3, ruolo: 'potente', finoVia: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [3.1, 0.155], ptsCost: 2, cd: 8, affligge: true, bonusAfflitto: 20, glyph: '斬', color: 0xe06a4a, fx: 'pesante', desc: 'Colpo pesante (2 Punti combo): +20% sui bersagli feriti.' },
   colpo_gola: { name: 'Colpo alla Gola', cls: 'ombra', lvl: 3, type: 'strike', offgcd: true, interrupt: true, range: 'weapon', dmg: 'phys', mult: [0.6, 0.03], gen: 8, stun: [1, 0.02], cd: 12, glyph: '黙', color: 0xb08ae0, fx: 'mark', desc: "Interruzione: spezzi il lancio del bersaglio e lo stordisci. Funziona anche con l'arco." },
   // Via dei Pugnali
-  taglio_finale: { name: 'Taglio Finale', cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.45, 0.122], cost: 40, behind: { dmg: 20, pts: 0 }, glyph: '終', color: 0xe04a4a, fx: 'slash', desc: 'Colpo finale: +20% alle spalle. Con la Risonanza colpisce tutti i nemici attorno al bersaglio. Richiede pugnali.' },
+  taglio_finale: { name: 'Morso della Vipera', cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 5, ruolo: 'potente', type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.85, 0.142], ptsCost: 2, cd: 8, affligge: true, bonusAfflitto: 20, behind: { dmg: 15, pts: 0 }, glyph: '牙', color: 0x7ad84a, fx: 'pesante', desc: 'Colpo pesante (2 Punti combo): affondi entrambe le lame. +20% sui bersagli avvelenati, +15% alle spalle. Richiede pugnali.' },
+  danza_lame: { name: 'Danza delle Lame', cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 10, ruolo: 'potente', type: 'aoe_target', range: 'weapon', radius: 5, dmg: 'phys', mult: [0.92, 0.046], waves: 5, waveGap: 0.28, ptsCost: 3, cd: 18, affligge: true, glyph: '舞', color: 0xb08ae0, fx: 'danza', desc: 'Danza (3 Punti combo): cinque fendenti in un secondo e mezzo su tutti i nemici attorno al bersaglio, che restano avvelenati. Richiede pugnali.' },
   passo_ombra: { name: "Passo d'Ombra", cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 7, type: 'strike', dash: true, behindDash: true, scatto: true, offgcd: true, range: 12, pts: 2, cd: 12, glyph: '潜', color: 0x7a5aa8, fx: 'dash', desc: 'Mossa: svanisci e riappari alle spalle del bersaglio; ottieni 2 Punti combo.' },
   // Via dell'Arco
-  freccia_perforante: { name: 'Freccia Perforante', cls: 'ombra', via: 'arco', req: 'bow', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.55, 0.14], cost: 40, ignoreDef: 30, glyph: '貫', color: 0xffc070, fx: 'arrow', desc: 'Colpo finale: una freccia che ignora parte della difesa. Con la Risonanza esplode su tutti i nemici attorno al bersaglio. Richiede un arco.' },
+  freccia_perforante: { name: 'Freccia Perforante', cls: 'ombra', via: 'arco', req: 'bow', lvl: 5, ruolo: 'potente', type: 'strike', range: 'weapon', dmg: 'phys', mult: [3.0, 0.15], ptsCost: 2, cd: 8, affligge: true, bonusAfflitto: 20, ignoreDef: 30, glyph: '貫', color: 0xffc070, fx: 'pesante', desc: 'Colpo pesante (2 Punti combo): una freccia che ignora parte della difesa. +20% sui bersagli feriti. Richiede un arco.' },
+  pioggia_frecce: { name: 'Pioggia di Frecce', cls: 'ombra', via: 'arco', req: 'bow', lvl: 10, ruolo: 'potente', type: 'aoe_target', range: 'weapon', radius: 6, dmg: 'phys', mult: [0.92, 0.046], waves: 5, waveGap: 0.28, ptsCost: 3, cd: 18, affligge: true, slow: { dur: 2 }, glyph: '雨', color: 0xb0e8ff, fx: 'danza', desc: 'Danza (3 Punti combo): cinque scrosci di frecce in un secondo e mezzo sulla zona del bersaglio; feriscono e rallentano. Richiede un arco.' },
   ala_vento: { name: 'Ala di Vento', cls: 'ombra', via: 'arco', req: 'bow', lvl: 7, type: 'strike', dash: true, dashDist: 9, scatto: true, offgcd: true, range: 20, dmg: 'phys', mult: [0.6, 0.03], slow: { dur: 2 }, pts: 2, buff: 'occhio_falco', cd: 15, glyph: '翼', color: 0xb0e8ff, fx: 'dash', desc: "Mossa e scatto: una folata ti porta a 9 metri dal bersaglio (avanti se sei lontano, indietro se ti sta addosso) e gli scagli contro una raffica di penne che lo rallenta. Ottieni 2 Punti combo e per 6 secondi l'Occhio del Falco (rapidità e rigenerazione dell'Energia)." },
 
   // ======================= MONACO (Chi) — 5 tasti
@@ -259,7 +270,7 @@ export const SKILLS = {
 // waves/waveGap: il colpo si ripete a ondate sulla stessa zona (o sullo stesso bersaglio se non ha raggio).
 Object.assign(SKILLS, {
   giudizio_tuoni: { name: 'Giudizio dei Cento Tuoni', cls: 'lama', lvl: 15, sup: true, type: 'strike', dash: true, range: 16, dmg: 'phys', mult: [2.2, 0.11], splash: 7, radius: 7, waves: 4, waveGap: 0.28, stun: [1.5, 0.03], glyph: '轟', color: 0x9fd4ff, fx: 'dash', desc: 'TECNICA SUPREMA. Scatti sul bersaglio e il cielo si spezza: quattro ondate di fulmini colpiscono tutti i nemici intorno, stordendoli.' },
-  mille_ombre: { name: 'Danza delle Mille Ombre', cls: 'ombra', lvl: 15, sup: true, type: 'strike', dash: true, behindDash: true, range: 20, dmg: 'phys', mult: [0.94, 0.047], hits: 3, splash: 5, waves: 3, waveGap: 0.22, pts: 5, glyph: '幻', color: 0xb08ae0, fx: 'dash', desc: 'TECNICA SUPREMA. Ti dissolvi in copie d\'ombra che colpiscono il bersaglio da ogni lato e falciano i nemici attorno: nove colpi e Punti combo al massimo.' },
+  mille_ombre: { name: 'Danza delle Mille Ombre', cls: 'ombra', lvl: 15, sup: true, type: 'strike', dash: true, behindDash: true, range: 20, dmg: 'phys', mult: [0.94, 0.047], hits: 3, splash: 5, waves: 3, waveGap: 0.22, pts: 2, glyph: '幻', color: 0xb08ae0, fx: 'dash', desc: 'TECNICA SUPREMA. Ti dissolvi in copie d\'ombra che colpiscono il bersaglio da ogni lato e falciano i nemici attorno: nove colpi e 2 Punti combo.' },
   drago_celeste: { name: 'Ascesa del Drago Celeste', cls: 'monaco', lvl: 15, sup: true, type: 'aoe_self', radius: 9, dmg: 'hybrid', mult: [3.05, 0.153], waves: 3, waveGap: 0.4, stun: [2, 0.03], pts: 3, glyph: '龍', color: 0xffb04a, fx: 'quake', desc: 'TECNICA SUPREMA. Un drago di chi sale dal suolo e ricade tre volte su tutti i nemici intorno, stordendoli. Genera 3 Sfere.' },
   collera_cielo: { name: 'Collera del Cielo', cls: 'mistico', lvl: 15, sup: true, type: 'aoe_target', range: 22, radius: 8, dmg: 'magic', mult: [1.5, 0.075], waves: 5, waveGap: 0.35, pts: 2, glyph: '天', color: 0xa0d8ff, fx: 'lightning', desc: 'TECNICA SUPREMA. Il cielo si apre sul bersaglio: cinque ondate di saette su tutta la zona. Istantanea.' },
 });

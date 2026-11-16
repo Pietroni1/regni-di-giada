@@ -53,7 +53,8 @@ const MAPPA := {
 	"squarcio": ["ira", "squarcio"], "fendente": ["ira", "fendente"], "affondo_ira": ["ira", "affondo"],
 	"carica": ["fulmine", "carica"], "lama_tuono": ["fulmine", "lama_tuono"], "martello_monte": ["terra", "martello"],
 	"colpo_rapido": ["ombra", "colpo_rapido"], "ventaglio": ["ombra", "ventaglio"], "taglio_netto": ["ombra", "taglio_netto"],
-	"colpo_gola": ["sangue", "colpo_gola"], "taglio_finale": ["sangue", "taglio_finale"], "passo_ombra": ["ombra", "passo_ombra"],
+	"colpo_gola": ["sangue", "colpo_gola"], "taglio_finale": ["veleno", "morso_vipera"], "taglio_gemello": ["ombra", "taglio_gemello"],
+	"danza_lame": ["ombra", "danza_lame"], "pioggia_frecce": ["vento", "pioggia_frecce"], "ferita": ["sangue", "ferita"], "flusso": ["ombra", "flusso"], "passo_ombra": ["ombra", "passo_ombra"],
 	"freccia_perforante": ["luce", "freccia_perf"], "occhio_falco": ["luce", "occhio"],
 	# scatti e mosse della fase «flow», potenziamenti di classe
 	"ala_vento": ["vento", "ala_vento"], "calcio_volante": ["chi", "calcio_volante"], "passo_luce": ["luce", "passo_luce"],
@@ -536,6 +537,46 @@ class Pennello:
 				lin(14, 70, 86, 48, 9.0, SCURO)
 				lin(14, 70, 86, 48, 5.5, ROSSO)
 				lin(16, 68, 84, 47, 1.8, ROSSO_C)
+			"taglio_gemello":
+				# due lame incrociate a X con la scintilla al centro
+				lama(14, 88, 84, 14, 11, ACCIAIO, ACCIAIO_O, VIOLA)
+				lama(86, 88, 16, 14, 11, ACCIAIO, ACCIAIO_O, VIOLA)
+				scint(50, 50, 13, BIANCO, 0.0)
+				scint(50, 50, 7, VIOLA_C, 0.0)
+			"morso_vipera":
+				# due zanne ricurve che si chiudono, con le gocce di veleno
+				pol([24, 10, 44, 12, 46, 40, 40, 66, 34, 84, 30, 60, 24, 36], Color(0.95, 0.93, 0.82), SCURO, 2.0)
+				pol([76, 10, 56, 12, 54, 40, 60, 66, 66, 84, 70, 60, 76, 36], Color(0.95, 0.93, 0.82), SCURO, 2.0)
+				pol([18, 6, 82, 6, 78, 16, 22, 16], VERDE, SCURO, 1.6)
+				goccia(34, 92, 4.2, VERDE_C, 1.0)
+				goccia(66, 92, 4.2, VERDE_C, 1.0)
+				goccia(50, 70, 5.5, VERDE_C, 1.2)
+			"danza_lame":
+				# lame a girandola attorno a una sagoma d'ombra
+				for i in 5:
+					var ta := TAU * i / 5.0 - 0.3
+					lama(50 + cos(ta) * 14.0, 50 + sin(ta) * 14.0, 50 + cos(ta + 0.9) * 46.0, 50 + sin(ta + 0.9) * 46.0, 9, ACCIAIO, ACCIAIO_O, VIOLA)
+				al = 0.85
+				disco(50, 50, 13, VIOLA.darkened(0.55), 1.4)
+				al = 1.0
+				scint(50, 50, 8, VIOLA_C, 0.0)
+			"pioggia_frecce":
+				for q in [[22, 8, 40, 62], [48, 2, 66, 56], [70, 14, 88, 68], [10, 34, 28, 88], [52, 40, 70, 94]]:
+					freccia(q[0], q[1], q[2], q[3], AMBRA_C, 2.8)
+				for q in [[40, 66], [66, 60], [28, 92]]:
+					scint(q[0], q[1], 5, BIANCO, 0.0)
+			"ferita":
+				# un taglio aperto che sanguina
+				lin(14, 30, 86, 58, 9.0, SCURO)
+				lin(14, 30, 86, 58, 5.5, ROSSO)
+				lin(18, 32, 82, 56, 1.8, ROSSO_C)
+				for q in [[34, 62, 5.0], [56, 74, 6.5], [72, 84, 4.2]]:
+					goccia(q[0], q[1], q[2], ROSSO, 1.2)
+			"flusso":
+				# due onde che si inseguono
+				spirale(50, 50, 6, 40, 1.6, 0.0, 6.0, VIOLA_C)
+				spirale(50, 50, 6, 40, 1.6, PI, 6.0, Color(0.6, 1.0, 0.35))
+				disco(50, 50, 6, BIANCO, 1.0)
 			"taglio_finale":
 				esplosione(50, 80, 11, 25, 8, ROSSO_C, 22, 1.4)
 				esplosione(50, 80, 6, 14, 8, AMBRA_C, 0, 1.0)

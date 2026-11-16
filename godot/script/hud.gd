@@ -4,8 +4,8 @@ extends CanvasLayer
 
 const ORO := Color(0.86, 0.72, 0.40)
 const SFONDO := Color(0.06, 0.05, 0.05, 0.82)
-const RUOLI := {"accumulo": Color(0.35, 0.80, 0.40), "medio": Color(0.90, 0.75, 0.30), "potente": Color(0.90, 0.28, 0.22), "interr": Color(0.40, 0.70, 1.0), "scatto": Color(0.75, 0.55, 1.0), "pot": Color(1.0, 0.62, 0.25), "aura": Color(1.0, 0.62, 0.25)}
-const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale", "interr": "Interruzione", "scatto": "Scatto", "pot": "Potenziamento", "aura": "Aura"}
+const RUOLI := {"accumulo": Color(0.35, 0.80, 0.40), "medio": Color(0.90, 0.75, 0.30), "potente": Color(0.90, 0.28, 0.22), "interr": Color(0.40, 0.70, 1.0), "scatto": Color(0.75, 0.55, 1.0), "pot": Color(1.0, 0.62, 0.25), "aura": Color(1.0, 0.62, 0.25), "gen": Color(0.35, 0.80, 0.40), "pesante": Color(0.90, 0.28, 0.22)}
+const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale", "interr": "Interruzione", "scatto": "Scatto", "pot": "Potenziamento", "aura": "Aura", "gen": "Generatore", "pesante": "Scarico pesante"}
 
 
 ## Ruolo di una tecnica per l'interfaccia (tacca colorata sotto il tasto, titolo nella finestra Abilità).
@@ -18,7 +18,13 @@ static func ruolo_di(sk: Dictionary) -> String:
 		return "aura"
 	if sk.get("potenziamento", false):
 		return "pot"
-	return String(sk.get("ruolo", ""))
+	# kit a generatore e scarichi (Ombra): chi spende risorsa per dare Punti genera, chi costa Punti scarica
+	var ruolo := String(sk.get("ruolo", ""))
+	if ruolo == "accumulo" and sk.has("cost") and sk.has("pts"):
+		return "gen"
+	if ruolo == "potente" and sk.has("ptsCost"):
+		return "pesante"
+	return ruolo
 
 var gioco                       # Gioco (non tipizzato per evitare il riferimento circolare)
 var radice: Control
@@ -694,12 +700,16 @@ func _process(dt: float) -> void:
 	for bf in gioco.io.get("buffs", []):
 		if String(bf.b) == "risonanza" or String(bf.b) == "occasione":
 			risonanza = true      # il finale lampeggia: Risonanza (ad area) o Occasione (gratuito e pieno)
+	var con_flusso: bool = Dati.CLASSES.get(String(gioco.classe), {}).has("flusso")
 	for t in tasti:
 		var tt := t as Tasto
 		tt.tempo(ora, gioco.ricariche, gioco.gcd_fine, gioco.gcd_durata)
-		var acceso := (tt.ruolo == "interr" and sta_lanciando) or (tt.ruolo == "potente" and risonanza)
-		if acceso != tt.acceso or acceso:
+		var acceso := (tt.ruolo == "interr" and sta_lanciando) or (tt.ruolo == "potente" and risonanza) or (tt.pts_costo > 0 and risonanza)
+		# Flusso: la tecnica appena usata è segnata (ripeterla spezza il Flusso)
+		var rip: bool = con_flusso and not tt.ruolo.is_empty() and tt.voce is Dictionary and String(tt.voce.get("id", "")) == gioco.ultima_tecnica
+		if acceso != tt.acceso or acceso or rip != tt.ripetuta:
 			tt.acceso = acceso
+			tt.ripetuta = rip
 			tt.queue_redraw()
 	# lancio
 	if not gioco.lancio.is_empty():
@@ -851,6 +861,8 @@ class Tasto:
 	var nome := ""
 	var ruolo := ""
 	var colore := Color(0.8, 0.8, 0.8)
+	var pts_costo := 0             # Punti consumati (scarichi dell'Ombra): disegnati come rombi sul tasto
+	var ripetuta := false          # è l'ultima tecnica usata: ripeterla spezza il Flusso
 	var spento := false            # risorsa insufficiente o non imparata
 	var acceso := false            # lampeggia: è il momento di premerlo
 	var quota := 0.0               # 0..1 di ricarica rimasta
@@ -868,6 +880,7 @@ class Tasto:
 		nome = ""
 		ruolo = ""
 		spento = false
+		pts_costo = 0
 		tooltip_text = ""
 		if v is Dictionary and v.get("k") == "s" and Dati.SKILLS.has(v.id):
 			var sk: Dictionary = Dati.SKILLS[v.id]
@@ -881,7 +894,15 @@ class Tasto:
 			if String(io.get("rt", "")) == "mana":
 				costo = float(io.get("rmax", 0)) * costo / 100.0
 			spento = costo > ho + 0.5
-			tooltip_text = "%s%s\n%s%s" % [nome, ("  —  " + Hud.NOMI_RUOLO[ruolo]) if Hud.NOMI_RUOLO.has(ruolo) else "", sk.get("desc", ""), ("\nCosto: %d" % int(sk.cost)) if sk.has("cost") else ""]
+			pts_costo = int(sk.get("ptsCost", 0))
+			if pts_costo > int(io.get("pts", 0)):
+				var gratis := false
+				for bf in io.get("buffs", []):
+					if String(bf.b) == "occasione":
+						gratis = true
+				spento = spento or not gratis
+			var nome_pts := String(Dati.CLASSES.get(String(sk.get("cls", "")), {}).get("pts", {}).get("name", "Punti"))
+			tooltip_text = "%s%s\n%s%s%s" % [nome, ("  —  " + Hud.NOMI_RUOLO[ruolo]) if Hud.NOMI_RUOLO.has(ruolo) else "", sk.get("desc", ""), ("\nCosto: %d" % int(sk.cost)) if sk.has("cost") else "", ("\nCosto: %d %s" % [pts_costo, nome_pts]) if pts_costo > 0 else ""]
 		elif v is Dictionary and v.get("k") == "i" and Dati.ITEMS.has(v.id):
 			var it: Dictionary = Dati.ITEMS[v.id]
 			ogg = String(v.id)
@@ -981,6 +1002,16 @@ class Tasto:
 			var cb: Color = Hud.RUOLI.get(ruolo, Color.WHITE)
 			draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color(cb.r, cb.g, cb.b, p), false, 3.0)
 			draw_rect(Rect2(3, 3, size.x - 6, size.y - 6), Color(cb.r, cb.g, cb.b, p * 0.18), true)
+		for k in range(pts_costo):          # costo in Punti: rombi in basso a destra
+			var cx := size.x - 9.0 - k * 9.0
+			var cy := size.y - 13.0
+			var rombo := PackedVector2Array([Vector2(cx, cy - 4.5), Vector2(cx + 4.0, cy), Vector2(cx, cy + 4.5), Vector2(cx - 4.0, cy)])
+			draw_colored_polygon(rombo, Color(0, 0, 0, 0.9))
+			draw_colored_polygon(PackedVector2Array([Vector2(cx, cy - 3.2), Vector2(cx + 2.8, cy), Vector2(cx, cy + 3.2), Vector2(cx - 2.8, cy)]), Color(1.0, 0.82, 0.3) if not spento else Color(0.5, 0.45, 0.35))
+		if ripetuta and quota <= 0.0:       # appena usata: velo scuro e segno di ripetizione
+			draw_rect(Rect2(3, 3, size.x - 6, size.y - 6), Color(0.05, 0.0, 0.1, 0.45))
+			draw_arc(size * 0.5, 11.0, 0.6, TAU - 0.5, 14, Color(0.85, 0.7, 1.0, 0.9), 2.5)
+			draw_colored_polygon(PackedVector2Array([size * 0.5 + Vector2(11, -9), size * 0.5 + Vector2(15, 0), size * 0.5 + Vector2(5, -1)]), Color(0.85, 0.7, 1.0, 0.9))
 		draw_string_outline(f, Vector2(5, 14), Tasti.nome_barra(indice), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 4, Color(0, 0, 0, 0.9))
 		draw_string(f, Vector2(5, 14), Tasti.nome_barra(indice), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.9, 0.85))
 		if Hud.RUOLI.has(ruolo):

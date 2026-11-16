@@ -848,6 +848,11 @@ Il colpo base singolo dà punti di Concentrazione: il finale fa più danni su un
 Il colpo base ad area, se prende 3 o più nemici, accende la RISONANZA: il prossimo finale colpisce tutti (il tasto lampeggia).
 OCCASIONE (il finale lampeggia): il prossimo finale è gratuito e a Concentrazione piena. Arriva a volte da un colpo base,
 sempre da un'interruzione riuscita e ogni 5 uccisioni di fila.
+OMBRA — generatore e scarichi: il Colpo Rapido spende Energia e dà 2 Punti combo; gli scarichi li consumano (i rombi
+sul tasto dicono quanti): Taglio Gemello (1), Ventaglio (2, sui gruppi), il colpo pesante (2, ricarica 8 s) e la danza (3,
+ricarica 18 s). Ogni Taglio Gemello accorcia di 1 s le due ricariche. FLUSSO: ogni tecnica diversa dalla precedente fa il
+15% in più; il tasto appena usato si scurisce, ripeterlo spezza il Flusso. Le tecniche lasciano FERITA (Veleno con i
+Pugnali): la vedi colare dal nemico, e colpo pesante e Ventaglio fanno più male a chi ce l'ha.
 Quando un nemico lancia (barra arancione) premi l'Interruzione: spezza il lancio e lo stordisce.
 Ogni Via ha una MAESTRIA passiva che premia il suo stile: la trovi nella finestra Abilità.
 Ogni colpo a segno dà una tacca di SLANCIO (fino a 5): più risorsa e rapidità finché continui a colpire.

@@ -25,6 +25,7 @@ var velocita := 0.0
 var ostile_base := false
 var sella := 0            # grado del destriero su cui è in sella (0 = a piedi)
 var cavallo: Personaggio = null
+var _aff: Afflizioni = null       # effetti visibili addosso (afflizioni.gd)
 var colore_nome := Color(0.95, 0.9, 0.6)     # oggetti a terra: colore della rarità
 var rarita := 0
 
@@ -300,8 +301,21 @@ func aggiorna(u: Array) -> void:
 			corpo.call("stato", hp / mhp)
 		if morto and not era_morto:
 			corpo.muori()
+			if _aff != null:
+				_aff.togli_tutto()
 		elif era_morto and not morto:
 			corpo.rialza()
+
+
+## Un effetto messo addosso (veleno, ferita, stordimento, rallentamento, marchio): si vede sul corpo finché dura.
+func afflizione(nome: String, ms: float) -> void:
+	if morto or nome.is_empty():
+		return
+	if _aff == null:
+		_aff = Afflizioni.new()
+		_aff.altezza = corpo.altezza if corpo != null else 2.0
+		add_child(_aff)
+	_aff.metti(nome, ms)
 
 
 func guarda(verso: Entita) -> void:

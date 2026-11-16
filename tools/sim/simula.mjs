@@ -132,14 +132,27 @@ function rotazione(S, c) {
   return c.f1;
 }
 
+// Ombra (kit a generatore e scarichi): il Colpo Rapido spende Energia e dà Punti; gli scarichi costano Punti. Priorità:
+// Suprema, colpo pesante, danza (contro un gruppo prima la danza), Ventaglio contro un gruppo, Taglio Gemello come riempitivo;
+// mai la stessa tecnica due volte di fila (Flusso), se c'è un'alternativa.
+function ombra(S, c) {
+  if (S.ok(S.sup)) return S.sup;
+  const pes = S.sa(c.pes) ? c.pes : 'taglio_netto';
+  const ordine = S.multi ? [c.dan, 'ventaglio', pes, 'taglio_gemello', 'colpo_rapido'] : [pes, c.dan, 'taglio_gemello', 'colpo_rapido'];
+  if (S.pts >= PTS_MAX - 1) ordine.splice(ordine.indexOf('colpo_rapido'), 1);     // niente Punti sprecati
+  const pronti = ordine.filter((id) => S.ok(id));
+  const diversi = pronti.filter((id) => id !== S.ultimaTecnica);
+  return diversi[0] || pronti[0] || 'colpo_rapido';
+}
+
 // gcd: scelta a ogni GCD. fuori: tecniche fuori dal GCD, usate appena pronte se la condizione è vera
 // (compresi i potenziamenti di classe e gli scatti che fanno danni; il Passo di Luce del Mistico no: sposta soltanto).
 // distanza: a quanti metri dal bersaglio sta il bot.
 const ROTAZIONI = {
   fulmine: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'lama_tuono' }), fuori: { grido_guerra: () => true, carica: (S) => S.res <= S.rmax - 25 } },
   montagna: { distanza: 1.6, vitalita: 2 / 3, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'martello_monte' }), fuori: { grido_guerra: () => true, radici_monte: () => true, carica: (S) => S.res <= S.rmax - 25 } },
-  pugnali: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'colpo_rapido', f2: 'ventaglio', fin: 'taglio_finale' }), fuori: { velo_ombra: (S) => S.res <= S.rmax - 30, passo_ombra: (S) => S.pts <= PTS_MAX - 2, colpo_gola: () => true } },
-  arco: { distanza: 10, gcd: (S) => rotazione(S, { f1: 'colpo_rapido', f2: 'ventaglio', fin: 'freccia_perforante' }), fuori: { velo_ombra: (S) => S.res <= S.rmax - 30, ala_vento: (S) => S.pts <= PTS_MAX - 2, colpo_gola: () => true } },
+  pugnali: { distanza: 1.6, gcd: (S) => ombra(S, { pes: 'taglio_finale', dan: 'danza_lame' }), fuori: { velo_ombra: () => true, passo_ombra: (S) => S.pts <= PTS_MAX - 2, colpo_gola: () => true } },
+  arco: { distanza: 10, gcd: (S) => ombra(S, { pes: 'freccia_perforante', dan: 'pioggia_frecce' }), fuori: { velo_ombra: () => true, ala_vento: (S) => S.pts <= PTS_MAX - 2, colpo_gola: () => true } },
   ferro: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'raffica', ritmo: true }), fuori: { respiro_drago: (S) => S.pts <= PTS_MAX - 2, pelle_bronzo: () => true, calcio_volante: (S) => S.pts < PTS_MAX, palmo_chi: () => true } },
   loto: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'vortice_interiore' }), fuori: { respiro_drago: (S) => S.pts <= PTS_MAX - 2, meditazione: () => true, calcio_volante: (S) => S.pts < PTS_MAX, palmo_chi: () => true } },
   tempesta: { distanza: 12, gcd: (S) => rotazione(S, { f1: 'dardo_luce', f2: 'sfera_celeste', fin: 'giudizio_cielo' }), fuori: { benedizione_astri: () => true, occhio_ciclone: () => true, sigillo_silenzio: () => true } },
@@ -281,6 +294,8 @@ class Bot {
       this.me.res = Math.max(0, this.me.res - costo);
       if ((sk.spend && sk.type !== 'heal_aoe') || sk.finale) this.me.pts = 0;
       if (sk.ruolo === 'accumulo') this.ultimoBase = m.s;
+      if (sk.ruolo) this.ultimaTecnica = m.s;
+      if (sk.ptsCost && !((this.buffs.occasione || 0) > ora)) this.me.pts = Math.max(0, this.me.pts - sk.ptsCost);
       if (sk.spendBonus) this.me.pts = 0;
       if (sk.pts) this.me.pts = Math.min(PTS_MAX, this.me.pts + sk.pts);
       if (sk.sup) { this.me.su = 0; this.supPronta = false; this.supDa = ora; }
@@ -412,7 +427,7 @@ class Bot {
   stato() {
     const ora = this.ora(), me = this.me, bot = this;
     return {
-      par: this.opt.par, sup: this.sup, res: me.res, rmax: me.rmax, pts: me.pts, multi: this.opt.bersagli > 1, catena: me.chain || 0, ultimo: this.ultimo, ultimoBase: this.ultimoBase,
+      par: this.opt.par, sup: this.sup, res: me.res, rmax: me.rmax, pts: me.pts, multi: this.opt.bersagli > 1, catena: me.chain || 0, ultimo: this.ultimo, ultimoBase: this.ultimoBase, ultimaTecnica: this.ultimaTecnica,
       pct: (x) => me.rmax * x / 100,
       sa: (id) => bot.conosce(id),
       eta: (id) => (bot.ultimoUso[id] === undefined ? Infinity : ora - bot.ultimoUso[id]),
@@ -426,6 +441,7 @@ class Bot {
         if (bot.costo(id) > me.res) return false;
         if (sk.sup && (me.su || 0) < SUPREMA.max) return false;
         if (sk.spend && sk.type !== 'heal_aoe' && me.pts < (sk.minPts || 1)) return false;
+        if (sk.ptsCost && me.pts < sk.ptsCost && !((bot.buffs.occasione || 0) > ora)) return false;
         return true;
       },
     };

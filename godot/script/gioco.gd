@@ -40,6 +40,7 @@ var _fermo_immagine := 0.0
 var cripta: Cripta = null
 var prova: Dictionary = {}         # ultimo stato della Prova del Sigillo (messaggio `dg`)
 var gruppo: Dictionary = {}        # ultimo messaggio `party`
+var ultima_tecnica := ""               # ultima tecnica di rotazione usata (Flusso: ripeterla lo spezza)
 var effetti_bersagli: Dictionary = {}   # id → { nome effetto: millisecondi di fine } (ferite, veleni, marchi, stordimenti)
 var lanci_nemici: Dictionary = {}  # id → { nome, fine, durata }: lanci in corso di mostri e giocatori nemici (da interrompere)
 var coda: Dictionary = {}          # tecnica premuta poco prima che fosse pronta: { sid, quando }
@@ -293,6 +294,8 @@ func _su_fx(m: Dictionary) -> void:
 					s.corpo.lancia()
 			fx.tecnica(sk, s, d, m)
 			_suono_tecnica(sk, s == me)
+			if s == me and sk.has("ruolo"):
+				ultima_tecnica = String(sk.id)
 			if s == me:
 				var forte: bool = String(sk.get("ruolo", "")) == "potente" or sk.get("sup", false)
 				if forte:
@@ -317,8 +320,15 @@ func _su_fx(m: Dictionary) -> void:
 					Suoni.suona("livello")
 		"stun":
 			if d != null:
-				fx.anello(d.global_position, Color(1.0, 1.0, 0.5), 1.5, 0.5)
+				d.afflizione("__stordito", float(m.get("ms", 1000)))
 				_segna_effetto(d.id, "__stordito", float(m.get("ms", 1000)))
+		"aff":
+			# effetto messo su qualcuno (veleno, ferita, rallentamento, marchio...): si vede addosso a lui finché dura
+			if d != null:
+				d.afflizione(String(m.get("a", "")), float(m.get("ms", 1000)))
+		"flusso":
+			if s == me and int(m.get("rotto", 0)) == 1:
+				hud.numero(me.testa() + Vector3(0, 0.4, 0), "Flusso spezzato", Color(0.75, 0.6, 0.95), 0.9)
 		"post":
 			if d != null:
 				hud.numero(d.testa() + Vector3(0, 0.5, 0), "SQUILIBRATO", Color(1.0, 0.85, 0.3), 1.5)

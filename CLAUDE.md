@@ -189,6 +189,15 @@ Obiettivo dell'autore: aspetto alla WoW, cioè corpo base + capi separati che ca
   (fascia più larga e più alta), falde rigide (`falde`: pesi a curva morbida, i pannelli davanti e dietro divisi fra le
   due cosce secondo il lato; Mistico `coscia` 0,55). Vetrina: `--zoom=3 --mira=1.4 --fuoco=2` per i primi piani.
   Non verificati: gioco col server, Forward+, animazioni diverse da fermo/corsa, PNG e mostri con i completi nuovi.
+- **Copricapi per classe** (l'autore: «gli elmi più piccoli e più a tema con la classe»): `copricapo()` e `Testa` in
+  `tools/blender/completi.py` → `capo_<classe>_e<g>` (g = `tier` 1-4 del pezzo `head`), misurati sul cranio con i capelli
+  corti. Lama: fascia con placca → frontale di ferro → frontale con mezzaluna e guanciali → corona da guerra nera e oro;
+  Ombra: bandana → maschera di stoffa → placca dentata → diadema scuro con una lama di lato e penne; Monaco: corda
+  annodata → giro di grani → cerchio d'oro con disco di giada → cerchio doppio con fiamma e sonagli; Mistico: nastro con
+  talismano → fermacapelli con spillone → diadema di giada con pendenti → coroncina con stella. `entita.gd` li sceglie
+  dalla classe e dal grado (i vecchi elmi restano per PNG, mostri e browser). Vetrina: `--elmo=1` (o `vecchio`),
+  `--passo=0.72`. Visti in vetrina: tutte le classi, uomo e donna, davanti e dietro. Non visti: in gioco, con le
+  capigliature lunghe (sotto il copricapo si mettono i capelli corti), in corsa.
 - Da fare: capelli e volti, nascondere il corpo sotto i capi. Dopo: l'autore vuole lavorare sul sistema di combattimento.
 - Proporzioni: `"spalle": 1.22` nella voce del modello in `indice.json` allontana le braccia dal busto (`skinned.js`).
 - In corsa `SkinAnim.straightFeet` raddrizza i piedi (la corsa scelta li ruota verso l'esterno).
@@ -328,6 +337,39 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   mostra i secondi e lampeggia «PRONTA» (`Hud._aggiorna_suprema`). GM `/suprema` la rende pronta.
   Misura (40 s, velocità 4, una prova, macchina carica): 1 bersaglio Vie da danno −4% … +5%, Montagna 67%, Benedizione
   60%, Suprema al 10-19% dei danni; 5 bersagli −12% … +11%, Suprema 8-31%. **Non visto a schermo** (macchina satura).
+- **Kit a generatore e scarichi — per ora solo l'Ombra** (richiesta dell'autore: «gameplay come quello di un monaco da
+  MMO: generazione e scarico di risorse con un bel flow, combinazioni dinamiche, effetti diversi per ogni tecnica, niente
+  linee per terra, gli effetti messi sui nemici si devono vedere sul nemico; parti dall'Ombra, poi le altre»). **Le altre
+  tre classi vanno ancora portate a questo schema** (hanno il kit della fase 4).
+  - Dati (`shared/data.js`): Energia 10/s. **Colpo Rapido** (generatore: 40 Energia, 2 Punti combo), **Taglio Gemello**
+    (1 Punto, due colpi; `riduceCd`: −1 s alle ricariche di colpo pesante e danza), **Ventaglio di Lame** (2 Punti, area;
+    `perAfflitto`: +12% per nemico già afflitto, fino a 5), colpo pesante (2 Punti, ricarica 8 s, `bonusAfflitto` +20%):
+    Taglio Netto (base) → **Morso della Vipera** (Pugnali, id `taglio_finale`) / Freccia Perforante (Arco), danza (3 Punti,
+    ricarica 18 s, 5 ondate su tutta la zona): **Danza delle Lame** / **Pioggia di Frecce** (livello 10). Campi nuovi:
+    `ptsCost` (Punti consumati; l'Occasione rende gratuito lo scarico), `affligge`, `riduceCd`, `bonusAfflitto`, `perAfflitto`.
+    Niente più `finale`/Risonanza per l'Ombra. `CLASSES.ombra`: `flusso: 15`, `occasionePct: 14`, `ferita`.
+  - **Flusso** (`resolveSkill`, `p.ultimaTecnica`): ogni tecnica con `ruolo` diversa dalla precedente fa +15%; ripeterla
+    toglie l'effetto `flusso` (fx `flusso` con `rotto: 1`). **Ferita** (effetto `ferita`, danni ogni secondo) lasciata dalle
+    tecniche `affligge`; con la Via dei Pugnali diventa **Veleno** (maestria `veleno`, più forte). La Suprema torna prima
+    anche con i Punti spesi (`SUPREMA.puntoS` 0,8 s a Punto); Mille Ombre dà 2 Punti.
+  - **Effetti addosso ai nemici** (`godot/script/afflizioni.gd`, `Entita.afflizione`): il server manda a tutti i vicini
+    l'effetto `aff` (`a` = id, `ms`) per danni nel tempo, marchi e rallentamenti (`__lento`); lo stordimento usa `stun`.
+    Tipi: veleno (gocce e vapore verdi, bolle), sangue (gocce e nebbia rossa), stelle sopra la testa, brina, fuoco,
+    marchio. Durata in tempo di gioco (non d'orologio). Vale per tutte le classi (campo `tipo` in `BUFFS`, altrimenti dedotto).
+  - **Effetti delle tecniche** (`Effetti._ombra_kit`): diversi per tecnica e per arma (`_ombra_lame`: tagli d'ombra a X,
+    zanne, guizzi di fumo, coltelli lanciati a raggiera; `_ombra_arco`: frecce vere a coppia, freccia che trapassa, salve
+    dal cielo). `dardo()` = freccia o coltello con coda (al posto dei globi luminosi). **Niente segni a terra** per l'Ombra
+    (né `_firma`, né `_arricchisci`, né cerchio dell'aura): i gradi aggiungono colpi, non strati. Vale come regola per le
+    prossime classi.
+  - Interfaccia: rombi sul tasto = costo in Punti, tasto spento senza Punti, tasto appena usato velato (ripeterlo spezza
+    il Flusso), ruoli «Generatore» / «Scarico» / «Scarico pesante», icone nuove, paragrafo nell'aiuto (H).
+  - Bot: `ombra()` in `simula.mjs` e `farming.mjs` (pesante e danza appena pronti, Ventaglio sui gruppi, Gemello per
+    riempire, mai due volte la stessa). Misura (40 s, velocità 4, una prova): liv. 30 su 1 bersaglio Pugnali +4%, Arco +3%;
+    su 5 bersagli −6% / −7%; liv. 15 +8% / +1%; Suprema ogni 16 s. Energia al massimo il 38% del tempo (poco vincolante:
+    se serve più tensione, rigenerazione a 9). Farming zona media: 55-59 uccisioni/min, nessuna morte.
+  - Visto a schermo in gioco: le tecniche con i pugnali e il veleno sui fantocci; con l'arco frecce a coppia e perforante.
+    **Non visti**: Pioggia di Frecce e Ventaglio con l'arco, Ferita (sangue) da vicino, stelle dello stordimento, il segno
+    del tasto ripetuto, Flusso spezzato; PvP con il kit nuovo non misurato.
 - **Postura** di élite e boss: fatta (`shared/postura.js`, `colpisciPostura`/`tickPostura` nel server, barre nel client).
 - **Simulazione senza browser**: `npm run sim` (`tools/sim/simula.mjs`). Avvia da sé un server di prova, crea un personaggio
   per Via (livello, arma, punti statistica e abilità), lo porta davanti ai fantocci e gioca una rotazione sensata (tabella

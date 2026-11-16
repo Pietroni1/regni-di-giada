@@ -646,9 +646,10 @@ static func aura_classe(id: String) -> Node3D:
 	var c1: Color = a.c1
 	var c2: Color = a.c2
 	var radice := Node3D.new()
-	var cerchio := cerchio_rune(1.35, c1, false)
-	cerchio.position.y = 0.14
-	radice.add_child(cerchio)
+	if String(a.stile) != "ombra":      # l'Ombra non ha segni a terra: solo fumo e gocce (richiesta dell'autore)
+		var cerchio := cerchio_rune(1.35, c1, false)
+		cerchio.position.y = 0.14
+		radice.add_child(cerchio)
 	# scintille che salgono dal cerchio
 	var p := particelle(radice, 16, 0.09, 1.5, c1, c2, 0.8)
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING

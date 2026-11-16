@@ -292,14 +292,17 @@ func _process(dt: float) -> void:
 		var passo: float = float(p.v) * dt
 		p.t += dt
 		if d.length() <= passo or p.t > 3.0:
-			scintille(meta, p.c, 16, 6.0, 0.4)
-			bagliore(meta, (p.c as Color).lightened(0.4), float(p.r) * 9.0, 0.25)
+			if not p.has("dardo"):
+				scintille(meta, p.c, 16, 6.0, 0.4)
+				bagliore(meta, (p.c as Color).lightened(0.4), float(p.r) * 9.0, 0.25)
 			if (p.fine as Callable).is_valid():
 				(p.fine as Callable).call()
 			n.queue_free()
 			_proiettili.remove_at(i)
 		else:
 			n.position += d.normalized() * passo
+			if p.has("dardo") and p.verso is Entita and d.length() > 0.2:
+				n.look_at(meta, Vector3.UP if absf(d.normalized().y) < 0.98 else Vector3.RIGHT)
 
 
 func scuoti(forza: float) -> void:
@@ -825,6 +828,10 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 		if int(m.get("off", 0)) == 0:      # spegnendo l'aura non si rifà l'effetto d'accensione
 			_buff_classe(c)
 		return
+	if c.cls == "ombra" and not c.fx in ["dash"]:
+		# Ombra: effetti propri per ogni tecnica, lame o frecce secondo l'arma; niente segni a terra
+		_ombra_kit(c)
+		return
 	_arricchisci(c)
 	if int(m.get("ris", 0)) == 1:
 		_risonanza(c)
@@ -977,6 +984,323 @@ func _ombra(c: Dictionary) -> void:
 				bagliore(su.testa(), c.c3, 1.8, 0.3)
 		_:
 			_generico(c)
+
+
+# ------------------------------------------------------------------ Ombra: kit a generatore e scarichi
+## Ogni tecnica dell'Ombra ha il suo effetto, diverso con i pugnali (tagli d'ombra dal bordo acido, fumo viola, copie
+## d'ombra, gocce di veleno) e con l'arco (frecce vere, scie d'aria, penne). Niente cerchi, rune o segni sul terreno:
+## solo colpi, proiettili, fumo e particelle. I gradi dell'abilità aggiungono colpi e copie, non strati a terra.
+func _arma_di(e: Entita) -> String:
+	var w = e.info.get("w") if e != null else null
+	if w != null and Dati.ITEMS.has(w):
+		return String(Dati.ITEMS[w].get("wt", ""))
+	return ""
+
+
+func _ombra_kit(c: Dictionary) -> void:
+	var da: Entita = c.da
+	var arco := _arma_di(da) == "bow"
+	if arco:
+		var pv: Array = PALETTE.vento
+		c.colore = pv[0] if int(c.g) < 4 else (pv[0] as Color).lerp(ORO_PERFETTO, 0.35)
+		c.c2 = pv[1]
+		c.c3 = pv[2]
+		_ombra_arco(c)
+	else:
+		var po: Array = PALETTE.ombra
+		c.colore = po[0] if int(c.g) < 4 else (po[0] as Color).lerp(ORO_PERFETTO, 0.35)
+		c.c2 = po[1]
+		c.c3 = po[2]
+		_ombra_lame(c)
+
+
+func _ombra_lame(c: Dictionary) -> void:
+	var da: Entita = c.da
+	var su: Entita = c.su
+	var col: Color = c.colore
+	var c2: Color = c.c2
+	var c3: Color = c.c3
+	var qui: Vector3 = c.qui
+	var la: Vector3 = c.la
+	var g: int = c.g
+	var veleno := String(c.sk.get("via", "")) == "pugnali"
+	var p := su.petto() if su != null else la + Vector3(0, 1.2, 0)
+	match String(c.fx):
+		"slash":
+			# Colpo Rapido: una stoccata sola, secca
+			taglio_ombra(p, da.r + randf_range(-0.5, 0.5), col, c2, 1.9, 1.7, 0.22, randf_range(-0.9, 0.9))
+			scintille(p, c3, 6 + g * 2, 4.5, 0.3, -8.0, 0.1)
+			fumo(p - Vector3(0, 0.3, 0), c2, 3, 0.3, 0.6, 0.8)
+		"gemello":
+			# Taglio Gemello: due tagli che si incrociano a X, il secondo viola
+			var inc := randf_range(0.7, 1.0)
+			taglio_ombra(p, da.r, col, c2, 2.3, 2.0, 0.26, inc)
+			_dopo(0.11, taglio_ombra.bind(p, da.r, c3, c2, 2.4, 2.0, 0.26, -inc))
+			_dopo(0.11, scintille.bind(p, col, 10 + g * 3, 6.0, 0.35, -10.0, 0.11))
+			if g >= 2:
+				_dopo(0.2, taglio_ombra.bind(p, da.r + PI, col, c2, 2.0, 1.8, 0.22, 0.0))
+			if veleno:
+				gocce(p, col, 6)
+		"pesante":
+			# colpo pesante: una copia d'ombra si lancia sul bersaglio, poi il colpo
+			_guizzo(qui, la, c2, c3)
+			if veleno:
+				# Morso della Vipera: due zanne che si chiudono dall'alto, schizzo di veleno
+				var lato := Vector3(cos(da.r), 0, -sin(da.r)) * 0.35
+				_dopo(0.1, taglio_ombra.bind(p + lato + Vector3(0, 0.5, 0), da.r, col, c2, 2.6, 1.5, 0.3, 1.35))
+				_dopo(0.1, taglio_ombra.bind(p - lato + Vector3(0, 0.5, 0), da.r, col, c2, 2.6, 1.5, 0.3, -1.35))
+				_dopo(0.18, gocce.bind(p, col, 26 + g * 4))
+				_dopo(0.18, fumo.bind(p, Color(0.12, 0.4, 0.08), 8, 0.6, 1.0, 1.1, 1.0))
+				_dopo(0.18, bagliore.bind(p, col, 2.6, 0.2))
+			else:
+				_dopo(0.1, taglio_ombra.bind(p, da.r, c3, c2, 3.5, 2.6, 0.32, randf_range(-0.3, 0.3)))
+				_dopo(0.16, scintille.bind(p, c3, 22, 8.0, 0.4, -12.0, 0.12))
+				_dopo(0.16, bagliore.bind(p, c3, 2.4, 0.18))
+			_dopo(0.16, fumo.bind(p - Vector3(0, 0.4, 0), c2, 10, 0.8, 0.9, 1.2))
+			_dopo(0.16, scuoti.bind(0.4))
+		"danza":
+			# Danza delle Lame: copie d'ombra che attraversano il gruppo da ogni lato, un fendente a ondata
+			var R := float(c.raggio)
+			var onde := int(c.sk.get("waves", 5))
+			var passo := float(c.sk.get("waveGap", 0.28))
+			for i in range(onde):
+				_dopo(passo * i, _onda_danza.bind(la, R, col, c2, c3, i == onde - 1, g))
+		"ventaglio":
+			# Ventaglio di Lame: una raggiera di coltelli lanciati che attraversa la zona
+			var R2 := float(c.raggio)
+			var verso := atan2(la.x - qui.x, la.z - qui.z)
+			taglio_ombra(qui + Vector3(0, 1.2, 0), verso, col, c2, 2.4, 3.0, 0.26, 0.0)
+			var n := 8 + g * 2
+			for i in range(n):
+				var a := verso + lerpf(-1.9, 1.9, float(i) / float(n - 1))
+				var fine := Dati.suolo(la.x + sin(a) * R2 * 0.9, la.z + cos(a) * R2 * 0.9) + Vector3(0, 0.9, 0)
+				dardo(c.mano, fine, col if i % 2 == 0 else c3, 34.0, "lama", fumo.bind(fine, c2, 2, 0.25, 0.5, 0.7))
+			_dopo(0.12, scintille.bind(p, col, 14, 7.0, 0.35, -8.0, 0.11))
+		"mark":
+			# Colpo alla Gola: una stoccata muta, fumo attorno alla testa
+			if su != null:
+				var gola := su.testa() - Vector3(0, 0.3, 0)
+				taglio_ombra(gola, da.r, c3, c2, 1.5, 1.2, 0.2, 0.0)
+				bagliore(gola, c3, 1.4, 0.15)
+				fumo(gola, c2, 7, 0.35, 1.0, 0.9, 0.6)
+				scintille(gola, Color.WHITE, 6, 3.5, 0.3, -6.0, 0.1)
+		_:
+			_ombra(c)
+
+
+func _onda_danza(la: Vector3, R: float, col: Color, c2: Color, c3: Color, ultima: bool, g: int) -> void:
+	var a := randf() * TAU
+	var fuori := Vector3(sin(a), 0, cos(a)) * R * 0.8
+	_guizzo(la + fuori, la - fuori, c2, c3)
+	var centro := la + Vector3(0, 1.2, 0)
+	taglio_ombra(centro, a + PI, col if not ultima else c3, c2, minf(R, 4.2), 2.8, 0.3, randf_range(-0.5, 0.5))
+	for k in range(2 + (1 if g >= 2 else 0)):
+		var b := randf() * TAU
+		var d := R * sqrt(randf()) * 0.85
+		var q := la + Vector3(sin(b) * d, 1.1, cos(b) * d)
+		taglio_ombra(q, randf() * TAU, c3 if k % 2 == 0 else col, c2, 1.7, 1.8, 0.24, randf_range(-1.1, 1.1))
+		scintille(q, col, 5, 4.0, 0.3, -8.0, 0.1)
+	fumo(la + Vector3(0, 0.5, 0), c2, 5, R * 0.45, 0.8, 1.2)
+	if ultima:
+		scintille(centro, c3, 26, 9.0, 0.45, -10.0, 0.13)
+		scuoti(0.4)
+
+
+func _ombra_arco(c: Dictionary) -> void:
+	var da: Entita = c.da
+	var su: Entita = c.su
+	var col: Color = c.colore
+	var c2: Color = c.c2
+	var c3: Color = c.c3
+	var qui: Vector3 = c.qui
+	var la: Vector3 = c.la
+	var g: int = c.g
+	var mano: Vector3 = c.mano
+	var p := su.petto() if su != null else la + Vector3(0, 1.2, 0)
+	var dir := (la - qui)
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length() > 0.01 else Vector3(sin(da.r), 0, cos(da.r))
+	var lato := Vector3(dir.z, 0, -dir.x)
+	match String(c.fx):
+		"slash":
+			# Colpo Rapido: una freccia tesa
+			dardo(mano, su if su != null else p, col, 52.0, "freccia", _impatto_freccia.bind(p, c2, col, 5))
+		"gemello":
+			# Taglio Gemello: due frecce una dietro l'altra, da due lati
+			dardo(mano + lato * 0.25, su if su != null else p, col, 52.0, "freccia", _impatto_freccia.bind(p, c2, col, 5))
+			_dopo(0.12, dardo.bind(mano - lato * 0.25, su if su != null else p, c3, 52.0, "freccia", _impatto_freccia.bind(p, c2, c3, 7 + g * 2)))
+		"pesante":
+			# Freccia Perforante: una freccia grossa che passa il bersaglio da parte a parte
+			bagliore(mano, col, 1.6, 0.18)
+			dardo(mano, su if su != null else p, col, 64.0, "freccia", _impatto_perforante.bind(p, dir, col, c2, c3, g), 1.9)
+		"danza":
+			# Pioggia di Frecce: scrosci che cadono dal cielo su tutta la zona
+			var R := float(c.raggio)
+			var onde := int(c.sk.get("waves", 5))
+			var passo := float(c.sk.get("waveGap", 0.28))
+			# la salva che sale: un fascio di frecce verso il cielo
+			for i in range(5):
+				dardo(mano, mano + Vector3(randf_range(-1.5, 1.5), 16.0, randf_range(-1.5, 1.5)) + dir * 4.0, col, 60.0, "freccia")
+			for i in range(onde):
+				_dopo(0.2 + passo * i, _scroscio.bind(la, R, col, c2, 7 + g, i == onde - 1))
+		"ventaglio":
+			# Ventaglio: una raggiera di frecce che si apre sulla zona
+			var R2 := float(c.raggio)
+			var verso := atan2(dir.x, dir.z)
+			var n := 7 + g
+			for i in range(n):
+				var a := verso + lerpf(-1.25, 1.25, float(i) / float(n - 1))
+				var dist := (la - qui).length()
+				var fine := Dati.suolo(la.x + sin(a) * R2 * 0.85 - dir.x * 0.5, la.z + cos(a) * R2 * 0.85 - dir.z * 0.5) + Vector3(0, 1.0, 0)
+				if dist > R2 * 1.5:
+					fine = Dati.suolo(la.x + lato.x * lerpf(-R2, R2, float(i) / float(n - 1)) * 0.9, la.z + lato.z * lerpf(-R2, R2, float(i) / float(n - 1)) * 0.9) + Vector3(0, 1.0, 0)
+				dardo(mano, fine, col, 50.0, "freccia", _impatto_freccia.bind(fine, c2, col, 3))
+			petali(mano, c2, 6, 0.4, 0.9, -0.5, Vector2(0.07, 0.3))
+		"mark":
+			# Colpo alla Gola con l'arco: una freccia corta alla gola
+			if su != null:
+				var gola := su.testa() - Vector3(0, 0.3, 0)
+				dardo(mano, gola, c3, 60.0, "freccia", bagliore.bind(gola, c3, 1.3, 0.15), 0.8)
+				_dopo(0.1, fumo.bind(gola, Color(0.25, 0.25, 0.3), 6, 0.3, 0.9, 0.8, 0.6))
+		_:
+			_vento(c)
+
+
+func _impatto_freccia(p: Vector3, penne: Color, col: Color, quante: int) -> void:
+	scintille(p, col, quante, 4.5, 0.3, -8.0, 0.1)
+	petali(p, penne, maxi(2, quante / 2), 0.3, 0.9, -0.7, Vector2(0.06, 0.28))
+
+
+func _impatto_perforante(p: Vector3, dir: Vector3, col: Color, c2: Color, c3: Color, g: int) -> void:
+	# la freccia esce dall'altra parte e prosegue: scia oltre il bersaglio, penne e scintille
+	var oltre := p + dir * (5.0 + g)
+	dardo(p, oltre, col, 64.0, "freccia", Callable(), 1.9)
+	scintille(p, col, 24 + g * 4, 9.0, 0.45, -10.0, 0.13)
+	petali(p, c2, 12, 0.5, 1.2, -0.6, Vector2(0.07, 0.34))
+	bagliore(p, col.lightened(0.3), 2.4, 0.16)
+	scuoti(0.4)
+
+
+func _scroscio(la: Vector3, R: float, col: Color, c2: Color, quante: int, ultima: bool) -> void:
+	for i in range(quante):
+		var a := randf() * TAU
+		var d := R * sqrt(randf())
+		var q := Dati.suolo(la.x + sin(a) * d, la.z + cos(a) * d)
+		_dopo(randf() * 0.15, dardo.bind(q + Vector3(randf_range(-2.0, 2.0), 14.0, randf_range(-2.0, 2.0)), q + Vector3(0, 0.15, 0), col, 62.0, "freccia",
+				_impatto_freccia.bind(q + Vector3(0, 0.4, 0), c2, col, 3)))
+	if ultima:
+		scuoti(0.3)
+		polvere(la, R * 0.7, 14)
+
+
+## Guizzo d'ombra da un punto a un altro: una fila di sbuffi di fumo scuro e scintille viola (una copia che attraversa).
+func _guizzo(da: Vector3, a: Vector3, scuro: Color, viola: Color) -> void:
+	var n := clampi(int((a - da).length() / 0.9), 3, 7)
+	for i in range(n):
+		var q := da.lerp(a, float(i) / float(n - 1)) + Vector3(0, 1.0, 0)
+		_dopo(0.025 * i, fumo.bind(q, scuro, 3, 0.25, 0.5, 1.4, 0.2))
+	scintille(a + Vector3(0, 1.1, 0), viola, 6, 3.0, 0.3, 0.0, 0.1)
+
+
+static var _mat_coda: Dictionary = {}
+
+
+## Dardo che vola dritto verso un punto o un bersaglio: una freccia vera o un coltello da lancio, con una coda sottile.
+## Niente globi di luce: all'arrivo chiama solo `fine`.
+func dardo(da: Vector3, verso, colore: Color, velocita := 50.0, tipo := "freccia", fine := Callable(), scala := 1.0) -> void:
+	var nodo := Node3D.new()
+	nodo.position = da
+	add_child(nodo)
+	var corpo := Node3D.new()
+	corpo.scale = Vector3.ONE * scala
+	nodo.add_child(corpo)
+	if tipo == "lama":
+		var lama := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = Vector3(0.075, 0.014, 0.36)
+		lama.mesh = b
+		lama.material_override = Edifici.mat(Color(0.1, 0.09, 0.14), 0.3, 0.8, 0.0)
+		lama.position.z = -0.12
+		corpo.add_child(lama)
+		var filo := MeshInstance3D.new()
+		var bf := BoxMesh.new()
+		bf.size = Vector3(0.09, 0.006, 0.34)
+		filo.mesh = bf
+		filo.material_override = Edifici.mat(colore, 0.3, 0.0, 2.5)
+		filo.position.z = -0.12
+		corpo.add_child(filo)
+		var manico := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.03, 0.03, 0.14)
+		manico.mesh = bm
+		manico.material_override = Edifici.mat(Color(0.2, 0.1, 0.25), 0.8, 0.0, 0.0)
+		manico.position.z = 0.13
+		corpo.add_child(manico)
+	else:
+		var asta := MeshInstance3D.new()
+		var b2 := BoxMesh.new()
+		b2.size = Vector3(0.024, 0.024, 0.85)
+		asta.mesh = b2
+		asta.material_override = Edifici.mat(Color(0.45, 0.3, 0.16), 0.8, 0.0, 0.0)
+		corpo.add_child(asta)
+		var punta := MeshInstance3D.new()
+		var cp := CylinderMesh.new()
+		cp.top_radius = 0.0
+		cp.bottom_radius = 0.04
+		cp.height = 0.16
+		cp.radial_segments = 6
+		punta.mesh = cp
+		punta.material_override = Edifici.mat(colore.lightened(0.3), 0.3, 0.6, 1.5)
+		punta.rotation.x = -PI * 0.5
+		punta.position.z = -0.5
+		corpo.add_child(punta)
+		for k in range(2):
+			var penna := MeshInstance3D.new()
+			var q := QuadMesh.new()
+			q.size = Vector2(0.11, 0.2)
+			penna.mesh = q
+			var mp := Edifici.mat(Color(0.95, 0.93, 0.85), 0.9, 0.0, 0.0)
+			mp.cull_mode = BaseMaterial3D.CULL_DISABLED
+			penna.material_override = mp
+			penna.rotation = Vector3(PI * 0.5, 0, k * PI * 0.5)
+			penna.position.z = 0.36
+			corpo.add_child(penna)
+	for mi in corpo.get_children():
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# coda: due nastri incrociati che sfumano dietro al dardo
+	var chiave := colore.to_html()
+	if not _mat_coda.has(chiave):
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		var gr := Gradient.new()
+		gr.offsets = PackedFloat32Array([0.0, 1.0])
+		gr.colors = PackedColorArray([Color(colore.r, colore.g, colore.b, 0.55), Color(colore.r, colore.g, colore.b, 0.0)])
+		var gt := GradientTexture2D.new()
+		gt.gradient = gr
+		gt.fill_from = Vector2(0.5, 0.0)
+		gt.fill_to = Vector2(0.5, 1.0)
+		gt.width = 4
+		gt.height = 32
+		m.albedo_texture = gt
+		_mat_coda[chiave] = m
+	for k in range(2):
+		var nastro := MeshInstance3D.new()
+		var qn := QuadMesh.new()
+		qn.size = Vector2(0.07 * scala, 1.5 * scala)
+		nastro.mesh = qn
+		nastro.material_override = _mat_coda[chiave]
+		nastro.rotation = Vector3(-PI * 0.5, 0, 0)
+		nastro.rotate_object_local(Vector3(0, 1, 0), k * PI * 0.5)
+		nastro.position.z = 0.75 * scala + 0.2
+		nastro.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		nodo.add_child(nastro)
+	var meta0: Vector3 = (verso as Entita).petto() if verso is Entita else verso
+	if (meta0 - da).length() > 0.05:
+		nodo.look_at(meta0, Vector3.UP if absf((meta0 - da).normalized().y) < 0.98 else Vector3.RIGHT)
+	_proiettili.append({"n": nodo, "verso": verso, "v": velocita, "c": colore, "fine": fine, "t": 0.0, "r": 0.1, "dardo": true})
 
 
 ## Un coltello d'ombra che cala dal cielo: bordo acido, lascia uno sbuffo di fumo.

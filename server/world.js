@@ -1052,6 +1052,7 @@ export class World {
 
   slow(e, sec) {
     e.slowUntil = Math.max(e.slowUntil || 0, NOW() + sec * 1000);
+    this.fx(e, { k: 'aff', d: e.id, a: '__lento', ms: Math.round(sec * 1000) });
     if (e.kind === 'player') this.send(e, { t: 'st', slow: Math.round(sec * 1000) });
   }
 
@@ -1378,6 +1379,7 @@ export class World {
     }
     if (this.costOf(p, sk) > p.res + 0.001) return { err: `${RESOURCES[p.rtype].name} insufficiente` };
     if (sk.sup && NOW() < (p.supAt || 0)) return { err: 'La Tecnica Suprema non è ancora pronta' };
+    if (sk.ptsCost && p.pts < sk.ptsCost && !p.buffs.some(b => b.id === 'occasione')) return { err: `Servono ${sk.ptsCost} ${(CLASSES[p.cls].pts || {}).name || 'punti'}` };
     if (sk.spend && sk.type !== 'heal_aoe' && p.pts < (sk.minPts || 1)) return { err: `Servono almeno ${sk.minPts || 1} ${(CLASSES[p.cls].pts || {}).name || 'punti'}` };
     const range = sk.range === 'weapon' ? p.range : (sk.range || 0);
     const target = tid ? this.ents.get(tid) : null;
@@ -1439,9 +1441,11 @@ export class World {
       const carry = Math.min(Math.max(0, ex.until - t), dur * 0.3);
       ex.dmg = tick; ex.until = t + dur + carry;
       this.send(p, { t: 'dot', d: target.id, s: sk.id, ms: ex.until - t });
+      this.fx(target, { k: 'aff', d: target.id, a: sk.id, ms: ex.until - t });
     } else {
       target.dots.push({ src: p.id, sid: sk.id, dmg: tick, every, next: t + every, until: t + dur });
       this.send(p, { t: 'dot', d: target.id, s: sk.id, ms: dur });
+      this.fx(target, { k: 'aff', d: target.id, a: sk.id, ms: dur });   // a tutti i vicini: l'effetto si vede sul nemico
     }
   }
 
@@ -1461,6 +1465,19 @@ export class World {
     if ((sk.spend && sk.type !== 'heal_aoe') || sk.finale) { n = p.pts; p.pts = 0; }
     // Occasione: il finale è gratuito (vedi costOf) e vale come se la Concentrazione fosse piena
     if (sk.finale && p.buffs.some(b => b.id === 'occasione')) { n = Math.max(n, PTS_MAX); p.buffs = p.buffs.filter(b => b.id !== 'occasione'); }
+    // scarichi a Punti (kit dell'Ombra): costo fisso; con l'Occasione non consumano nulla
+    if (sk.ptsCost) {
+      if (p.buffs.some(b => b.id === 'occasione')) p.buffs = p.buffs.filter(b => b.id !== 'occasione');
+      else p.pts = Math.max(0, p.pts - sk.ptsCost);
+      if ((p.supAt || 0) > NOW()) p.supAt -= sk.ptsCost * (SUPREMA.puntoS || 0) * 1000;
+    }
+    // Flusso: una tecnica di rotazione diversa dalla precedente fa più danni; ripeterla lo spezza
+    const cls = CLASSES[p.cls];
+    const rotazione = !!(cls.flusso && sk.ruolo);
+    const inFlusso = rotazione && !!p.ultimaTecnica && p.ultimaTecnica !== sid;
+    // Ferita (o Veleno con la Via dei Pugnali): il segno lasciato dalle tecniche `affligge`
+    const affl = sk.affligge ? ((p.ch.via && VIE[p.ch.via].maestria && VIE[p.ch.via].maestria.veleno) ? { id: 'veleno', dot: VIE[p.ch.via].maestria.veleno } : (cls.ferita ? { id: 'ferita', dot: cls.ferita } : null)) : null;
+    const afflitto = (e) => e.dots.some(d => d.src === p.id && (d.sid === 'veleno' || d.sid === 'ferita'));
     // Risonanza: il finale diventa ad area (e la consuma)
     const ris = !!sk.finale && p.buffs.some(b => b.id === 'risonanza');
     if (ris) p.buffs = p.buffs.filter(b => b.id !== 'risonanza');
@@ -1482,12 +1499,20 @@ export class World {
       return !((d.consume && d.consume.includes(sid)) || (sk.spend && d.consumeSpender));
     });
     const base = (sk.dmg === 'magic' ? p.matk : sk.dmg === 'hybrid' ? (p.atk + p.matk) * 0.55 : sk.dmg === 'best' ? Math.max(p.atk, p.matk) : p.atk) * (sk.mount ? 1 : COMBAT.scalaTecniche || 1);
+    let areaAfflitti = 0;   // Ventaglio: +% per ogni nemico già afflitto dentro l'area
+    if (sk.perAfflitto && target) {
+      let k = 0;
+      for (const e of this.hostilesAround(p, target.x, target.z, sk.radius)) if (afflitto(e)) k++;
+      areaAfflitti = Math.min(sk.perAfflitto.max, k) * sk.perAfflitto.pct;
+    }
     const pctFor = (tgt) => {
       let pct = p.dmgPct + bonus + (behind ? sk.behind.dmg : 0) + this.vulnFrom(tgt, p);
+      if (inFlusso) pct += cls.flusso;
+      if (sk.bonusAfflitto && afflitto(tgt)) pct += sk.bonusAfflitto;
+      pct += areaAfflitti;
       if (sk.bonusVs && tgt.dots.some(d => d.src === p.id && d.sid === sk.bonusVs.dot)) pct += sk.bonusVs.dmg;
       // Maestrie delle Vie
       if (sk.finale && mae.slancio) pct += mae.slancio * p.slancio;
-      if (sk.finale && mae.veleno && tgt.dots.some(d => d.src === p.id && d.sid === 'veleno')) pct += mae.veleno.bonus;
       if (mae.distanza && dist(p, tgt) > mae.distanza.m) pct += mae.distanza.pct;
       if (mae.ritmo && sk.ruolo === 'accumulo' && p.ultimoBase && p.ultimoBase !== sid) pct += mae.ritmo;
       return pct;
@@ -1498,7 +1523,7 @@ export class World {
     let inflitti = 0;
     const opts = { sk: sid, ignoreDef: sk.ignoreDef, threat: sk.threat };
     // Postura: la riducono solo le tecniche che spendono risorsa o punti (costo nominale in % del massimo) e le Supreme
-    const costoPct = sk.cost > 0 ? (p.rtype === 'mana' ? sk.cost : sk.cost / Math.max(1, p.rmax) * 100) : 0;
+    const costoPct = sk.ptsCost ? sk.ptsCost * 14 : sk.cost > 0 ? (p.rtype === 'mana' ? sk.cost : sk.cost / Math.max(1, p.rmax) * 100) : 0;
     const postDi = (colpi) => posturaColpo(sk, costoPct, n, colpi);
     let crit = false, offensive = false;
     const colpiti = new Set();
@@ -1576,6 +1601,7 @@ export class World {
         target.debuffs = (target.debuffs || []).filter(x => !(x.id === sk.debuff && x.src === p.id));
         target.debuffs.push({ id: sk.debuff, src: p.id, until: t + d.dur * 1000, vuln: skillVal(d.vuln || 0, lvl) });
         this.send(p, { t: 'dot', d: target.id, s: sk.debuff, ms: d.dur * 1000 });
+        this.fx(target, { k: 'aff', d: target.id, a: sk.debuff, ms: d.dur * 1000 });
         fxd.d = target.id; offensive = true;
         break;
       }
@@ -1647,7 +1673,7 @@ export class World {
     }
     if (sk.waves > 1 && offensive) {
       const cx = sk.type === 'aoe_self' ? p.x : target.x, cz = sk.type === 'aoe_self' ? p.z : target.z;
-      const dmg = base * skillVal(sk.mult, lvl) * (1 + (p.dmgPct + bonus) / 100);
+      const dmg = base * skillVal(sk.mult, lvl) * (1 + (p.dmgPct + bonus + (inFlusso ? cls.flusso : 0) + areaAfflitti) / 100);
       for (let i = 1; i < sk.waves; i++) p.waves.push({ at: t + i * sk.waveGap * 1000, sid, x: cx, z: cz, tid: target ? target.id : 0, dmg, post: postDi(sk.radius ? 1 : (sk.hits || 1)) });
     }
     // generazione di risorsa e punti, effetti su di sé
@@ -1660,13 +1686,25 @@ export class World {
     }
     if (sk.pts) p.pts = Math.min(PTS_MAX, p.pts + sk.pts + (behind ? sk.behind.pts : 0));
     if (sk.risonanza && colpiti.size >= COMBAT.risMin) this.addBuff(p, 'risonanza', 1);
+    if (affl) for (const id of colpiti) { const e = this.ents.get(id); if (e && this.canAttack(p, e)) this.applyDot(p, e, affl, lvl, 0, base, p.dmgPct); }
+    if (rotazione) {
+      if (inFlusso || !p.ultimaTecnica) this.addBuff(p, 'flusso', 1);
+      else if (p.buffs.some(b => b.id === 'flusso')) { p.buffs = p.buffs.filter(b => b.id !== 'flusso'); this.fx(p, { k: 'flusso', s: p.id, rotto: 1 }); }
+      p.ultimaTecnica = sid;
+    }
+    if (sk.riduceCd) {
+      for (const id of sk.riduceCd.ids) {
+        if ((p.cds[id] || 0) <= t) continue;
+        p.cds[id] -= sk.riduceCd.s * 1000;
+        this.send(p, { t: 'cd', s: id, ms: Math.max(0, p.cds[id] - t), tot: SKILLS[id].cd * 1000, rid: 1 });
+      }
+    }
     if (sk.ruolo === 'accumulo') {
-      if (mae.veleno) for (const id of colpiti) { const e = this.ents.get(id); if (e && this.canAttack(p, e)) this.applyDot(p, e, { id: 'veleno', dot: mae.veleno }, lvl, 0, base, p.dmgPct); }
       if (mae.critPts && crit) p.pts = Math.min(PTS_MAX, p.pts + mae.critPts);
       if (mae.grazia && inflitti > 0) this.heal(this.piuFerito(p, 25), inflitti * mae.grazia / 100 * (1 + p.healPct / 100));
       p.ultimoBase = sid;
       // a volte un colpo base apre un'Occasione: il prossimo finale è gratuito e a Concentrazione piena
-      if (colpiti.size && Math.random() * 100 < COMBAT.occasionePct) this.addBuff(p, 'occasione', 1);
+      if (colpiti.size && Math.random() * 100 < (cls.occasionePct || COMBAT.occasionePct)) this.addBuff(p, 'occasione', 1);
     }
     if (sk.finale && mae.cura) this.heal(p, p.maxHp * mae.cura / 100);
     if (sk.buff && (sk.type === 'strike' || sk.type === 'aoe_self')) this.addBuff(p, sk.buff, lvl);
