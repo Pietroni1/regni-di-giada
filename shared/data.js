@@ -2,6 +2,7 @@
 // Modifica questo file per bilanciare classi, abilità, oggetti e mostri.
 import { MOBS_MAPPE, NPC_MAPPE } from './mappe.js';
 import { NPC_MISSIONI } from './missioni.js';
+import { NPC_SOCIALE } from './sociale.js';
 export { CATENA, INCARICHI, MISSIONI, PNG_INCARICHI, ZONE_MISSIONI, SBLOCCHI } from './missioni.js';
 
 export const MAX_LEVEL = 99;
@@ -635,3 +636,4 @@ export function dungeonWalkable(lx, lz, margin = 0.5) {
 Object.assign(MOBS, MOBS_MAPPE);
 Object.assign(NPC_ROLES, NPC_MAPPE);
 Object.assign(NPC_ROLES, NPC_MISSIONI);
+Object.assign(NPC_ROLES, NPC_SOCIALE);

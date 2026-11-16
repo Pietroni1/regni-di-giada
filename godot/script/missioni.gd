@@ -155,7 +155,8 @@ func _crea_diario() -> void:
 	diario.position = Vector2(60, 110)
 	diario.custom_minimum_size = Vector2(560, 0)
 	diario.visible = false
-	var t := _testata(diario, "Diario delle missioni  [L]")
+	var t := _testata(diario, "")
+	Tasti.registra(t[1], "Diario delle missioni  [{diario}]")
 	var scorri := ScrollContainer.new()
 	scorri.custom_minimum_size = Vector2(540, 560)
 	scorri.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED

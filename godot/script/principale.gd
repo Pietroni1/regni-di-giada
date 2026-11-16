@@ -233,6 +233,7 @@ func _prova_automatica() -> void:
 			"tecnica": gioco.usa_tecnica(p[1])
 			"mappa": gioco.mappa.apri_chiudi()
 			"diario": gioco.missioni.apri_chiudi()
+			"sociale": await gioco.sociale.copione(p)   # scambio, deposito, amici, tasti (sociale.gd)
 			"missione":
 				# missione accetta|consegna id: risponde al dialogo delle missioni aperto («*» = la prima voce del dialogo)
 				var mid := p[2]

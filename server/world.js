@@ -14,6 +14,7 @@ import { POSTURA, posturaBase, posturaColpo } from '../shared/postura.js';
 import { installaMappe, MAPPE, arrivoMappa } from './mappe.js';
 import { installaBottino } from './bottino.js';
 import { installaMissioni } from './missioni.js';
+import { installaSociale } from './sociale.js';
 
 const VIEW = 105;
 const SEP_BRANCHI = 22;          // metri minimi fra due branchi
@@ -376,6 +377,7 @@ export class World {
     });
     this.broadcast({ t: 'sys', m: `${p.name} (${KINGDOMS[p.kingdom].short}) è entrato nel mondo.` });
     this.missioniEntra(p);   // missioni (server/missioni.js): stato, incarichi del giorno, segni sui PNG
+    this.socialeEntra(p);    // pegno di scambi interrotti, amici (server/sociale.js)
     return p;
   }
 
@@ -387,6 +389,7 @@ export class World {
     this.remove(p);
     this.players.delete(p);
     this.broadcast({ t: 'sys', m: `${p.name} ha lasciato il mondo.` });
+    this.socialeEsci(p);   // scambio aperto annullato, amici avvisati (server/sociale.js)
   }
 
   saveChar(p) {
@@ -586,6 +589,7 @@ export class World {
     }
     this.tickBranchi(t);
     this.tickMissioni(t);
+    this.tickSociale(t);
   }
 
   updatePlayer(p, t, regen, dt) {
@@ -1176,6 +1180,7 @@ export class World {
       case 'preply': return this.onPartyReply(p, !!msg.ok);
       case 'pleave': return this.leaveParty(p);
       case 'pkick': return this.onPartyKick(p, msg.id);
+      case 'scambio': case 'dep': case 'amico': case 'amici': case 'ordina': case 'vendi_comuni': return this.sociale(p, msg);   // server/sociale.js
     }
   }
 
@@ -2110,9 +2115,11 @@ export class World {
 
   // ------------------------------------------------------------ chat e comandi
   onChat(p, raw) {
-    const msg = String(raw || '').replace(/[\u0000-\u001f]/g, '').slice(0, 200).trim();
+    let msg = String(raw || '').replace(/[\u0000-\u001f]/g, '').slice(0, 200).trim();
     if (!msg) return;
     if (msg[0] === '/') return this.command(p, msg);
+    msg = this.collegaOggetti(p, msg);   // «[[3]]» = oggetto della casella 3 mostrato in chat (server/sociale.js)
+    if (!msg) return;
     if (msg[0] === '!') {
       const m = msg.slice(1).trim();
       if (!m) return;
@@ -2145,7 +2152,7 @@ export class World {
     const sys = m => this.sys(p, m);
     switch (c) {
       case 'aiuto': case 'help':
-        sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
+        sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo o /s nome testo = sussurro, /r = rispondi, [[3]] = mostra l\'oggetto della casella 3. Amici e scambi: /amico nome, /amici, /scambia nome.');
         if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
@@ -2154,6 +2161,7 @@ export class World {
       case 'online': return sys(`In linea (${this.players.size}): ${[...this.players].map(q => `${q.name} [${q.lvl}]`).join(', ')}`);
       case 'pos': return sys(`Posizione: ${Math.round(p.x)}, ${Math.round(p.z)}`);
     }
+    if (this.comandoSociale(p, c, a)) return;   // /s /r /amico /amici /scambia (server/sociale.js)
     if (!p.gm) return sys('Comando sconosciuto. Scrivi /aiuto');
     switch (c) {
       case 'item': {
@@ -2464,6 +2472,7 @@ export class World {
     if (n.role === 'scrivano') { if (!mis) this.missioniPng(p, n, true); return; }
     if (mis && (n.role === 'maestro' || n.role === 'guardia')) return;
     if (n.role === 'armi' || n.role === 'erbe') return this.send(p, { t: 'shop', npc: n.id, role: n.role, items: SHOPS[n.role] });
+    if (n.role === 'magazziniere') return this.apriDeposito(p, n);
     if (n.role === 'fabbro') return this.send(p, { t: 'smith', npc: n.id });
     if (n.role === 'stalliere') return this.send(p, { t: 'stable', npc: n.id });
     if (n.role === 'custode') return this.sendTrialInfo(p, n.id);
@@ -2627,3 +2636,4 @@ export class World {
 installaMappe(World);
 installaBottino(World);
 installaMissioni(World);
+installaSociale(World);

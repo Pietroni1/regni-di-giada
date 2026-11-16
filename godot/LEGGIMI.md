@@ -32,6 +32,9 @@ Il client ricorda l'ultimo server e l'ultimo account usati.
 - **Barra rapida**: trascina tecniche (da K) e pozioni (da I) sui tasti; tasto destro su un tasto per svuotarlo.
 - **Oggetti**: trascina per spostare e indossare; gemme e pergamene si trascinano su un'arma o un'armatura; clic destro usa,
   fonde tre gemme uguali o vende (col negozio aperto).
+- **Tasti**: tutti rimappabili da Impostazioni (O) → «Tasti…»; qui sono indicati quelli predefiniti.
+- **Gruppo di amici**: clic su un giocatore → «Scambia» / «Amico» / «Invita nel gruppo»; F apre la lista amici; `/s nome testo` sussurra;
+  il Magazziniere dei villaggi custodisce un deposito di 48 caselle per tutti i tuoi personaggi; Maiusc+clic su un oggetto lo mostra in chat.
 - **Altro**: Z raccoglie · R cavalcatura · Invio chat (comandi GM compresi) · F11 schermo intero.
 - **Viaggi**: la Guida dei Sentieri (vicino alla porta est di ogni villaggio) porta alle mappe da esperienza e all'arena;
   in ogni mappa una guida (o l'Araldo, alle porte dell'arena) riporta al villaggio. GM: `/tp selva`, `/tp distesa`, `/tp arena`.

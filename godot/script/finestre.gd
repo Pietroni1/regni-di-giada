@@ -87,7 +87,7 @@ func _finestra(titolo: String, pos: Vector2, larga: float) -> Array:
 	var testa := HBoxContainer.new()
 	v.add_child(testa)
 	var t := Label.new()
-	t.text = titolo
+	Tasti.registra(t, titolo)   # il tasto fra parentesi segue le assegnazioni del giocatore
 	t.add_theme_color_override("font_color", Hud.ORO)
 	t.add_theme_font_size_override("font_size", 18)
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -141,6 +141,8 @@ func chiudi_tutto() -> bool:
 	if gioco != null and gioco.mappa != null and gioco.mappa.chiudi():
 		aperta = true
 	if gioco != null and gioco.missioni != null and gioco.missioni.chiudi():
+		aperta = true
+	if gioco != null and gioco.sociale != null and gioco.sociale.chiudi():
 		aperta = true
 	negozio_png = 0
 	fabbro_png = 0
@@ -283,7 +285,7 @@ func testo_tecnica(sid: String, lvl: int) -> String:
 
 # ------------------------------------------------------------------ inventario
 func _crea_inventario() -> void:
-	var f := _finestra("Inventario  [I]", Vector2(760, 430), 0)
+	var f := _finestra("Inventario  [{inventario}]", Vector2(760, 430), 0)
 	inventario = f[0]
 	var v: VBoxContainer = f[1]
 	var griglia := GridContainer.new()
@@ -306,10 +308,11 @@ func _crea_inventario() -> void:
 	_etichetta(_riga_tasti_inv, "Nella barra:", Color(0.7, 0.68, 0.62), 12).autowrap_mode = TextServer.AUTOWRAP_OFF
 	for i in range(10):
 		var n := i
-		var b := _bottone(_riga_tasti_inv, str((i + 1) % 10), func() -> void:
+		var b := _bottone(_riga_tasti_inv, "", func() -> void:
 			var s = _inv()[scelta] if scelta >= 0 else null
 			if s is Dictionary:
 				Rete.manda({"t": "qb", "i": n, "v": {"k": "i", "id": s.id}}))
+		Tasti.registra(b, "{barra_%d}" % (i + 1))
 		b.custom_minimum_size = Vector2(26, 0)
 	_bottone(_riga_tasti_inv, "Getta", func() -> void:
 		if scelta >= 0:
@@ -333,6 +336,9 @@ func _e_equip(s) -> bool:
 
 ## Rilascio di un oggetto trascinato su una casella (dell'inventario o dell'equipaggiamento).
 func rilascia(d: Dictionary, su: Casella) -> void:
+	if d.has("da"):   # arriva dal deposito o da uno scambio (sociale.gd)
+		gioco.sociale.da_altrove(d, su)
+		return
 	var inv := _inv()
 	var da_eq := String(d.get("eq", ""))
 	var portato = inv[int(d.i)] if da_eq.is_empty() and int(d.i) < inv.size() else null
@@ -356,6 +362,8 @@ func rilascia(d: Dictionary, su: Casella) -> void:
 
 func _clic_inventario(i: int) -> void:
 	var inv := _inv()
+	if Input.is_key_pressed(KEY_SHIFT) and gioco.sociale.link_inventario(i):   # Maiusc+clic: collegamento in chat
+		return
 	if scelta >= 0 and scelta != i:
 		if _tipo(inv[scelta] if scelta < inv.size() else null) in ["gem", "mod"] and _e_equip(inv[i] if i < inv.size() else null):
 			Rete.manda({"t": "apply", "i": scelta, "tgt": {"k": "i", "i": i}})
@@ -371,6 +379,9 @@ func _destro_inventario(i: int) -> void:
 	var inv := _inv()
 	if i >= inv.size() or inv[i] == null:
 		return
+	if gioco.sociale.destro_inventario(i):   # con uno scambio o il deposito aperti l'oggetto va lì
+		scelta = -1
+		return
 	if negozio.visible and negozio_png != 0:
 		Rete.manda({"t": "sell", "npc": negozio_png, "i": i})
 		Suoni.suona("moneta", -8.0)
@@ -383,7 +394,7 @@ func _destro_inventario(i: int) -> void:
 
 # ------------------------------------------------------------------ personaggio
 func _crea_personaggio() -> void:
-	var f := _finestra("Personaggio  [C]", Vector2(350, 110), 330)
+	var f := _finestra("Personaggio  [{personaggio}]", Vector2(350, 110), 330)
 	personaggio = f[0]
 	var v: VBoxContainer = f[1]
 	var riga := HBoxContainer.new()
@@ -456,7 +467,7 @@ func _riempi_personaggio() -> void:
 
 # ------------------------------------------------------------------ abilità
 func _crea_abilita() -> void:
-	var f := _finestra("Abilità  [K]", Vector2(350, 110), 520)
+	var f := _finestra("Abilità  [{abilita}]", Vector2(350, 110), 520)
 	abilita = f[0]
 	var scorri := ScrollContainer.new()
 	scorri.custom_minimum_size = Vector2(520, 520)
@@ -732,12 +743,12 @@ func _crea_menu() -> void:
 	var f := _finestra("Regni di Giada", Vector2(660, 250), 280)
 	menu = f[0]
 	_bottone(f[1], "Riprendi", func() -> void: menu.visible = false)
-	_bottone(f[1], "Impostazioni  [O]", func() -> void:
+	Tasti.registra(_bottone(f[1], "", func() -> void:
 		menu.visible = false
-		impostazioni.visible = true)
-	_bottone(f[1], "Comandi e aiuto  [H]", func() -> void:
+		impostazioni.visible = true), "Impostazioni  [{impostazioni}]")
+	Tasti.registra(_bottone(f[1], "", func() -> void:
 		menu.visible = false
-		aiuto.visible = true)
+		aiuto.visible = true), "Comandi e aiuto  [{aiuto}]")
 	_bottone(f[1], "Cambia personaggio", func() -> void:
 		if Rete.ws != null:
 			Rete.ws.close())
@@ -745,7 +756,7 @@ func _crea_menu() -> void:
 
 
 func _crea_impostazioni() -> void:
-	var f := _finestra("Impostazioni  [O]", Vector2(620, 220), 380)
+	var f := _finestra("Impostazioni  [{impostazioni}]", Vector2(620, 220), 380)
 	impostazioni = f[0]
 	var v: VBoxContainer = f[1]
 	var intero := CheckButton.new()
@@ -802,13 +813,13 @@ func _salva_impostazioni() -> void:
 
 
 func _crea_aiuto() -> void:
-	var f := _finestra("Comandi e aiuto  [H]", Vector2(470, 110), 660)
+	var f := _finestra("Comandi e aiuto  [{aiuto}]", Vector2(470, 40), 660)
 	aiuto = f[0]
 	var testo := """MOVIMENTO E VISUALE
-WASD o clic sul terreno: muoversi  ·  tasto destro trascinato, Q / E: girare la visuale  ·  rotellina: zoom
+{avanti}{sinistra}{indietro}{destra} (o frecce) o clic sul terreno: muoversi  ·  tasto destro trascinato, {ruota_sx} / {ruota_dx}: girare la visuale  ·  rotellina: zoom
 
 COMBATTIMENTO
-Clic su un nemico o Tab: bersaglio e attacco automatico  ·  1-0: barra rapida  ·  V: Tecnica Suprema (dal livello 15)
+Clic su un nemico o {bersaglio}: bersaglio e attacco automatico  ·  {barra_1}-{barra_10}: barra rapida  ·  {suprema}: Tecnica Suprema (dal livello 15)
 Pochi tasti: due COLPI BASE (tacca verde) sempre premibili, un COLPO FINALE (rosso), un'INTERRUZIONE (azzurra),
 uno SCATTO (viola), il POTENZIAMENTO di classe (arancio) e la mossa di Via. L'attacco automatico continua anche camminando.
 Il colpo base singolo dà punti di Concentrazione: il finale fa più danni su un bersaglio per ogni punto.
@@ -826,9 +837,9 @@ I lanci del Mistico (Dardo, Sfera) si fanno anche camminando.
 Spendendo risorsa si riempie la barra della TECNICA SUPREMA.
 
 FINESTRE
-M: mappa grande delle zone  ·  L: diario delle missioni  ·  I: inventario  ·  C: personaggio e punti statistica  ·  K: abilità e Via (dal livello 5)  ·  O: impostazioni  ·  Esc: chiude / menu
+{mappa}: mappa grande delle zone  ·  {diario}: diario delle missioni  ·  {inventario}: inventario  ·  {personaggio}: personaggio e punti statistica  ·  {abilita}: abilità e Via (dal livello 5)  ·  {amici}: amici  ·  {impostazioni}: impostazioni (lì puoi cambiare i tasti)  ·  Esc: chiude / menu
 Trascina tecniche e pozioni sulla barra rapida; tasto destro su un tasto della barra per svuotarlo.
-Z: raccoglie il bottino  ·  R: sale o scende da cavallo  ·  Invio: chat
+{interagisci}: raccoglie il bottino  ·  {cavalcatura}: sale o scende da cavallo  ·  {chat}: chat
 
 MISSIONI
 «!» sopra un abitante: ha una missione per te  ·  «?»: puoi consegnargliela (o devi parlargli). Le missioni aperte sono a destra,
@@ -839,8 +850,18 @@ IN GIRO PER IL MONDO
 Clic su un abitante del villaggio per parlargli: mercanti, fabbro (potenziamenti), maestro delle Vie,
 stalliere (cavalcature dal livello 10), custode (Prove del Sigillo dal livello 20, da soli o in gruppo).
 Per fare gruppo: clic su un giocatore del tuo regno e «Invita nel gruppo», oppure scrivi /invita nome.
-Chat: !testo grida al regno  ·  #testo al gruppo  ·  @nome testo sussurra."""
-	var l := _etichetta(f[1], testo, Color(0.88, 0.86, 0.8), 13)
+Chat: !testo grida al regno  ·  #testo al gruppo  ·  /s nome testo (o @nome testo) sussurra, /r risponde.
+
+AMICI, SCAMBI E DEPOSITO
+Clic su un giocatore e «Scambia»: si aprono due colonne con gli oggetti e i tael; l'affare si chiude solo quando entrambi confermano (ogni modifica azzera le conferme).
+Il Magazziniere dei villaggi custodisce 48 caselle per tutti i tuoi personaggi: trascina o clic destro. Nell'inventario il tasto «Ordina» mette tutto in fila;
+Maiusc+clic su un oggetto dell'inventario lo mostra in chat; col mercante «Vendi comuni» cede in un colpo le armi e le armature comuni e i trofei di caccia. Gli amici ({amici}): /amico nome, avviso quando entrano."""
+	var scorri := ScrollContainer.new()   # il testo è lungo: scorre invece di uscire dallo schermo
+	scorri.custom_minimum_size = Vector2(660, 560)
+	scorri.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	f[1].add_child(scorri)
+	var l := _etichetta(scorri, "", Color(0.88, 0.86, 0.8), 13)
+	Tasti.registra(l, testo)
 	l.custom_minimum_size = Vector2(640, 0)
 
 

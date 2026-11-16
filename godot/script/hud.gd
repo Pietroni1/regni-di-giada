@@ -174,7 +174,7 @@ func _ready() -> void:
 	suprema = _barra(Color(0.95, 0.75, 0.25), 12)
 	suprema.max_value = 100
 	v.add_child(suprema)
-	_scritta_su(suprema).text = "Tecnica Suprema  [V]"
+	Tasti.registra(_scritta_su(suprema), "Tecnica Suprema  [{suprema}]")
 	riq_effetti = HBoxContainer.new()
 	riq_effetti.add_theme_constant_override("separation", 3)
 	riq_effetti.custom_minimum_size = Vector2(0, 30)
@@ -950,8 +950,8 @@ class Tasto:
 			var cb: Color = Hud.RUOLI.get(ruolo, Color.WHITE)
 			draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color(cb.r, cb.g, cb.b, p), false, 3.0)
 			draw_rect(Rect2(3, 3, size.x - 6, size.y - 6), Color(cb.r, cb.g, cb.b, p * 0.18), true)
-		draw_string_outline(f, Vector2(5, 14), str((indice + 1) % 10), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 4, Color(0, 0, 0, 0.9))
-		draw_string(f, Vector2(5, 14), str((indice + 1) % 10), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.9, 0.85))
+		draw_string_outline(f, Vector2(5, 14), Tasti.nome_barra(indice), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 4, Color(0, 0, 0, 0.9))
+		draw_string(f, Vector2(5, 14), Tasti.nome_barra(indice), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.9, 0.85))
 		if Hud.RUOLI.has(ruolo):
 			draw_rect(Rect2(8, size.y - 6, size.x - 16, 3), Hud.RUOLI[ruolo])
 

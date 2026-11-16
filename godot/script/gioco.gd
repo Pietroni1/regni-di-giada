@@ -54,6 +54,7 @@ var _dentro := false
 var mappa: MappaGrande = null      # mappa grande delle zone (tasto M)
 var viaggi: Viaggi = null           # finestra dei viaggi e classifica dell'arena (viaggi.gd)
 var missioni: Missioni = null       # diario, elenco a lato e segni sopra i PNG (missioni.gd)
+var sociale: Sociale = null         # scambio, deposito, amici, tasti (sociale.gd)
 var terra: TerraLontana = null      # la mappa lontana in cui si trova il personaggio (terra_lontana.gd)
 var _zona_amb := "-"                # ambiente in uso: "" mondo dei regni, "cripta" o id della mappa
 var _amb_mappe: Dictionary = {}
@@ -80,6 +81,10 @@ func _ready() -> void:
 	missioni.gioco = self
 	hud.radice.add_child(missioni)
 	missioni.aggancia()
+	sociale = Sociale.new()
+	sociale.gioco = self
+	hud.radice.add_child(sociale)
+	sociale.aggancia()
 	mappa = MappaGrande.new()
 	mappa.gioco = self
 	hud.radice.add_child(mappa)
@@ -112,7 +117,7 @@ func entra(m: Dictionary) -> void:
 	var c: Dictionary = Dati.costanti.CENTER
 	yaw = atan2(me.x - float(c.x), me.z - float(c.z))
 	me.r = yaw + PI
-	hud.riga_chat("Benvenuto nei Regni di Giada. WASD per muoverti, tasto destro per girare la visuale, Tab per il bersaglio, 1-0 per le tecniche.", Hud.ORO)
+	hud.riga_chat(Tasti.sostituisci("Benvenuto nei Regni di Giada. {avanti}{sinistra}{indietro}{destra} per muoverti, tasto destro per girare la visuale, {bersaglio} per il bersaglio, {barra_1}-{barra_10} per le tecniche, {amici} per gli amici."), Hud.ORO)
 
 
 func ora() -> float:
@@ -423,8 +428,7 @@ func _su_err(m: Dictionary) -> void:
 
 
 func _su_chat(m: Dictionary) -> void:
-	var canali := {"say": Color(0.95, 0.95, 0.9), "shout": Color(1.0, 0.7, 0.4), "party": Color(0.5, 0.8, 1.0), "wh": Color(0.9, 0.6, 0.95)}
-	hud.riga_chat("%s: %s" % [m.get("n", "?"), m.get("m", "")], canali.get(String(m.get("ch", "say")), Color.WHITE))
+	sociale.riga_chat(m)   # nomi cliccabili (sociale.gd)
 
 
 func _su_st(m: Dictionary) -> void:
@@ -707,7 +711,7 @@ func usa_tecnica(sid: String) -> void:
 	if sk.is_empty() or me == null or int(io.get("dead", 0)) == 1:
 		return
 	if int(io.get("mounted", 0)) == 1 and not sk.get("mount", false):
-		hud.avvisa("Scendi da cavallo (R) per usare le tecniche della tua classe", true)
+		hud.avvisa("Scendi da cavallo (" + Tasti.nome("cavalcatura") + ") per usare le tecniche della tua classe", true)
 		return
 	# coda: se la tecnica sarà pronta fra meno di mezzo secondo, parte da sola appena può
 	var adesso := ora()
@@ -768,13 +772,15 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if hud.chat_attiva():
 			return
 		var k: int = ev.physical_keycode
-		if k >= KEY_0 and k <= KEY_9:
-			usa_tasto((k - KEY_1 + 10) % 10)
-		elif k == KEY_TAB:
+		# i tasti sono quelli scelti dal giocatore (tasti.gd); Esc, F1 e F11 restano fissi
+		var az := Tasti.azione_di(k)
+		if az.begins_with("barra_"):
+			usa_tasto(int(az.substr(6)) - 1)
+		elif az == "bersaglio":
 			prossimo_bersaglio()
-		elif k == KEY_V:
+		elif az == "suprema":
 			usa_suprema()
-		elif k == KEY_ENTER or k == KEY_KP_ENTER:
+		elif az == "chat" or k == KEY_KP_ENTER:
 			hud.apri_chat()
 			get_viewport().set_input_as_handled()
 		elif k == KEY_ESCAPE:
@@ -784,27 +790,29 @@ func _unhandled_input(ev: InputEvent) -> void:
 					intento = {}
 				else:
 					hud.finestre.apri_chiudi("menu")
-		elif k == KEY_H or k == KEY_F1:
+		elif az == "aiuto" or k == KEY_F1:
 			hud.finestre.apri_chiudi("aiuto")
-		elif k == KEY_O:
+		elif az == "impostazioni":
 			hud.finestre.apri_chiudi("impostazioni")
 		elif k == KEY_F11:
 			Impostazioni.schermo_intero = not Impostazioni.schermo_intero
 			Impostazioni.applica()
 			Impostazioni.salva()
-		elif k == KEY_M:
+		elif az == "mappa":
 			mappa.apri_chiudi()
-		elif k == KEY_I:
+		elif az == "inventario":
 			hud.finestre.apri_chiudi("inventario")
-		elif k == KEY_C:
+		elif az == "personaggio":
 			hud.finestre.apri_chiudi("personaggio")
-		elif k == KEY_K:
+		elif az == "abilita":
 			hud.finestre.apri_chiudi("abilita")
-		elif k == KEY_L:
+		elif az == "diario":
 			missioni.apri_chiudi()
-		elif k == KEY_R:
+		elif az == "amici":
+			sociale.apri_chiudi("amici")
+		elif az == "cavalcatura":
 			Rete.manda({"t": "mount"})
-		elif k == KEY_Z:
+		elif az == "interagisci":
 			_raccogli()
 
 
@@ -948,11 +956,11 @@ func _process(dt: float) -> void:
 		var avanti := 0.0
 		var lato := 0.0
 		if not hud.chat_attiva():
-			avanti = float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)) - float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))
-			lato = float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT))
-			if Input.is_physical_key_pressed(KEY_Q):
+			avanti = float(Tasti.premuto("avanti")) - float(Tasti.premuto("indietro"))
+			lato = float(Tasti.premuto("destra")) - float(Tasti.premuto("sinistra"))
+			if Tasti.premuto("ruota_sx"):
 				yaw += dt * 2.2
-			if Input.is_physical_key_pressed(KEY_E):
+			if Tasti.premuto("ruota_dx"):
 				yaw -= dt * 2.2
 		if avanti != 0.0 or lato != 0.0:
 			intento = {}
