@@ -25,6 +25,8 @@ const DEFAULT_CONFIG = {
 const cfg = { ...DEFAULT_CONFIG, ...(fs.existsSync(CONFIG_FILE) ? JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) : {}) };
 cfg.rates = { ...DEFAULT_CONFIG.rates, ...cfg.rates };
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : cfg.port;
+// account GM in più solo per i server di prova (tools/prove): non finiscono in config.json
+const GM_PROVE = String(process.env.GM_ACCOUNTS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 const saveConfig = () => fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2) + '\n');
 if (!fs.existsSync(CONFIG_FILE)) saveConfig();
 
@@ -89,7 +91,7 @@ wss.on('connection', (ws) => {
     try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || typeof msg.t !== 'string') return;
 
-    if (sess.player) { world.handle(sess.player, msg); return; }
+    if (sess.player) { try { world.handle(sess.player, msg); } catch (e) { console.error('Errore nel messaggio', msg.t, e); } return; }
 
     if (!sess.user) {
       const user = String(msg.user || '').trim(), pass = String(msg.pass || '');
@@ -105,7 +107,8 @@ wss.on('connection', (ws) => {
       if (prev && prev !== sess) { prev.send({ t: 'kicked', m: 'Il tuo account è stato aperto da un altro dispositivo.' }); prev.ws.close(); }
       online.set(key, sess);
       sess.user = acc.user;
-      sess.gm = cfg.gmAccounts.map(s => s.toLowerCase()).includes(key);
+      // GM_EXTRA / GM_ACCOUNTS (variabili d'ambiente, solo per le prove con più bot): altri account GM oltre a quelli di config.json
+      sess.gm = [...cfg.gmAccounts, ...String(process.env.GM_EXTRA || '').split(',').filter(Boolean)].map(s => s.toLowerCase()).includes(key) || GM_PROVE.includes(key);
       reply({ t: 'auth_ok', user: acc.user, gm: sess.gm ? 1 : 0 });
       return sendChars();
     }

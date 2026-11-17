@@ -47,6 +47,7 @@ function leggiOpzioni(argv) {
       case '--senza': o.senza = v(); break;
       case '--dettagli': o.dettagli = true; break;
       case '--json': o.json = v(); break;
+      case '--porta': PORTA_FISSA = parseInt(v(), 10) || 0; break;
       case '--vitalita': o.vitalita = Math.max(0, Math.min(1, parseFloat(v()))); break;
       case '--par': for (const kv of v().split(',')) { const [k, x] = kv.split('='); o.par[k] = Number(x); } break;   // prove sulle soglie della rotazione
       case '--radura': o.radura = v().split(',').map(Number); break;
@@ -67,12 +68,13 @@ function leggiOpzioni(argv) {
 }
 
 // ------------------------------------------------------------------ server di prova
+let PORTA_FISSA = 0;   // --porta N: usa quella porta invece di una qualsiasi libera
 function portaLibera() {
   return new Promise((ok, no) => {
     const s = net.createServer();
     s.unref();
     s.on('error', no);
-    s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => ok(p)); });
+    s.listen(PORTA_FISSA, '127.0.0.1', () => { const p = s.address().port; s.close(() => ok(p)); });
   });
 }
 
@@ -112,117 +114,53 @@ async function avviaServer(velocita) {
 //   S.b(id)    millisecondi rimasti di un effetto su di sé                   S.dot(id) millisecondi rimasti sul bersaglio
 //   S.eta(id)  millisecondi dall'ultimo uso (Infinity se mai usata)
 //   S.res, S.rmax, S.pts, S.multi (più bersagli), S.catena (passo della sequenza del Monaco), S.ultimo ('scarico' | 'altro')
-// Regola comune: scarico potente appena possibile (a 4-5 punti per chi li ha), scarico medio per tenere attivi i suoi
-// effetti o quando la risorsa avanza (`avanza`), accumuli per il resto, Suprema appena carica.
-const avanza = (S, med, pot, margine = 0) => S.ok(med) && (!S.sa(pot) || S.res - S.costo(med) >= S.costo(pot) - S.pct(S.par.margine ?? margine));
-
-function rotLama(S, c) {
+// Kit a pochi tasti (shared/data.js): due colpi base, un colpo finale, interruzione e mossa di Via.
+// Regola del bot: contro un gruppo colpo base ad area finché si accende la Risonanza, poi il finale (che diventa ad area);
+// contro un bersaglio colpo base singolo e finale a `soglia` punti di Concentrazione (o con la risorsa quasi piena).
+// `ritmo`: la Via premia l'alternanza dei due colpi base (Pugno di Ferro).
+function rotazione(S, c) {
   if (S.ok(S.sup)) return S.sup;
-  if (!S.multi) {
-    if (S.b('scintilla') && S.ok('lama_tuono')) return 'lama_tuono';
-    if (S.dot('affondo_ira') < 1500 && S.ok('affondo_ira')) return 'affondo_ira';   // la ferita va tenuta aperta
-    if (S.ok(c.pot1)) return c.pot1;
-    if (S.ok('squarcio')) return 'squarcio';
-    if (!S.sa(c.pot1) && S.ok('affondo_ira')) return 'affondo_ira';
-    return 'fendente';
+  if (!c.cura && S.b('occasione') && S.ok(c.fin)) return c.fin;   // Occasione: finale gratuito e a Concentrazione piena
+  if (S.multi) {
+    if (S.b('risonanza') && S.ok(c.fin)) return c.fin;
+    if (!S.b('risonanza')) return c.f2;
+    return S.ok(c.fin) ? c.fin : c.f2;
   }
-  if (avanza(S, c.medA, c.potA, c.margine)) return c.medA;
-  if (S.ok(c.potA)) return c.potA;
-  return 'fendente';
+  if (!c.cura && S.ok(c.fin) && (S.pts >= (S.par.soglia ?? c.soglia ?? 3) || S.res >= S.rmax - (S.par.margine ?? 12))) return c.fin;
+  if (c.cura && S.ok(c.fin) && S.pts >= PTS_MAX) return c.fin;      // guaritore: ogni tanto la cura finale (non fa danni)
+  if (c.ritmo && S.ultimoBase === c.f1) return c.f2;
+  return c.f1;
 }
 
-function rotOmbra(S, c) {
-  const pot = S.multi ? c.potA : c.pot1, med = S.multi ? c.medA : 'taglio_netto';
-  if (S.ok(S.sup) && (S.pts <= 2 || !S.ok(pot))) return S.sup;                     // la Suprema riempie i punti: prima scarico quelli che ho
-  if (c.veleno && S.dot('danza_lame') < 1500 && S.ok('danza_lame')) return 'danza_lame';   // veleno sempre attivo (+25% agli scarichi potenti)
-  if (S.b('fuoco_rapido') && S.ok('pioggia_frecce')) return 'pioggia_frecce';       // Pioggia gratuita
-  if (S.ok(pot) && (S.pts >= (S.par.soglia ?? PTS_MAX) || (S.pts >= PTS_MAX - 1 && S.res >= S.rmax - 15))) return pot;
-  if (S.res >= S.rmax - 20 && S.ok(med)) return med;                                  // Energia quasi al massimo: non sprecarla
-  if (S.pts <= PTS_MAX - 2 && S.ok('agguato')) return 'agguato';
-  if (S.pts <= PTS_MAX - 1 && S.ok('freccia_inchiodante')) return 'freccia_inchiodante';
-  // scarico medio solo con l'Energia che avanza: quella per lo scarico potente deve esserci quando i punti saranno 5
-  // (ogni accumulo che manca rende circa 15 di Energia fra rigenerazione e generazione)
-  if (avanza(S, med, pot, (PTS_MAX - S.pts) * (S.par.perPunto ?? 15))) return med;
+// Ombra (kit a generatore e scarichi): il Colpo Rapido spende Energia e dà Punti; gli scarichi costano Punti. Priorità:
+// Suprema, colpo pesante, danza (contro un gruppo prima la danza), Ventaglio contro un gruppo, Taglio Gemello come riempitivo;
+// mai la stessa tecnica due volte di fila (Flusso), se c'è un'alternativa.
+function ombra(S, c) {
+  if (S.ok(S.sup)) return S.sup;
+  const ese = S.sa(c.pes) ? c.pes : 'taglio_netto';
+  if (S.multi) {
+    // gruppo: la danza marchia tutti quattro volte, il Ventaglio aggiunge Marchi, poi l'Esecuzione li fa saltare a catena
+    if (S.marchi >= 3 && S.ok(ese)) return ese;
+    if (S.ok(c.dan)) return c.dan;
+    return S.ok('ventaglio') ? 'ventaglio' : 'colpo_rapido';
+  }
+  if ((S.marchi >= 5 || (S.b('occasione') && S.marchi >= 3)) && S.ok(ese)) return ese;
+  if (S.marchi < 2 && S.ok(c.dan)) return c.dan;       // da soli la danza serve a marchiare in fretta
   return 'colpo_rapido';
 }
 
-function rotMonaco(S, c) {
-  const pot = S.multi ? c.potA : c.pot1;
-  if (S.ok(S.sup) && (S.pts <= 2 || !S.ok(pot))) return S.sup;
-  if (c.fiore && S.dot('onda_chi') < 1500 && S.ok('onda_chi')) return 'onda_chi';   // Fiore di Loto sempre attivo (+20% agli scarichi potenti)
-  if (S.multi && !S.par.catenaArea) {
-    // contro un gruppo la sequenza non conviene (Pugno e Palmo colpiscono un solo nemico): Calcio della Gru per le Sfere,
-    // scarico medio ad area con il Chi che avanza, scarico potente ad area a Sfere piene
-    if (S.pts >= PTS_MAX && S.ok(pot)) return pot;
-    if (avanza(S, c.medA, pot, (PTS_MAX - S.pts) * (S.par.perPunto ?? 15))) return c.medA;
-    return 'calcio_gru';
-  }
-  if (S.pts >= (S.par.soglia ?? PTS_MAX - 1) && S.ok(pot)) return pot;
-  if (S.multi && avanza(S, c.medA, pot, c.margine)) return c.medA;
-  if (!S.multi && S.catena === 0 && avanza(S, 'palmo_chi', pot, c.margine)) return 'palmo_chi';   // Chi che avanza: un Palmo fuori sequenza (a sequenza appena chiusa non la rompe)
-  const passo = ['pugno_ferro', 'calcio_gru', 'palmo_chi'][S.catena] || 'pugno_ferro';
-  if (passo === 'palmo_chi' && !S.ok('palmo_chi')) return S.multi ? 'calcio_gru' : 'pugno_ferro';   // Chi insufficiente: accumulo
-  return passo;                                                                      // Pugno → Calcio → Palmo = Forma Perfetta
-}
-
-function rotTempesta(S) {
-  const pot = S.multi ? 'diluvio_folgori' : 'giudizio_cielo', med = S.multi ? 'tempesta_saette' : 'lancia_luce';
-  if (S.ok(S.sup) && (S.pts <= 3 || !S.ok(pot))) return S.sup;
-  if (S.ok('marchio_tuono') && S.dot('marchio_tuono') < 3000) return 'marchio_tuono';
-  if (S.ok(pot) && S.pts >= (S.par.soglia ?? PTS_MAX)) return pot;
-  if (S.pts <= PTS_MAX - 2 && S.ok('sfera_celeste')) return 'sfera_celeste';
-  // scarico medio istantaneo fra un lancio e l'altro se il Mana avanza; a raffica finché la riserva è sopra il 60%
-  if (avanza(S, med, pot, 0) && (S.ultimo !== 'scarico' || S.res >= S.pct(S.par.raffica ?? 60))) return med;
-  return 'dardo_luce';
-}
-
-function rotBenedizione(S) {
-  // prova di danni di un guaritore: accumuli + Lancia di Luce; tiene su di sé Benedizione e Loto Rigenerante
-  // e scarica le Cariche nello Scudo di Giada (le cure non contano nei danni, ma riempiono la barra Suprema)
-  if (!S.b('benedizione') && S.ok('benedizione')) return 'benedizione';
-  if (S.eta('loto_rigenerante') > 12000 && S.pts <= PTS_MAX - 1 && S.ok('loto_rigenerante')) return 'loto_rigenerante';
-  if (S.ok(S.sup)) return S.sup;
-  if (S.pts >= PTS_MAX - 2 && S.ok('scudo_giada')) return 'scudo_giada';
-  if (S.pts <= PTS_MAX - 2 && S.ok('sfera_celeste')) return 'sfera_celeste';
-  if (S.ok('lancia_luce') && S.res >= S.pct(25) && (S.ultimo !== 'scarico' || S.res >= S.pct(S.par.raffica ?? 60))) return 'lancia_luce';
-  return 'dardo_luce';
-}
-
-// gcd: scelta a ogni GCD. fuori: tecniche fuori dal GCD, usate appena pronte se la condizione è vera.
+// gcd: scelta a ogni GCD. fuori: tecniche fuori dal GCD, usate appena pronte se la condizione è vera
+// (compresi i potenziamenti di classe e gli scatti che fanno danni; il Passo di Luce del Mistico no: sposta soltanto).
 // distanza: a quanti metri dal bersaglio sta il bot.
 const ROTAZIONI = {
-  fulmine: {
-    distanza: 1.6,
-    gcd: (S) => rotLama(S, { pot1: 'lama_tuono', potA: 'tempesta_lame', medA: 'arco_folgore', margine: 0 }),
-    fuori: { furia_tempesta: (S) => S.res <= S.rmax - 25, carica: (S) => S.res <= S.rmax - 20 },
-  },
-  montagna: {
-    distanza: 1.6, vitalita: 2 / 3,   // il difensore mette due punti su tre in vitalità
-    gcd: (S) => rotLama(S, { pot1: 'martello_monte', potA: 'valanga', medA: 'scossa', margine: 0 }),
-    fuori: { sfida: (S) => S.res <= S.rmax - 10, pelle_pietra: () => true },
-  },
-  pugnali: {
-    distanza: 1.6,
-    gcd: (S) => rotOmbra(S, { pot1: 'taglio_finale', potA: 'ventaglio_veleno', medA: 'danza_lame', veleno: true }),
-    fuori: { marchio_morte: (S) => S.pts <= 1, passo_ombra: (S) => S.pts <= PTS_MAX - 1 && (S.multi || S.pts >= 2) },
-  },
-  arco: {
-    distanza: 10,
-    gcd: (S) => rotOmbra(S, { pot1: 'freccia_perforante', potA: 'raffica_esplosiva', medA: 'pioggia_frecce' }),
-    fuori: { occhio_falco: () => true },
-  },
-  ferro: {
-    distanza: 1.6,
-    gcd: (S) => rotMonaco(S, { pot1: 'raffica', potA: 'onda_vuoto', medA: 'ascesa_drago', margine: 0 }),
-    fuori: { spirito_tigre: () => true, pelle_bronzo: () => true },
-  },
-  loto: {
-    distanza: 1.6,
-    gcd: (S) => rotMonaco(S, { pot1: 'vortice_interiore', potA: 'mille_petali', medA: 'onda_chi', fiore: true, margine: 0 }),
-    fuori: { sigillo_interiore: () => true, meditazione: () => true },
-  },
-  tempesta: { distanza: 12, gcd: rotTempesta, fuori: { occhio_ciclone: () => true } },
-  benedizione: { distanza: 12, gcd: rotBenedizione, fuori: { preghiera_antenati: () => true } },
+  fulmine: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'lama_tuono' }), fuori: { grido_guerra: () => true, carica: (S) => S.res <= S.rmax - 25 } },
+  montagna: { distanza: 1.6, vitalita: 2 / 3, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'martello_monte' }), fuori: { grido_guerra: () => true, radici_monte: () => true, carica: (S) => S.res <= S.rmax - 25 } },
+  pugnali: { distanza: 1.6, gcd: (S) => ombra(S, { pes: 'taglio_finale', dan: 'danza_lame' }), fuori: { velo_ombra: () => true, passo_ombra: () => true, colpo_gola: () => true } },
+  arco: { distanza: 10, gcd: (S) => ombra(S, { pes: 'freccia_perforante', dan: 'pioggia_frecce' }), fuori: { velo_ombra: () => true, ala_vento: () => true, colpo_gola: () => true } },
+  ferro: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'raffica', ritmo: true }), fuori: { respiro_drago: (S) => S.pts <= PTS_MAX - 2, pelle_bronzo: () => true, calcio_volante: (S) => S.pts < PTS_MAX, palmo_chi: () => true } },
+  loto: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'vortice_interiore' }), fuori: { respiro_drago: (S) => S.pts <= PTS_MAX - 2, meditazione: () => true, calcio_volante: (S) => S.pts < PTS_MAX, palmo_chi: () => true } },
+  tempesta: { distanza: 12, gcd: (S) => rotazione(S, { f1: 'dardo_luce', f2: 'sfera_celeste', fin: 'giudizio_cielo' }), fuori: { benedizione_astri: () => true, occhio_ciclone: () => true, sigillo_silenzio: () => true } },
+  benedizione: { distanza: 12, gcd: (S) => rotazione(S, { f1: 'dardo_luce', f2: 'sfera_celeste', fin: 'tocco_curativo', cura: true }), fuori: { benedizione_astri: () => true, scudo_giada: () => true, sigillo_silenzio: () => true } },
 };
 
 // ------------------------------------------------------------------ bot
@@ -323,7 +261,7 @@ class Bot {
         if (this.attesa && this.attesa.sid === m.s) { this.gcdFino = this.attesa.gcdPrima; this.attesa = null; }
         this.blocco[m.s] = 0;
         break;
-      case 'cd': this.usata(m, ora); break;
+      case 'cd': if (m.rid) { this.cds[m.s] = ora + m.ms; break; } this.usata(m, ora); break;   // rid: ricarica accorciata da un'uccisione
       case 'fx': this.effetto(m, ora); break;
     }
   }
@@ -358,7 +296,10 @@ class Bot {
     }
     if (this.me) {
       this.me.res = Math.max(0, this.me.res - costo);
-      if (sk.spend && sk.type !== 'heal_aoe') this.me.pts = 0;
+      if ((sk.spend && sk.type !== 'heal_aoe') || sk.finale) this.me.pts = 0;
+      if (sk.ruolo === 'accumulo') this.ultimoBase = m.s;
+      if (sk.ruolo) this.ultimaTecnica = m.s;
+      if (sk.ptsCost && !((this.buffs.occasione || 0) > ora)) this.me.pts = Math.max(0, this.me.pts - sk.ptsCost);
       if (sk.spendBonus) this.me.pts = 0;
       if (sk.pts) this.me.pts = Math.min(PTS_MAX, this.me.pts + sk.pts);
       if (sk.sup) { this.me.su = 0; this.supPronta = false; this.supDa = ora; }
@@ -367,6 +308,7 @@ class Bot {
   }
 
   effetto(m, ora) {
+    if (m.k === 'marchi') { if (m.s === this.id) (this.marchi || (this.marchi = {}))[m.d] = m.n; return; }
     if (m.k === 'hit') {
       if (m.d === this.id && m.s !== this.id) { if (this.inCorso) this.subiti += m.v || 0; this.ostili.add(m.s); return; }
       if (m.s !== this.id || !this.inCorso || !this.bersagli.includes(m.d)) return;
@@ -421,7 +363,7 @@ class Bot {
     }
     await this.attendi('punti statistica', () => this.me.sp === 0);
     // punti abilità: in parti uguali fra le tecniche con ruolo (e la Suprema)
-    const mie = Object.values(SKILLS).filter((s) => s.cls === this.cls && (!s.via || s.via === this.via) && s.lvl <= o.livello && (s.ruolo || s.sup)).map((s) => s.id);
+    const mie = Object.values(SKILLS).filter((s) => s.cls === this.cls && (!s.via || s.via === this.via) && s.lvl <= o.livello && (s.ruolo || s.sup) && !s.finoVia).map((s) => s.id);
     n = this.me.kp;
     for (let i = 0; i < n && mie.length; i++) { this.manda({ t: 'skup', s: mie[i % mie.length] }); if (i % 20 === 19) await this.dormi(450); }
     if (mie.length) await this.attendi('punti abilità', () => this.me.kp === 0);
@@ -468,6 +410,7 @@ class Bot {
     const sk = SKILLS[sid], me = this.me;
     if (!sk || sk.cls !== this.cls || me.lvl < sk.lvl) return false;
     if (sk.via && sk.via !== me.via) return false;
+    if (sk.finoVia && me.via) return false;
     if (sk.req && ITEMS[this.arma].wt !== sk.req) return false;
     if (this.opt.senza && sk.ruolo === this.opt.senza) return false;
     return true;
@@ -480,6 +423,7 @@ class Bot {
       if (fino <= ora) continue;
       const d = BUFFS[b];
       if (d.free && d.free.includes(sid)) return 0;
+      if (d.finaleGratis && sk.finale) return 0;
       if (d.costMod && d.costMod[sid]) c += d.costMod[sid];
     }
     c = Math.max(0, c);
@@ -488,7 +432,7 @@ class Bot {
   stato() {
     const ora = this.ora(), me = this.me, bot = this;
     return {
-      par: this.opt.par, sup: this.sup, res: me.res, rmax: me.rmax, pts: me.pts, multi: this.opt.bersagli > 1, catena: me.chain || 0, ultimo: this.ultimo,
+      par: this.opt.par, sup: this.sup, res: me.res, rmax: me.rmax, marchi: (this.marchi || {})[this.primo] || 0, pts: me.pts, multi: this.opt.bersagli > 1, catena: me.chain || 0, ultimo: this.ultimo, ultimoBase: this.ultimoBase, ultimaTecnica: this.ultimaTecnica,
       pct: (x) => me.rmax * x / 100,
       sa: (id) => bot.conosce(id),
       eta: (id) => (bot.ultimoUso[id] === undefined ? Infinity : ora - bot.ultimoUso[id]),
@@ -502,6 +446,7 @@ class Bot {
         if (bot.costo(id) > me.res) return false;
         if (sk.sup && (me.su || 0) < SUPREMA.max) return false;
         if (sk.spend && sk.type !== 'heal_aoe' && me.pts < (sk.minPts || 1)) return false;
+        if (sk.ptsCost && me.pts < sk.ptsCost && !((bot.buffs.occasione || 0) > ora)) return false;
         return true;
       },
     };
@@ -532,8 +477,11 @@ class Bot {
     const lanciando = this.lancio && !this.lancio.finito;
     if (!lanciando && ora >= this.prossimoAtk) { this.manda({ t: 'atk', id: this.primo }); this.prossimoAtk = ora + me.aspd; }
     const S = this.stato();
-    for (const [sid, cond] of Object.entries(this.rot.fuori || {})) {
+    const risveglio = Object.values(SKILLS).find((s) => s.risveglio && s.cls === VIE[this.via].cls);
+    for (const [sid, cond] of Object.entries({ ...(this.rot.fuori || {}), ...(risveglio ? { [risveglio.id]: () => true } : {}) })) {
       if ((this.blocco[sid] || 0) > ora || !S.ok(sid) || !cond(S)) continue;
+      // le auree si accendono una volta sola (ripremere il tasto le spegnerebbe)
+      if (SKILLS[sid].aura) { if ((me.buffs || []).some((b) => b.b === SKILLS[sid].buff) || ora < (this.auraProva || 0)) continue; this.auraProva = ora + 3000; }
       this.lancia(sid, ora);
     }
     if (ora >= this.gcdFino && !this.lancio && !this.attesa) {
@@ -561,7 +509,7 @@ class Bot {
     const tecniche = {};
     const ids = new Set([...Object.keys(this.danni), ...Object.keys(this.usi)]);
     for (const id of ids) {
-      const sk = SKILLS[id];
+      const sk = SKILLS[id] || { name: id === 'veleno' ? 'Veleno (Maestria)' : id, ruolo: 'accumulo' };   // danni nel tempo delle Maestrie
       const cat = id === 'auto' ? 'auto' : sk.sup ? 'suprema' : sk.ruolo || 'supporto';
       const spesa = mana ? (this.spesa[id] || 0) / me.rmax * 100 : (this.spesa[id] || 0);   // Mana in % del massimo
       tecniche[id] = { nome: id === 'auto' ? 'Attacco base' : sk.name, cat, usi: this.usi[id] || 0, colpi: this.colpi[id] || 0, danni: this.danni[id] || 0, spesa };
@@ -691,25 +639,15 @@ function obiettivi(ris, opt, rif) {
     righe.push(`${esito(q >= 60 && q <= 75)}${r.via} al 60-75% delle Vie da danno: ${num(q, 0)}%`);
   }
   const quota = (r, k) => (r.perCat[k] || 0) / (r.totale || 1) * 100;
-  const fuoriAcc = ris.filter((r) => quota(r, 'accumulo') < 19.5 || quota(r, 'accumulo') > 35.5);
-  righe.push(`${esito(!fuoriAcc.length)}accumuli al 20-35% dei danni${fuoriAcc.length ? ': fuori ' + fuoriAcc.map((r) => `${r.via} ${num(quota(r, 'accumulo'), 0)}%`).join(', ') : ''}`);
-  // scarico potente contro scarico medio dello stesso tipo (singolo con un bersaglio, ad area con un gruppo)
-  const tipo = (id) => (SKILLS[id].type === 'strike' ? 'singolo' : ['aoe_self', 'aoe_target'].includes(SKILLS[id].type) ? 'area' : 'altro');
-  const male = [];
-  for (const r of ris) {
-    const voci = Object.entries(r.tecniche).filter(([id, t]) => t.usi >= 1 && t.spesa > 0 && t.danni > 0 && tipo(id) === (area ? 'area' : 'singolo'));
-    for (const [, p] of voci.filter(([, t]) => t.cat === 'potente')) {
-      for (const [, m] of voci.filter(([, t]) => t.cat === 'medio')) {
-        if (p.danni / p.usi <= m.danni / m.usi) male.push(`${r.via}: ${p.nome} non supera ${m.nome} per uso`);
-        if (p.danni / p.spesa >= m.danni / m.spesa) male.push(`${r.via}: ${p.nome} rende più di ${m.nome} per punto di risorsa`);
-      }
-    }
-  }
-  righe.push(`${esito(!male.length)}scarico potente: più del medio per uso, meno per punto di risorsa${male.length ? ' — ' + male.join('; ') : ''}`);
+  // con i kit a pochi tasti i colpi base fanno una parte grossa dei danni, ma il finale deve restare il colpo che conta
+  const fuoriAcc = ris.filter((r) => DA_DANNO.includes(r.via) && (quota(r, 'accumulo') < 29.5 || quota(r, 'accumulo') > 55.5));
+  righe.push(`${esito(!fuoriAcc.length)}colpi base al 30-55% dei danni${fuoriAcc.length ? ': fuori ' + fuoriAcc.map((r) => `${r.via} ${num(quota(r, 'accumulo'), 0)}%`).join(', ') : ''}`);
+  const fuoriFin = ris.filter((r) => DA_DANNO.includes(r.via) && (quota(r, 'potente') < 24.5 || quota(r, 'potente') > 50.5));
+  righe.push(`${esito(!fuoriFin.length)}colpo finale al 25-50% dei danni${fuoriFin.length ? ': fuori ' + fuoriFin.map((r) => `${r.via} ${num(quota(r, 'potente'), 0)}%`).join(', ') : ''}`);
   const conBarra = ris.filter((r) => r.suprema !== null);
   if (conBarra.length) {
-    const fuori = conBarra.filter((r) => r.suprema < 44.5 || r.suprema > 60.5);
-    righe.push(`${esito(!fuori.length)}barra Suprema piena in 45-60 s${fuori.length ? ': fuori ' + fuori.map((r) => `${r.via} ${num(r.suprema, 0)} s`).join(', ') : ''}`);
+    const fuori = conBarra.filter((r) => r.suprema < 11.5 || r.suprema > 24.5);
+    righe.push(`${esito(!fuori.length)}Suprema di nuovo pronta in 12-24 s${fuori.length ? ': fuori ' + fuori.map((r) => `${r.via} ${num(r.suprema, 0)} s`).join(', ') : ''}`);
     if (area) {
       const troppo = conBarra.filter((r) => quota(r, 'suprema') > 20);
       righe.push(`${esito(!troppo.length)}Suprema entro il 15-20% dei danni su un gruppo${troppo.length ? ': fuori ' + troppo.map((r) => `${r.via} ${num(quota(r, 'suprema'), 0)}%`).join(', ') : ''}`);

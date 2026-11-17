@@ -153,8 +153,11 @@ TORSO = ('spine', 'spine_1', 'chest', 'shoulder_L', 'shoulder_R')
 CAPI_DEF = [  # nome, spessore (m per un corpo alto 1,8), metallo
     ('pantaloni', 0.010, 0.0),
     ('veste', 0.017, 0.0),
+    ('bracciali', 0.013, 0.0),
+    ('gambali', 0.016, 0.0),
 ]
 CAPI = {}
+TESTE = {}
 
 
 def crea_capi(ob, arm):
@@ -171,9 +174,11 @@ def crea_capi(ob, arm):
         if nome == 'pantaloni':
             return b == 'hips' or b.startswith(('thigh_', 'shin_'))
         if nome == 'veste':
-            return b in TORSO or b == 'hips' or b.startswith('upper_arm_')
+            return b in TORSO or b == 'hips'          # senza maniche: le braccia restano nude
         if nome == 'stivali':
             return b.startswith(('foot_', 'toe_')) or (b.startswith('shin_') and co.z < ginocchio * 0.62)
+        if nome == 'gambali':
+            return b.startswith('shin_') and co.z < ginocchio * 0.9 and co.z > ginocchio * 0.2
         if nome == 'bracciali':
             return b.startswith('forearm_')
         if nome == 'armatura':
@@ -200,8 +205,26 @@ def crea_capi(ob, arm):
             continue
         bm.normal_update()
         d = spessore * H / 1.8
+        anca, caviglia = B['thigh_L'].head_local.z, B['foot_L'].head_local.z
         for v in bm.verts:
             v.co += v.normal * d
+            if nome == 'pantaloni':
+                # pantaloni larghi, raccolti alla caviglia: si gonfiano in orizzontale, di più attorno al ginocchio
+                t = (v.co.z - caviglia) / (anca - caviglia)
+                if 0.3 < t < 1.0:
+                    fuori = v.normal.copy()
+                    fuori.z = 0
+                    v.co += fuori * math.sin(math.pi * (t - 0.3) / 0.7) ** 0.7 * 0.055 * H / 1.8
+        # orli puliti: i vertici sul bordo si allineano fra loro (senza, scolli e giromanica escono a denti di sega)
+        for _ in range(8):
+            bordo = [v for v in bm.verts if v.is_boundary]
+            nuove = {}
+            for v in bordo:
+                vicini = [e.other_vert(v) for e in v.link_edges if e.is_boundary]
+                if len(vicini) == 2:
+                    nuove[v] = v.co * 0.4 + (vicini[0].co + vicini[1].co) * 0.3
+            for v, co in nuove.items():
+                v.co = co
         bm.to_mesh(capo.data)
         bm.free()
         mat = bpy.data.materials.new('capo_' + nome)
@@ -216,7 +239,7 @@ def crea_capi(ob, arm):
             p.material_index = 0
             p.use_smooth = True
         mod = capo.modifiers.new('riduci', 'DECIMATE')
-        mod.ratio = 0.5
+        mod.ratio = 0.6
         seleziona([capo], capo)
         bpy.ops.object.modifier_move_to_index(modifier='riduci', index=0)
         bpy.ops.object.modifier_apply(modifier='riduci')
@@ -226,29 +249,39 @@ def crea_capi(ob, arm):
 
 # ------------------------------------------------------------------ personaggio: scala, poligoni, texture
 def importa_personaggio(nome, path):
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+    if path.lower().endswith('.blend'):
+        # corpo base fatto da corpo_base.py: scheletro e mesh sono già nel file
+        bpy.ops.wm.open_mainfile(filepath=os.path.abspath(path))
+        nuovi = list(bpy.data.objects)
+        arm = next((o for o in nuovi if o.type == 'ARMATURE'), None)
+        extra = [o for o in nuovi if o.type == 'MESH' and o.name.startswith('capo_')]     # capelli già pronti
+        meshes = [o for o in nuovi if o.type == 'MESH' and o not in extra]
+    else:
+        extra = []
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        arm, meshes, nuovi = importa_fbx(path)
     scene = bpy.context.scene
-    arm, meshes, nuovi = importa_fbx(path)
     if not arm or not meshes:
         print('SALTATO (serve un FBX "With Skin"):', path)
         return False
     if arm.animation_data:
         arm.animation_data_clear()
     for o in nuovi:
-        if o is not arm and o not in meshes:
+        if o is not arm and o not in meshes and o not in extra:
             bpy.data.objects.remove(o, do_unlink=True)
     rinomina_ossa(arm)
     arm.name = 'scheletro'
     arm.data.pose_position = 'REST'
     if ROT:
         arm.rotation_euler.z += math.radians(ROT)
-    seleziona([arm] + meshes, arm)
+    seleziona([arm] + meshes + extra, arm)
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     if len(meshes) > 1:
         seleziona(meshes, meshes[0])
         bpy.ops.object.join()
     ob = meshes[0]
     ob.name = 'personaggio'
+    misure = json.loads(ob['testa']) if 'testa' in ob else None   # cranio, per i capelli (corpo_base.py)
     me = ob.data
     if me.shape_keys:
         ob.shape_key_clear()
@@ -259,8 +292,12 @@ def importa_personaggio(nome, path):
     k = H / (hi - lo)
     arm.matrix_world = Matrix.Translation((0, 0, -lo * k)) @ Matrix.Scale(k, 4) @ arm.matrix_world
     bpy.context.view_layer.update()
-    seleziona([arm, ob], arm)
+    seleziona([arm, ob] + extra, arm)
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    for o in extra:
+        seleziona([o], o)
+        for mod in [m for m in o.modifiers if m.type != 'ARMATURE']:
+            bpy.ops.object.modifier_apply(modifier=mod.name)
     # riduzione dei poligoni (mantiene UV, pesi e texture)
     tris = sum(len(p.vertices) - 2 for p in me.polygons)
     if tris > TRI:
@@ -274,9 +311,10 @@ def importa_personaggio(nome, path):
         if img.size[0] > TEX or img.size[1] > TEX:
             img.scale(min(TEX, img.size[0]), min(TEX, img.size[1]))
     capi = crea_capi(ob, arm) + crea_armature(ob, arm, H) if nome.startswith('base_') else []
+    capi += [o.name[5:] for o in extra]
     arm.data.pose_position = 'POSE'
     out = os.path.join(OUT, nome + '.glb')
-    kw = dict(export_animations=False, export_materials='EXPORT')
+    kw = dict(export_animations=False, export_materials='EXPORT', export_vertex_color='ACTIVE', export_all_vertex_colors=True)
     if DRACO:
         kw.update(export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6)
     try:
@@ -285,6 +323,9 @@ def importa_personaggio(nome, path):
         esporta(out, **kw)
     print(f'personaggio {nome}: triangoli {tris} -> {tris2}, ossa {len(arm.data.bones)}, capi {capi}, {os.path.getsize(out) / 1e6:.1f} MB')
     CAPI[nome] = capi
+    if misure:
+        kk = H / misure.pop('alto')
+        TESTE[nome] = {q: round(v * kk, 4) for q, v in misure.items()}
     return True
 
 
@@ -292,7 +333,7 @@ def importa_personaggio(nome, path):
 os.makedirs(OUT, exist_ok=True)
 anim, pers = [], []
 for f in sorted(os.listdir(SRC)):
-    if not f.lower().endswith('.fbx'):
+    if not f.lower().endswith(('.fbx', '.blend')):
         continue
     nome = re.sub(r'[^a-z0-9]+', '_', os.path.splitext(f)[0].lower()).strip('_')
     (anim if nome in ANIMAZIONI else pers).append((nome, os.path.join(SRC, f)))
@@ -316,6 +357,8 @@ for n in fatti:
         d['anim'] = ANIM_FILE
     if CAPI.get(n):
         d['capi'] = CAPI[n]
+    if TESTE.get(n):
+        d['testa'] = TESTE[n]
 with open(idx_path, 'w', encoding='utf-8') as fh:
     json.dump(idx, fh, indent=2, ensure_ascii=False)
     fh.write('\n')

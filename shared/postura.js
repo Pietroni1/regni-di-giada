@@ -43,6 +43,6 @@ export function posturaColpo(sk, costoPct, punti, colpi = 1) {
   if (!sk) return POSTURA.base;
   const parti = Math.max(1, sk.waves || 1) * Math.max(1, colpi);
   if (sk.sup) return POSTURA.suprema / parti;
-  const tot = costoPct * POSTURA.perResPct + (sk.spend ? punti * POSTURA.perPt : 0);
+  const tot = costoPct * POSTURA.perResPct + (sk.spend || sk.finale ? punti * POSTURA.perPt : 0);
   return tot > 0 ? tot / parti : POSTURA.base;
 }

@@ -5,10 +5,20 @@ import {
   RARITIES, BONUS_STATS, GEM_TYPES, bonusText, bonusStars, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, trialScale, SLANCIO, SUPREMA, supremaOf,
 } from '/shared/data.js';
 import { KINGDOMS, KINGDOM_IDS, WALL_RADIUS, CENTER, zoneAt } from '/shared/world.js';
+// Namespace e non import nominato: COMBAT manca nei rami senza il kit a pochi tasti, e così la pagina non si rompe.
+import * as DATI from '/shared/data.js';
 
+const COMBAT = DATI.COMBAT || {};
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pct = (v) => `${Math.round(v * 100)}%`;
+// Ruolo di una tecnica nel kit a pochi tasti: colpo base, colpo finale, interruzione.
+const RUOLI = {
+  accumulo: { nome: 'Colpo base', col: '#7fd07f' },
+  potente: { nome: 'Colpo finale', col: '#ff7a4a' },
+  interr: { nome: 'Interruzione', col: '#66b3ff' },
+};
+const ruoloDi = (sk) => (sk.interrupt ? RUOLI.interr : RUOLI[sk.ruolo]) || null;
 
 export function itemIconHtml(s, count) {
   const it = ITEMS[s.id];
@@ -334,8 +344,11 @@ export class UI {
     if (sk.gen) line.push(`<span class="tg">+${sk.gen} ${resName}</span>`);
     if (line.length) L.push(`<div>${line.join(' · ')}</div>`);
     L.push(`<div class="tt">${sk.cast ? `Lancio ${String(sk.cast).replace('.', ',')} s` : 'Istantaneo'}${sk.cd ? ` · Ricarica ${String(sk.cd).replace('.', ',')} s` : ''}${sk.offgcd ? ' · fuori dal GCD' : ''}</div>`);
+    const rl = ruoloDi(sk);
+    if (rl) L.push(`<div style="color:${rl.col}">${rl.nome}</div>`);
     if (sk.pts) L.push(`<div class="tg">Genera ${sk.pts} ${ptsName}${sk.behind ? ` (+${sk.behind.pts} alle spalle)` : ''}</div>`);
     if (sk.spend && sk.type !== 'heal_aoe') L.push(`<div style="color:#ffc860">Consuma tutti i ${ptsName}${sk.minPts ? ` (minimo ${sk.minPts})` : ''}</div>`);
+    if (sk.finale && COMBAT.concPct != null && COMBAT.risPct != null) L.push(`<div class="tg">+${COMBAT.concPct}% per punto. Con la Risonanza colpisce ad area (${COMBAT.risPct}% a testa).</div>`);
     if (sk.mult) L.push(`<div>Danno: <b>${pct(skillVal(sk.mult, show))}</b>${sk.spend ? ' per punto' : ''} ${sk.dmg === 'magic' ? "dell'attacco magico" : sk.dmg === 'hybrid' ? 'di attacco fisico e magico' : sk.dmg === 'best' ? "dell'attacco migliore (fisico o magico)" : "dell'attacco"}${sk.hits ? ` × ${sk.hits} colpi` : ''}</div>`);
     if (sk.splash) L.push(`<div class="tt">Colpisce anche i nemici entro ${sk.splash} m dal bersaglio</div>`);
     if (sk.dot) L.push(`<div>Nel tempo: ${pct(skillVal(sk.dot.mult, show))} ogni ${String(sk.dot.every).replace('.', ',')} s per ${sk.dot.durPerPt ? sk.dot.durPerPt + ' s per punto' : sk.dot.dur + ' s'}</div>`);
@@ -494,7 +507,7 @@ export class UI {
           html = `<div style="position:absolute;inset:2px;background:conic-gradient(#00000090 ${p * 360}deg, transparent 0)"></div>`;
         }
         state = g.skillState(q.id);
-        if (sk.ruolo) state += ' r-' + sk.ruolo; else if (sk.sup) state += ' r-suprema';
+        if (sk.interrupt) state += ' r-interr'; else if (sk.ruolo) state += ' r-' + sk.ruolo; else if (sk.sup) state += ' r-suprema';
         if (g.queued === q.id) state += ' queued';
       }
       if (cool.dataset.h !== html) { cool.innerHTML = html; cool.dataset.h = html; }
@@ -581,8 +594,9 @@ export class UI {
       const lvl = this.g.lvlOf(sid);
       const canUp = lvl > 0 && ((lvl < SKILL_MAX_POINTS && me.kp > 0) || (lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX && tomes > 0));
       const meta = [sk.cost ? `${sk.cost}${c.res === 'mana' ? '% Mana' : ' ' + RESOURCES[c.res].name}` : '', sk.cast ? sk.cast + ' s' : '', sk.cd ? 'ric. ' + sk.cd + ' s' : '', sk.offgcd ? 'fuori GCD' : ''].filter(Boolean).join(' · ');
+      const rl = ruoloDi(sk);
       return `<div class="skill-row ${lvl ? '' : 'locked'}"><div class="slot" ${lvl > 0 ? `data-skill="${sid}"` : ''} data-skill-info="${sid}">${skillIconHtml(sid, lvl <= 0)}</div>
-        <div class="si" data-skill-info="${sid}"><div class="sn">${esc(sk.name)}${sk.ruolo ? ` <small style="font-weight:normal;color:${sk.ruolo === 'accumulo' ? '#7fd07f' : sk.ruolo === 'medio' ? '#ffc860' : '#ff7a4a'}">· ${sk.ruolo === 'accumulo' ? 'accumulo' : 'scarico ' + sk.ruolo}</small>` : ''}</div><div class="sl">${lvl ? `Livello ${lvl}/${SKILL_MAX}${lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX ? ' — serve un tomo' : ''}` : `Si sblocca al livello ${sk.lvl}`}</div><div class="meta">${meta}</div></div>
+        <div class="si" data-skill-info="${sid}"><div class="sn">${esc(sk.name)}${rl ? ` <small style="font-weight:normal;color:${rl.col}">· ${rl.nome}</small>` : ''}</div><div class="sl">${lvl ? `Livello ${lvl}/${SKILL_MAX}${lvl >= SKILL_MAX_POINTS && lvl < SKILL_MAX ? ' — serve un tomo' : ''}` : `Si sblocca al livello ${sk.lvl}`}</div><div class="meta">${meta}</div></div>
         <button class="btn plus" data-up="${sid}" ${canUp ? '' : 'disabled'}>+</button></div>`;
     };
     let html = `<div class="pts">Punti abilità: ${me.kp}${tomes ? ` — Tomi della Tecnica: ${tomes}` : ''}</div>`;

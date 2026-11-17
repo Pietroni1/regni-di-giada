@@ -1,5 +1,11 @@
 // Dati di gioco condivisi tra server e client.
 // Modifica questo file per bilanciare classi, abilità, oggetti e mostri.
+import { MOBS_MAPPE, NPC_MAPPE } from './mappe.js';
+import { NPC_MISSIONI } from './missioni.js';
+import { MOBS_ALTO, OGGETTI_ALTO, FORGIA } from './altolivello.js';
+export { BOSS_MONDO, BOSS_IDS, PREMI_BOSS, FURIA, ARENA, NEGOZIO_ONORE, TITOLI, IMPRESE, FORGIA } from './altolivello.js';
+import { NPC_SOCIALE } from './sociale.js';
+export { CATENA, INCARICHI, MISSIONI, PNG_INCARICHI, ZONE_MISSIONI, SBLOCCHI } from './missioni.js';
 
 export const MAX_LEVEL = 99;
 export const INV_SIZE = 45;
@@ -13,12 +19,19 @@ export const SLANCIO = { max: 5, windowMs: 3200, decayMs: 900, genPct: 10, haste
 // Risorsa extra per come giochi (Ira/Energia/Chi in punti; per il Mana vale un quarto, in % del massimo).
 // multi: per ogni bersaglio oltre il primo colpito da una tecnica, fino a multiMax.
 export const BONUS_RISORSA = { multi: 0.75, multiMax: 3, crit: 3, kill: 10 };
+// Serie di uccisioni (il «flow» del farming): ogni mostro ucciso entro `finestraMs` dal precedente allunga la serie.
+// Finché la serie è viva: Slancio e Ira non calano, si corre più veloci (+velPct% a uccisione, fino a velMax%),
+// ogni uccisione accorcia di scattoS secondi la ricarica degli scatti (`scatto: true`) e di potS quella del
+// potenziamento di classe (`potenziamento: true`); ogni `occasioneOgni` uccisioni si ottiene un'Occasione.
+export const SERIE = { finestraMs: 7000, velPct: 4, velMax: 24, scattoS: 2, potS: 1, occasioneOgni: 5 };
 // Tecnica Suprema: una barra che si riempie spendendo risorsa (perRes per punto di Ira/Energia/Chi, perManaPct per ogni
 // 1% di Mana, perPt per ogni punto combo/sfera/carica consumato). Piena, sblocca la tecnica `sup` della classe.
 // Taratura (tools/sim/simula.mjs): con i kit "2 accumuli + 4 scarichi" si spendono circa 20-25 punti di risorsa al secondo
 // (Mana: ~3% al secondo), quindi la barra si riempie in 50-58 secondi contro un bersaglio e in 45-55 contro un gruppo.
-export const SUPREMA = { max: 100, perRes: 0.082, perManaPct: 0.58, perPt: 0.2, lvl: 15 };
-export const GCD_MS = 1000;
+// Tecnica Suprema: non si carica più spendendo risorsa. È una tecnica della rotazione con una ricarica (`cd` secondi)
+// che ogni colpo finale accorcia di `finaleS` secondi. `max` resta per il client: `su` = percentuale di ricarica (100 = pronta).
+export const SUPREMA = { max: 100, cd: 30, finaleS: 2, puntoS: 0.8, lvl: 15 };   // puntoS: secondi tolti per ogni Punto speso dalle tecniche `ptsCost`
+export const GCD_MS = 1000;       // tempo globale fra due tecniche (provato a 500: l'autore l'ha trovato troppo frenetico)
 export const GCD_MIN_MS = 750;
 export const EQUIP_SLOTS = ['weapon', 'head', 'body', 'feet'];
 export const EQUIP_NAMES = { weapon: 'Arma', head: 'Copricapo', body: 'Armatura', feet: 'Calzari' };
@@ -34,9 +47,22 @@ export const SKILL_MAX_POINTS = 10;
 export const SKILL_MAX = 20;
 export const BOOK_CHANCE = 0.5;
 // Da aumentare quando cambiano gli id delle abilità: il server azzera punti abilità e barra rapida dei vecchi salvataggi.
-export const DATA_VERSION = 4;
+export const DATA_VERSION = 5;
 
-export function expToNext(l) { return Math.floor(80 * Math.pow(l, 1.85) + 40 * l); }
+// Curva dei livelli: la forma di prima (80·l^1,85 + 40·l) per un fattore che cresce con il livello. Stima da
+// `npm run farming` (giocatore vero = 45% del bot, missioni della catena comprese; vedi CLAUDE.md, «Crescita: missioni e
+// bottino»): con la forma sola si arrivava al 10 in ~25 minuti e al 40 in ~2 ore e mezza; ora il 10 in ~45 minuti,
+// il 20 in ~2 ore, il 30 in ~5, il 40 in ~10.
+export const CURVA_LIVELLI = [[1, 3.0], [10, 3.2], [15, 3.9], [20, 4.6], [30, 6.2], [40, 8.5], [50, 9.5]];
+function fattoreCurva(l) {
+  const C = CURVA_LIVELLI;
+  if (l <= C[0][0]) return C[0][1];
+  for (let i = 1; i < C.length; i++) {
+    if (l <= C[i][0]) { const [a, fa] = C[i - 1], [b, fb] = C[i]; return fa + (fb - fa) * (l - a) / (b - a); }
+  }
+  return C[C.length - 1][1];
+}
+export function expToNext(l) { return Math.floor((80 * Math.pow(l, 1.85) + 40 * l) * fattoreCurva(l)); }
 export function skillVal(arr, lvl) { return Array.isArray(arr) ? arr[0] + arr[1] * (lvl - 1) : arr; }
 export function upgradedStat(base, up, weapon) {
   if (!base) return 0;
@@ -60,7 +86,7 @@ export const WEAPON_TYPES = {
 // Mana: grande riserva che cala lentamente.
 export const RESOURCES = {
   ira: { name: 'Ira', color: '#c8402a', fixedMax: 100, start: 0, decay: 3 },
-  energia: { name: 'Energia', color: '#d8b830', fixedMax: 100, start: 100, regen: 5.5 },
+  energia: { name: 'Energia', color: '#d8b830', fixedMax: 100, start: 100, regen: 10 },
   chi: { name: 'Chi', color: '#3fae8a', fixedMax: 100, start: 100, regen: 7 },
   mana: { name: 'Mana', color: '#3a6ad0', start: 1, regenPct: 1.0, regenPctOoc: 4 },
 };
@@ -70,48 +96,55 @@ export const RESOURCES = {
 export const CLASSES = {
   lama: {
     name: 'Lama', title: 'Spadaccino errante', glyph: '剣',
-    desc: "Combattente corpo a corpo con la spada. Accumula Ira con Fendente e Squarcio e la scarica in colpi sempre più devastanti.",
+    desc: "Combattente con la spada, la classe più diretta. Squarcio e Fendente accumulano Ira e Impeto, il colpo finale li scarica; la Carica ti porta addosso al nemico e lo interrompe.",
     start: { vit: 5, str: 6, dex: 3, int: 2 }, hp: [130, 26, 22], mp: [0, 0, 0],
     primary: 'str', autoMagic: false, weapons: ['sword'], res: 'ira', autoRes: 7,
-    vie: ['fulmine', 'montagna'], baseSkills: ['fendente', 'squarcio', 'affondo_ira'], startWeapon: 'spada_ferro', extraItems: [],
+    vie: ['fulmine', 'montagna'], pts: { name: 'Impeto', glyph: '▲' }, baseSkills: ['squarcio', 'fendente', 'affondo_ira', 'carica', 'grido_guerra', 'risveglio_drago'], startWeapon: 'spada_ferro', extraItems: [],
     look: { robe: 0x5b3a2c, trim: 0xb8a070, pants: 0x2e2620, armor: 0x8a8f96, hair: 0x1a1210, hairStyle: 'topknot' },
   },
   ombra: {
     name: 'Ombra', title: 'Lama dei vicoli', glyph: '影',
-    desc: 'Agile e letale: pugnali o arco. Colpo Rapido e Agguato accumulano Punti combo; gli scarichi costano Energia e quelli potenti consumano anche i Punti combo.',
+    desc: "Assassino a Marchi, con pugnali o arco. Il Colpo Rapido incide Marchi sul nemico (li vedi girargli attorno), il Passo d'Ombra ti porta alle sue spalle per l'Agguato, e l'Esecuzione li fa esplodere tutti insieme: più Marchi, più grosso il colpo. Sui gruppi: Ventaglio o Danza per marchiare tutti, poi un'Esecuzione li fa saltare a catena.",
+    // Marchi: fino a `max` per nemico (per chi li ha messi), durano `dur` secondi. occasionePct: probabilità d'Occasione del Colpo Rapido.
+    marchi: { max: 5, dur: 14 }, occasionePct: 10,
     start: { vit: 3, str: 4, dex: 7, int: 2 }, hp: [105, 21, 18], mp: [0, 0, 0],
-    primary: 'dex', autoMagic: false, weapons: ['daggers', 'bow'], res: 'energia', pts: { name: 'Punti combo', glyph: '◆' },
-    vie: ['pugnali', 'arco'], baseSkills: ['colpo_rapido', 'agguato', 'taglio_netto'], startWeapon: 'pugnali_osso', extraItems: ['arco_bambu'],
+    primary: 'dex', autoMagic: false, weapons: ['daggers', 'bow'], res: 'energia', pts: { name: 'Marchi sul bersaglio', glyph: '✦' },
+    vie: ['pugnali', 'arco'], baseSkills: ['colpo_rapido', 'taglio_netto', 'colpo_gola', 'passo_ombra', 'ventaglio', 'velo_ombra', 'eclissi'], startWeapon: 'pugnali_osso', extraItems: ['arco_bambu'],
     look: { robe: 0x26293a, trim: 0x7a1e22, pants: 0x1c1e28, hair: 0x0e0e10, hairStyle: 'hood' },
   },
   monaco: {
     name: 'Monaco', title: 'Pugno del monastero', glyph: '拳',
-    desc: 'Combatte a mani nude: Pugno e Calcio accumulano Sfere di chi, il Palmo scarica. Pugno, Calcio e Palmo in sequenza attivano la Forma Perfetta, che potenzia lo scarico potente.',
+    desc: 'Combatte a mani nude ed è la classe più tecnica: la sua Maestria premia chi alterna i colpi. Pugno e Calcio accumulano Chi e Sfere, il colpo finale li scarica; il Calcio Volante lo porta sul nemico.',
     start: { vit: 4, str: 5, dex: 4, int: 3 }, hp: [115, 24, 20], mp: [0, 0, 0],
     primary: 'str', autoMagic: false, weapons: ['fists'], res: 'chi', pts: { name: 'Sfere', glyph: '●' },
-    chain: ['pugno_ferro', 'calcio_gru', 'palmo_chi'], chainBuff: 'forma_perfetta',
-    vie: ['ferro', 'loto'], baseSkills: ['pugno_ferro', 'calcio_gru', 'palmo_chi'], startWeapon: 'bende_seta', extraItems: [],
+    vie: ['ferro', 'loto'], baseSkills: ['pugno_ferro', 'calcio_gru', 'onda_chi', 'palmo_chi', 'calcio_volante', 'respiro_drago', 'cuore_sole'], startWeapon: 'bende_seta', extraItems: [],
     look: { robe: 0xc8681c, trim: 0x7a3b10, pants: 0x6a3a14, hair: null, hairStyle: 'bald' },
   },
   mistico: {
     name: 'Mistico', title: 'Veggente dei venti', glyph: '仙',
-    desc: 'Incantatore con il bastone. Accumula Cariche celesti con incantesimi a tempo di lancio e le scarica in folgori o cure istantanee.',
+    desc: 'Incantatore con il bastone. Dardo e Sfera (brevi lanci, anche camminando) accumulano Cariche celesti, il colpo finale è istantaneo; il Passo di Luce lo sposta in un lampo. Può diventare guaritore.',
     start: { vit: 3, str: 2, dex: 3, int: 8 }, hp: [95, 19, 17], mp: [120, 14, 26],
     primary: 'int', autoMagic: true, weapons: ['staff'], res: 'mana', pts: { name: 'Cariche celesti', glyph: '✦' },
-    vie: ['tempesta', 'benedizione'], baseSkills: ['dardo_luce', 'sfera_celeste', 'lancia_luce', 'tocco_curativo'], startWeapon: 'bastone_salice', extraItems: [],
+    vie: ['tempesta', 'benedizione'], baseSkills: ['dardo_luce', 'sfera_celeste', 'lancia_luce', 'sigillo_silenzio', 'passo_luce', 'benedizione_astri', 'congiunzione'], startWeapon: 'bastone_salice', extraItems: [],
     look: { robe: 0xdcd6c4, trim: 0x2f6a8a, pants: 0xbab4a0, hair: 0x22201e, hairStyle: 'long' },
   },
 };
 
+// maestria: la passiva della Via (applicata in server/world.js). passive: bonus fissi.
+//   slancio: +% ai danni del finale per tacca di Slancio · baluardo: il finale dà l'effetto Baluardo (campo `buff` della tecnica)
+//   veleno: i colpi base avvelenano { mult, dur, every } e il finale fa +bonus% sui bersagli avvelenati
+//   distanza: +pct% ai danni sui bersagli più lontani di m metri · ritmo: +% ai danni di un colpo base diverso dal precedente
+//   cura: il finale ti cura di questa % della vita massima · critPts: un colpo base critico dà punti in più
+//   grazia: i danni dei colpi base curano di questa % l'alleato più ferito entro 25 m
 export const VIE = {
-  fulmine: { cls: 'lama', name: 'Via del Fulmine', role: 'Danni', desc: 'Danni devastanti. Lo Squarcio critico accende la Scintilla: la prossima Lama del Tuono costa metà Ira e infligge il 30% in più.', passive: {} },
-  montagna: { cls: 'lama', name: 'Via della Montagna', role: 'Difensore', desc: 'Regge i colpi e tiene su di sé i nemici. Vita +15%, minaccia generata ×4.', passive: { hpPct: 15, threat: 4 } },
-  pugnali: { cls: 'ombra', name: 'Via dei Pugnali', role: 'Danni', desc: 'Veleni e colpi alle spalle. La Danza delle Lame avvelena: Taglio Finale e Ventaglio Velenoso fanno il 25% in più sui bersagli avvelenati. Richiede pugnali.', passive: {} },
-  arco: { cls: 'ombra', name: "Via dell'Arco", role: 'Danni a distanza', desc: 'Combatte dalla distanza. Il Colpo Rapido può rendere gratuita la prossima Pioggia di Frecce. Richiede un arco.', passive: {} },
-  ferro: { cls: 'monaco', name: 'Via del Pugno di Ferro', role: 'Danni', desc: 'Raffiche ravvicinate. La Forma Perfetta dona anche il 20% di Chi.', passive: { chainRes: 20 } },
-  loto: { cls: 'monaco', name: 'Via del Loto Interiore', role: 'Danni magici', desc: "Chi che colpisce a media distanza e sostiene: la Forma Perfetta ti cura dell'8% della vita. L'Onda di Chi lascia il Fiore di Loto, che potenzia del 20% gli scarichi potenti.", passive: { chainHeal: 8 } },
-  tempesta: { cls: 'mistico', name: 'Via della Tempesta', role: 'Danni a distanza', desc: 'Fulmini e saette. Il Marchio del Tuono può rendere istantaneo il prossimo accumulo (Dardo di Luce o Sfera Celeste).', passive: {} },
-  benedizione: { cls: 'mistico', name: 'Via della Benedizione', role: 'Guaritore', desc: 'Cure, scudi e benedizioni per gli alleati del regno (cure +15%). Le Cariche celesti potenziano Scudo di Giada e Pioggia di Petali.', passive: { healPct: 15 } },
+  fulmine: { cls: 'lama', name: 'Via del Fulmine', role: 'Danni', desc: 'Danni devastanti. Maestria — Tempesta Crescente: il colpo finale infligge il 6% in più per ogni tacca di Slancio.', passive: {}, maestria: { slancio: 6 } },
+  montagna: { cls: 'lama', name: 'Via della Montagna', role: 'Difensore', desc: 'Regge i colpi e tiene su di sé i nemici. Vita +15%, minaccia ×4. Maestria — Baluardo: dopo il colpo finale subisci il 25% di danni in meno per 6 secondi.', passive: { hpPct: 15, threat: 4 }, maestria: { baluardo: true } },
+  pugnali: { cls: 'ombra', name: 'Via dei Pugnali', role: 'Danni', desc: 'Veleni e lame corte. Maestria — Lame Avvelenate: ogni Marchio che incidi avvelena il nemico (lo vedi colare veleno). Tecnica di Via: la Danza delle Lame, che marchia tutto un gruppo. Richiede pugnali.', passive: {}, maestria: { veleno: { mult: [0.5, 0.025], dur: 10, every: 2 } } },
+  arco: { cls: 'ombra', name: "Via dell'Arco", role: 'Danni a distanza', desc: 'Combatte dalla distanza. Maestria — Occhio Lungo: +12% ai danni sui bersagli a più di 8 metri. Richiede un arco.', passive: {}, maestria: { distanza: { m: 8, pct: 12 } } },
+  ferro: { cls: 'monaco', name: 'Via del Pugno di Ferro', role: 'Danni', desc: 'Raffiche ravvicinate. Maestria — Ritmo: un colpo base diverso dal precedente infligge il 15% in più.', passive: {}, maestria: { ritmo: 15 } },
+  loto: { cls: 'monaco', name: 'Via del Loto Interiore', role: 'Danni magici', desc: "Chi che colpisce a media distanza e sostiene. Maestria — Fiore di Loto: il colpo finale ti cura del 6% della vita massima.", passive: {}, maestria: { cura: 6 } },
+  tempesta: { cls: 'mistico', name: 'Via della Tempesta', role: 'Danni a distanza', desc: 'Fulmini e saette. Maestria — Sovraccarico: un colpo base critico dà una Carica celeste in più.', passive: {}, maestria: { critPts: 1 } },
+  benedizione: { cls: 'mistico', name: 'Via della Benedizione', role: 'Guaritore', desc: "Guaritore con gli stessi tasti degli altri. Cure +15%. Maestria — Grazia: i danni dei tuoi colpi base curano del 40% l'alleato più ferito entro 25 metri (te compreso).", passive: { healPct: 15 }, maestria: { grazia: 40 } },
 };
 
 // ------------------------------------------------------------------ effetti temporanei
@@ -123,7 +156,7 @@ export const BUFFS = {
   pelle_pietra: { name: 'Pelle di Pietra', glyph: '岩', dur: 10, stats: { dmgTaken: [-25, -1], hpRegen: [2, 0.1] }, desc: 'Danni subiti ridotti e rigenerazione della vita.' },
   nell_ombra: { name: "Nell'Ombra", glyph: '隠', dur: 8, proc: true, skillDmg: { taglio_finale: 30 }, consume: ['taglio_finale'], desc: 'Il prossimo Taglio Finale infligge il 30% di danni in più.' },
   fuoco_rapido: { name: 'Fuoco Rapido', glyph: '速', dur: 10, proc: true, free: ['pioggia_frecce'], consume: ['pioggia_frecce'], desc: 'La prossima Pioggia di Frecce non costa Energia.' },
-  occhio_falco: { name: 'Occhio del Falco', glyph: '鷹', dur: 12, stats: { hastePct: [25, 1], resRegenPct: [50, 2] }, desc: 'Rapidità e rigenerazione dell\'Energia aumentate.' },
+  occhio_falco: { name: 'Occhio del Falco', glyph: '鷹', dur: 6, stats: { hastePct: [15, 0.75], resRegenPct: [50, 2] }, desc: 'Rapidità e rigenerazione dell\'Energia aumentate.' },
   forma_perfetta: { name: 'Forma Perfetta', glyph: '極', dur: 10, proc: true, spenderDmg: 40, consumeSpender: true, desc: 'Il prossimo scarico potente (che consuma le Sfere) infligge il 40% di danni in più.' },
   pelle_bronzo: { name: 'Pelle di Bronzo', glyph: '銅', dur: 10, stats: { dmgTaken: [-20, -1], hpRegen: [2, 0.1] }, desc: 'Danni subiti ridotti e rigenerazione della vita.' },
   spirito_tigre: { name: 'Spirito della Tigre', glyph: '虎', dur: 15, stats: { dmgPct: [20, 1], resRegenPct: [50, 2] }, desc: 'Danni e rigenerazione del Chi aumentati.' },
@@ -131,98 +164,126 @@ export const BUFFS = {
   tempesta_imminente: { name: 'Tempesta Imminente', glyph: '迅', dur: 10, proc: true, instant: ['dardo_luce', 'sfera_celeste'], consume: ['dardo_luce', 'sfera_celeste'], desc: 'Il prossimo Dardo di Luce o Sfera Celeste è istantaneo.' },
   occhio_ciclone: { name: 'Occhio del Ciclone', glyph: '旋', dur: 15, stats: { hastePct: [30, 1], dmgPct: [10, 0.5] }, desc: 'Rapidità e danni aumentati.' },
   benedizione: { name: 'Benedizione', glyph: '福', dur: 300, stats: { defPct: [12, 1.2], atkPct: [6, 0.6], matkPct: [6, 0.6] }, desc: 'Difesa e attacco aumentati.' },
+  risonanza: { name: 'Risonanza', glyph: '響', dur: 8, proc: true, desc: 'Il prossimo colpo finale colpisce (o cura) ad area.' },
+  // Risvegli (cooldown offensivi di classe): per `dur` secondi i colpi base (ruolo `accumulo` o `base: true`) cambiano.
+  // risveglio: eco = dopo ogni colpo base un secondo colpo al N% · scoppio = il colpo base singolo esplode attorno al
+  // bersaglio · genPct = risorsa generata in più · gratis = i colpi base non costano risorsa · ptsExtra = Punti in più ·
+  // istantanei = i colpi base non hanno tempo di lancio. Le statistiche valgono per tutta la durata.
+  risveglio_drago: { name: 'Risveglio del Drago', glyph: '龍', dur: 12, stats: { dmgPct: [12, 0.4] }, risveglio: { eco: 60, genPct: 50 }, desc: 'Squarcio e Fendente colpiscono due volte e danno il 50% di Ira in più; tutti i danni aumentano.' },
+  eclissi: { name: 'Eclissi', glyph: '蝕', dur: 12, stats: { dmgPct: [10, 0.3] }, risveglio: { gratis: true, marchiExtra: 1, eco: 50 }, desc: 'Il Colpo Rapido non costa Energia, incide due Marchi e lascia un taglio d\'eclissi in più; tutti i danni aumentano.' },
+  cuore_sole: { name: 'Cuore del Sole', glyph: '陽', dur: 12, stats: { dmgPct: [10, 0.3] }, risveglio: { scoppio: { raggio: 4.5, pct: 60 }, eco: 45, ptsExtra: 1 }, desc: 'Il Pugno di Ferro esplode in una vampa attorno al bersaglio e dà una Sfera in più; il Calcio della Gru colpisce due volte; tutti i danni aumentano.' },
+  congiunzione: { name: 'Congiunzione', glyph: '合', dur: 12, stats: { dmgPct: [6, 0.2] }, risveglio: { istantanei: true, eco: 35 }, desc: 'Dardo di Luce e Sfera Celeste sono istantanei e ognuno scaglia un secondo astro; tutti i danni aumentano.' },
+  occasione: { name: 'Occasione', glyph: '機', dur: 8, proc: true, finaleGratis: true, desc: 'Il prossimo colpo finale non costa risorsa e vale come se avessi la Concentrazione piena. Per l\'Ombra: il prossimo scarico non consuma Punti combo.' },
+  baluardo: { name: 'Baluardo', glyph: '塁', dur: 6, stats: { dmgTaken: [-25, -0.3] }, desc: 'Danni subiti ridotti.' },
+  // potenziamenti di classe (uno per classe, livello 8; quelli con «gruppo» valgono anche per i compagni vicini)
+  grido_guerra: { name: 'Aura di Guerra', glyph: '吼', aura: true, dur: 0, stats: { dmgPct: [5, 0.2], dmgTaken: [-5, -0.15] }, desc: 'Aura: danni aumentati e danni subiti ridotti finché resta accesa.' },
+  velo_ombra: { name: "Aura d'Ombra", glyph: '幽', aura: true, dur: 0, stats: { critPct: [8, 0.3], spdPct: [8, 0.2] }, desc: 'Aura: probabilità di critico e velocità di movimento aumentate finché resta accesa.' },
+  respiro_drago: { name: 'Aura del Drago', glyph: '龍', aura: true, dur: 0, stats: { hastePct: [6, 0.2], lifesteal: [3, 0.12] }, desc: 'Aura: rapidità aumentata e i tuoi colpi ti curano di una parte dei danni, finché resta accesa.' },
+  benedizione_astri: { name: 'Aura degli Astri', glyph: '星', aura: true, dur: 0, stats: { matkPct: [5, 0.2], atkPct: [4, 0.15], resRegenPct: [15, 0.5] }, desc: 'Aura: attacco e rigenerazione della risorsa aumentati finché resta accesa.' },
   // effetti sui nemici
+  veleno: { name: 'Veleno', glyph: '毒', dur: 10, debuff: true, tipo: 'veleno', desc: 'Subisce danni nel tempo. Morso e Ventaglio fanno più male ai bersagli avvelenati.' },
+  ferita: { name: 'Ferita', glyph: '血', dur: 10, debuff: true, tipo: 'sangue', desc: 'Sanguina: subisce danni nel tempo. I colpi pesanti e il Ventaglio dell\'Ombra fanno più male ai bersagli feriti.' },
+  agguato: { name: 'Agguato', glyph: '襲', dur: 5, proc: true, behind: true, consume: ['colpo_rapido', 'taglio_netto', 'taglio_finale', 'freccia_perforante'], desc: 'Sei alle spalle: il prossimo Colpo Rapido incide un Marchio in più, la prossima Esecuzione fa il 30% in più.' },
   marchio_morte: { name: 'Marchio della Morte', glyph: '死', dur: 15, debuff: true, vuln: [20, 1], desc: "Subisce più danni da chi l'ha marchiato." },
 };
 
 // ------------------------------------------------------------------ abilità
 // lvl: livello del personaggio per sbloccarla. cost/gen: risorsa (per il Mana: % del massimo).
-// pts: punti generati. spend: consuma tutti i punti (mult è per punto). cast: secondi di lancio.
-// offgcd: non attiva il tempo di ricarica globale. range: numero o 'weapon' (gittata dell'arma).
+// cast: secondi di lancio. offgcd: non attiva il tempo di ricarica globale. range: numero o 'weapon' (gittata dell'arma).
 //
-// Schema di ogni Via: 2 ACCUMULI (di base: non costano, generano risorsa o punti) e 4 SCARICHI
-//   ruolo 'medio'   — costo contenuto, uno a bersaglio singolo (di base, livello 3) e uno ad area (livello 5);
-//   ruolo 'potente' — costo alto e, per chi ha i punti, li consuma tutti: uno singolo (livello 9) e uno ad area (livello 12);
-// più due tecniche di supporto con ricarica (livelli 7 e 15) e la Tecnica Suprema (livello 15).
-// Il costo cresce con la potenza: medio 30-35, potente 45-60 (Mana: 4-5% e 10-12%).
-// Regola di taratura (verificata con `npm run sim`): lo scarico potente vale più del medio per uso ma meno per punto di risorsa;
-// gli accumuli fanno il 20-35% dei danni; le Vie da danno stanno entro ±10% fra loro (difensore e guaritore al 60-75%).
+// POCHI TASTI: ogni Via ha 4 o 5 tecniche più la Suprema.
+//   ruolo 'accumulo' — i due COLPI BASE: gratuiti, senza ricarica, sempre premibili, generano risorsa.
+//       · quello a bersaglio singolo dà 1 punto di Concentrazione (`pts: 1`);
+//       · quello ad area (`risonanza: true`), se colpisce almeno COMBAT.risMin nemici, accende la Risonanza.
+//   ruolo 'potente'  — il COLPO FINALE (`finale: true`): spende risorsa e tutta la Concentrazione.
+//       · senza Risonanza colpisce un bersaglio, +COMBAT.concPct% per punto di Concentrazione;
+//       · con la Risonanza colpisce tutti i nemici attorno al bersaglio (COMBAT.risPct% dei danni a testa).
+//   `interrupt: true` — l'INTERRUZIONE: spezza il lancio del bersaglio e lo stordisce; ricarica breve, fuori dal tempo globale.
+//   la MOSSA DI VIA  — scatto, difesa, cura o potenziamento con ricarica (la Lama non ne ha: 4 tasti).
+// Niente sequenze di tasti: il finale cambia da solo in base a come si sta combattendo, e ogni Via ha una
+// MAESTRIA passiva (VIE[via].maestria) che premia il suo modo di giocare.
+// `finoVia: true` — finale di base della classe: vale finché non si sceglie una Via, poi lo sostituisce quello della Via.
+export const COMBAT = {
+  scalaTecniche: 1, // moltiplicatore dei danni di tutte le tecniche (0,62 quando il tempo globale era a mezzo secondo)
+  concPct: 9,        // +% danni (o cure) del finale per punto di Concentrazione, su bersaglio singolo
+  risMin: 3,         // nemici colpiti dal colpo base ad area per accendere la Risonanza
+  risDur: 8,         // secondi di durata della Risonanza
+  risRaggio: 6,      // raggio del finale ad area attorno al bersaglio
+  risPct: 60,        // danni del finale ad area su ogni nemico, in % del finale singolo senza Concentrazione
+  genInterr: 15,     // risorsa restituita da un'interruzione riuscita (che dà anche un'Occasione)
+  occasionePct: 6,   // probabilità che un colpo base a segno dia un'Occasione (prossimo finale gratuito e a Concentrazione piena)
+};
 export const SKILLS = {
-  // ======================= LAMA (Ira)
-  fendente: { name: 'Fendente Rotante', cls: 'lama', lvl: 1, ruolo: 'accumulo', type: 'aoe_self', dmg: 'phys', mult: [0.78, 0.039], radius: 4.5, gen: 8, cd: 0, glyph: '旋', color: 0xffd27a, fx: 'spin', desc: 'Accumulo ad area: colpisce tutti i nemici intorno a te e genera Ira.' },
-  squarcio: { name: 'Squarcio', cls: 'lama', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.2, 0.11], gen: 16, cd: 4.5, onCrit: { buff: 'scintilla', via: 'fulmine' }, glyph: '裂', color: 0xffe0a0, fx: 'slash', desc: 'Accumulo: un colpo potente che genera molta Ira.' },
-  affondo_ira: { name: "Affondo dell'Ira", cls: 'lama', lvl: 3, ruolo: 'medio', type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.75, 0.088], cost: 30, cd: 0, dot: { mult: [0.27, 0.014], dur: 10, every: 2 }, glyph: '突', color: 0xff8a4a, fx: 'slash', desc: 'Scarico medio: un affondo che apre una ferita sanguinante per 10 secondi.' },
+  // ======================= LAMA (Ira) — 4 tasti
+  squarcio: { name: 'Squarcio', cls: 'lama', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.45, 0.072], gen: 14, pts: 1, glyph: '裂', color: 0xffe0a0, fx: 'slash', desc: 'Colpo base: un taglio su un bersaglio. Genera Ira e 1 punto di Impeto.' },
+  fendente: { name: 'Fendente Rotante', cls: 'lama', lvl: 1, ruolo: 'accumulo', type: 'aoe_self', dmg: 'phys', mult: [0.82, 0.041], radius: 4.5, gen: 10, risonanza: true, glyph: '旋', color: 0xffd27a, fx: 'spin', desc: 'Colpo base ad area: colpisce tutti i nemici intorno. Se ne prende 3 o più accende la Risonanza.' },
+  affondo_ira: { name: "Affondo dell'Ira", cls: 'lama', lvl: 2, ruolo: 'potente', finale: true, finoVia: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.5, 0.125], cost: 40, glyph: '突', color: 0xff8a4a, fx: 'slash', desc: 'Colpo finale: scarica Ira e Impeto in un affondo. Con la Risonanza colpisce tutti i nemici attorno al bersaglio.' },
+  grido_guerra: { name: 'Aura di Guerra', cls: 'lama', lvl: 8, type: 'aura', offgcd: true, aura: true, buff: 'grido_guerra', gruppo: 15, cd: 2, glyph: '吼', color: 0xff8a4a, fx: 'buff_lama', desc: "Aura: un'aura rosso-oro ti avvolge e resta accesa finché non la spegni (o cadi). Tu e i compagni di gruppo entro 15 metri infliggete più danni e ne subite meno. Premi di nuovo per spegnerla." },
+  velo_ombra: { name: "Aura d'Ombra", cls: 'ombra', lvl: 8, type: 'aura', offgcd: true, aura: true, buff: 'velo_ombra', cd: 2, glyph: '幽', color: 0x7a5aa8, fx: 'buff_ombra', desc: "Aura: un velo di fumo scuro ti avvolge e resta acceso finché non lo spegni (o cadi). Critico e velocità di movimento aumentano. Premi di nuovo per spegnerla." },
+  respiro_drago: { name: 'Aura del Drago', cls: 'monaco', lvl: 8, type: 'aura', offgcd: true, aura: true, buff: 'respiro_drago', cd: 2, glyph: '龍', color: 0xffb040, fx: 'buff_monaco', desc: "Aura: il chi ti arde attorno e resta acceso finché non lo spegni (o cadi). Sei più rapido e i tuoi colpi ti curano. Premi di nuovo per spegnerla." },
+  benedizione_astri: { name: 'Aura degli Astri', cls: 'mistico', lvl: 8, type: 'aura', offgcd: true, aura: true, buff: 'benedizione_astri', gruppo: 20, cd: 2, glyph: '星', color: 0xbfe0ff, fx: 'buff_mistico', desc: "Aura: una corona di stelle ti gira attorno e resta accesa finché non la spegni (o cadi). Tu e i compagni di gruppo entro 20 metri avete attacco e rigenerazione aumentati. Premi di nuovo per spegnerla." },
+  // Risvegli: i cooldown offensivi (livello 12, un minuto di ricarica, fuori dal tempo globale)
+  risveglio_drago: { name: 'Risveglio del Drago', cls: 'lama', lvl: 12, type: 'buff', offgcd: true, risveglio: true, buff: 'risveglio_drago', cd: 60, glyph: '龍', color: 0xff5a2a, fx: 'risveglio', desc: 'RISVEGLIO (12 s): Squarcio e Fendente colpiscono due volte in rosso e oro e danno più Ira; tutti i danni aumentano.' },
+  eclissi: { name: 'Eclissi', cls: 'ombra', lvl: 12, type: 'buff', offgcd: true, risveglio: true, buff: 'eclissi', cd: 60, glyph: '蝕', color: 0xe8e8ff, fx: 'risveglio', desc: 'RISVEGLIO (12 s): il Colpo Rapido non costa Energia, incide due Marchi e lascia un taglio bianco d\'eclissi in più; tutti i danni aumentano.' },
+  cuore_sole: { name: 'Cuore del Sole', cls: 'monaco', lvl: 12, type: 'buff', offgcd: true, risveglio: true, buff: 'cuore_sole', cd: 60, glyph: '陽', color: 0xfff0a0, fx: 'risveglio', desc: 'RISVEGLIO (12 s): il Pugno di Ferro esplode in una vampa bianca e oro attorno al bersaglio e dà una Sfera in più, il Calcio della Gru colpisce due volte; tutti i danni aumentano.' },
+  congiunzione: { name: 'Congiunzione', cls: 'mistico', lvl: 12, type: 'buff', offgcd: true, risveglio: true, buff: 'congiunzione', cd: 60, glyph: '合', color: 0xffe070, fx: 'risveglio', desc: 'RISVEGLIO (12 s): Dardo di Luce e Sfera Celeste diventano istantanei, dorati, e ognuno scaglia un secondo astro; tutti i danni aumentano.' },
+  carica: { name: 'Carica Fulminea', cls: 'lama', lvl: 3, type: 'strike', dash: true, scatto: true, offgcd: true, interrupt: true, range: 14, dmg: 'phys', mult: [0.8, 0.04], gen: 20, stun: [1, 0.02], cd: 12, glyph: '馳', color: 0x9fd4ff, fx: 'dash', desc: 'Interruzione e scatto: carichi in linea retta e ti fermi davanti al bersaglio, spezzi il suo lancio e lo stordisci; ottieni 20 Ira.' },
   // Via del Fulmine
-  arco_folgore: { name: 'Arco di Folgore', cls: 'lama', via: 'fulmine', lvl: 5, ruolo: 'medio', type: 'aoe_self', dmg: 'phys', mult: [1.25, 0.062], radius: 5.5, cost: 30, cd: 0, glyph: '弧', color: 0x9fd4ff, fx: 'spin', desc: 'Scarico medio ad area: la lama traccia un arco di fulmini su tutti i nemici intorno.' },
-  carica: { name: 'Carica Fulminea', cls: 'lama', via: 'fulmine', lvl: 7, type: 'strike', dash: true, offgcd: true, range: 14, dmg: 'phys', mult: [1.6, 0.08], gen: 20, stun: [1, 0.02], cd: 15, glyph: '馳', color: 0x9fd4ff, fx: 'dash', desc: 'Scatti sul bersaglio, lo stordisci e generi Ira.' },
-  lama_tuono: { name: 'Lama del Tuono', cls: 'lama', via: 'fulmine', lvl: 9, ruolo: 'potente', type: 'strike', range: 'weapon', dmg: 'phys', mult: [3.15, 0.158], cost: 55, cd: 0, bonusVs: { dot: 'affondo_ira', dmg: 20 }, glyph: '雷', color: 0x9fd4ff, fx: 'lightning', desc: "Scarico potente: un fulmine cala con la lama. +20% contro bersagli feriti dall'Affondo." },
-  tempesta_lame: { name: 'Tempesta di Lame', cls: 'lama', via: 'fulmine', lvl: 12, ruolo: 'potente', type: 'aoe_self', dmg: 'phys', mult: [0.84, 0.042], radius: 7, waves: 2, waveGap: 0.3, cost: 60, cd: 0, glyph: '嵐', color: 0xbfe4ff, fx: 'spin', desc: 'Scarico potente ad area: due turbini di lame e saette travolgono tutti i nemici intorno.' },
-  furia_tempesta: { name: 'Furia della Tempesta', cls: 'lama', via: 'fulmine', lvl: 15, type: 'buff', offgcd: true, gen: 30, buff: 'furia_tempesta', cd: 90, glyph: '怒', color: 0x9fd4ff, fx: 'aura', desc: 'Genera subito Ira e per 15 secondi aumenta i danni; Lama del Tuono costa meno.' },
+  lama_tuono: { name: 'Lama del Tuono', cls: 'lama', via: 'fulmine', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [3.0, 0.15], cost: 40, glyph: '雷', color: 0x9fd4ff, fx: 'lightning', desc: 'Colpo finale: un fulmine cala con la lama. Con la Risonanza le saette colpiscono tutti i nemici attorno al bersaglio.' },
   // Via della Montagna
-  scossa: { name: 'Scossa della Terra', cls: 'lama', via: 'montagna', lvl: 5, ruolo: 'medio', type: 'aoe_self', dmg: 'phys', mult: [1.1, 0.055], radius: 6, cost: 30, threat: 2, slow: { dur: 3 }, cd: 0, glyph: '震', color: 0xc9a66b, fx: 'quake', desc: 'Scarico medio ad area: colpisci il suolo, rallenti i nemici e attiri la loro minaccia.' },
-  sfida: { name: 'Sfida', cls: 'lama', via: 'montagna', lvl: 7, type: 'taunt', offgcd: true, range: 20, gen: 10, cd: 8, glyph: '挑', color: 0xff5a3a, fx: 'taunt', desc: 'Costringe il nemico ad attaccare te e genera un po\' di Ira.' },
-  martello_monte: { name: 'Martello della Montagna', cls: 'lama', via: 'montagna', lvl: 9, ruolo: 'potente', type: 'strike', range: 'weapon', dmg: 'phys', mult: [3.6, 0.18], cost: 55, cd: 0, threat: 2.5, stun: [1, 0.02], glyph: '槌', color: 0xc0a070, fx: 'quake', desc: 'Scarico potente: un colpo che schiaccia e stordisce il bersaglio. Moltissima minaccia.' },
-  valanga: { name: 'Valanga', cls: 'lama', via: 'montagna', lvl: 12, ruolo: 'potente', type: 'aoe_self', dmg: 'phys', mult: [1.55, 0.078], radius: 7.5, cost: 60, threat: 2.5, stun: [1.2, 0.03], cd: 0, glyph: '崩', color: 0xd8c8a8, fx: 'quake', desc: 'Scarico potente ad area: la terra frana su tutti i nemici intorno, stordendoli.' },
-  pelle_pietra: { name: 'Pelle di Pietra', cls: 'lama', via: 'montagna', lvl: 15, type: 'buff', offgcd: true, buff: 'pelle_pietra', cd: 45, glyph: '岩', color: 0xc0a070, fx: 'aura', desc: 'Per 10 secondi riduce i danni subiti e rigenera la vita.' },
+  radici_monte: { name: 'Radici della Montagna', cls: 'lama', via: 'montagna', lvl: 7, type: 'aoe_self', offgcd: true, provoca: true, radius: 8, dmg: 'phys', mult: [0.6, 0.03], gen: 15, buff: 'pelle_pietra', cd: 20, glyph: '根', color: 0xc0a070, fx: 'quake', desc: 'Mossa: pesti il suolo e la roccia sale attorno a te. Tutti i nemici entro 8 metri ti prendono di mira e per 10 secondi hai la Pelle di Pietra (danni subiti ridotti, vita che si rigenera).' },
+  martello_monte: { name: 'Martello della Montagna', cls: 'lama', via: 'montagna', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.5, 0.125], cost: 40, threat: 3, stun: [1, 0.02], buff: 'baluardo', glyph: '槌', color: 0xc0a070, fx: 'quake', desc: 'Colpo finale: schiaccia e stordisce il bersaglio, attira la minaccia e ti dà il Baluardo. Con la Risonanza la terra frana su tutti i nemici vicini.' },
 
-  // ======================= OMBRA (Energia + Punti combo)
-  colpo_rapido: { name: 'Colpo Rapido', cls: 'ombra', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.15, 0.057], gen: 7, pts: 1, proc: { chance: 0.3, buff: 'fuoco_rapido', via: 'arco' }, glyph: '速', color: 0xe0e0ff, fx: 'slash', desc: "Accumulo: colpo veloce con l'arma impugnata. Genera 1 Punto combo." },
-  agguato: { name: 'Agguato', cls: 'ombra', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.95, 0.098], gen: 10, pts: 2, behind: { dmg: 30, pts: 1 }, cd: 6, glyph: '襲', color: 0xb08ae0, fx: 'slash', desc: 'Accumulo: genera 2 Punti combo. Alle spalle del nemico: +30% danni e 1 punto in più.' },
-  taglio_netto: { name: 'Taglio Netto', cls: 'ombra', lvl: 3, ruolo: 'medio', type: 'strike', range: 'weapon', dmg: 'phys', mult: [2.2, 0.11], cost: 30, glyph: '斬', color: 0xff9a9a, fx: 'slash', desc: 'Scarico medio: un taglio secco che costa solo Energia e non consuma i Punti combo.' },
+  // ======================= OMBRA (Energia) — 5 tasti
+  // ======================= OMBRA (Energia + Marchi sul nemico) — assassino: marchia, colpisci alle spalle, fai esplodere
+  // marca: Marchi incisi su ogni nemico colpito (anche a ogni ondata). behind.marchi: Marchi in più alle spalle o in Agguato.
+  // esplode: l'Esecuzione consuma i Marchi del bersaglio (+pct% a Marchio) e, se ce n'erano, fa saltare a catena quelli dei
+  // nemici marchiati entro `raggio` (al `catena`% per ciascuno); `uccide`: se il bersaglio cade, Energia resa e scatti pronti.
+  colpo_rapido: { name: 'Colpo Rapido', cls: 'ombra', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.05, 0.052], cost: 12, marca: 1, behind: { dmg: 10, pts: 0, marchi: 1 }, glyph: '速', color: 0xd0d0e0, fx: 'slash', desc: 'Un colpo veloce che incide un Marchio sul nemico (due se lo colpisci alle spalle o in Agguato). I Marchi restano 14 secondi, fino a 5.' },
+  ventaglio: { name: 'Ventaglio di Lame', cls: 'ombra', lvl: 4, ruolo: 'accumulo', type: 'aoe_target', range: 'weapon', radius: 5, dmg: 'phys', mult: [0.95, 0.048], cost: 30, marca: 1, glyph: '扇', color: 0xa0d070, fx: 'ventaglio', desc: 'Lame o frecce a ventaglio attorno al bersaglio: un Marchio su ogni nemico colpito.' },
+  taglio_netto: { name: 'Esecuzione', cls: 'ombra', lvl: 2, ruolo: 'potente', finale: true, finoVia: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.25, 0.062], cost: 25, esplode: { pct: 60, raggio: 6, catena: 60, energia: 25 }, behind: { dmg: 30, pts: 0 }, glyph: '斬', color: 0xe06a4a, fx: 'pesante', desc: 'ESECUZIONE: fa esplodere tutti i Marchi del bersaglio, +60% per ogni Marchio. I nemici marchiati entro 6 metri saltano a catena. Se il bersaglio cade recuperi Energia e il Passo d\'Ombra torna pronto.' },
+  colpo_gola: { name: 'Colpo alla Gola', cls: 'ombra', lvl: 3, type: 'strike', offgcd: true, interrupt: true, range: 'weapon', dmg: 'phys', mult: [0.6, 0.03], gen: 8, stun: [1, 0.02], cd: 12, glyph: '黙', color: 0xb08ae0, fx: 'mark', desc: "Interruzione: spezzi il lancio del bersaglio e lo stordisci. Funziona anche con l'arco." },
   // Via dei Pugnali
-  danza_lame: { name: 'Danza delle Lame', cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 5, ruolo: 'medio', type: 'aoe_self', dmg: 'phys', mult: [1.35, 0.068], radius: 5, cost: 35, dot: { mult: [0.15, 0.007], dur: 9, every: 1.5 }, glyph: '舞', color: 0x9ae07a, fx: 'spin', desc: 'Scarico medio ad area: colpisce e avvelena per 9 secondi tutti i nemici intorno.' },
-  passo_ombra: { name: "Passo d'Ombra", cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 7, type: 'strike', dash: true, behindDash: true, offgcd: true, range: 12, pts: 1, buff: 'nell_ombra', cd: 20, glyph: '潜', color: 0x9a7ad0, fx: 'dash', desc: 'Ti materializzi alle spalle del bersaglio: 1 Punto combo e il prossimo Taglio Finale fa il 30% in più.' },
-  taglio_finale: { name: 'Taglio Finale', cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 9, ruolo: 'potente', type: 'strike', range: 'weapon', dmg: 'phys', mult: [0.4, 0.02], cost: 55, spend: true, bonusVs: { dot: 'danza_lame', dmg: 25 }, glyph: '終', color: 0xff6a6a, fx: 'slash', desc: 'Scarico potente: consuma tutti i Punti combo, i danni crescono con ogni punto. +25% sui bersagli avvelenati.' },
-  ventaglio_veleno: { name: 'Ventaglio Velenoso', cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 12, ruolo: 'potente', type: 'aoe_self', dmg: 'phys', mult: [0.45, 0.023], radius: 6.5, cost: 60, spend: true, bonusVs: { dot: 'danza_lame', dmg: 25 }, glyph: '扇', color: 0x6fd04a, fx: 'spin', desc: 'Scarico potente ad area: consuma i Punti combo in un ventaglio di lame avvelenate. +25% sui bersagli avvelenati.' },
-  marchio_morte: { name: 'Marchio della Morte', cls: 'ombra', via: 'pugnali', lvl: 15, type: 'debuff', offgcd: true, range: 20, debuff: 'marchio_morte', pts: 5, cd: 90, glyph: '死', color: 0x8a2a5a, fx: 'mark', desc: 'Il bersaglio subisce più danni da te per 15 secondi e ottieni subito 5 Punti combo.' },
+  taglio_finale: { name: 'Morso della Vipera', cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.3, 0.065], cost: 25, esplode: { pct: 60, raggio: 6, catena: 60, energia: 25 }, behind: { dmg: 30, pts: 0 }, glyph: '牙', color: 0x7ad84a, fx: 'pesante', desc: 'ESECUZIONE dei Pugnali: affondi entrambe le lame e fai esplodere i Marchi del bersaglio, +60% per ogni Marchio; i nemici marchiati vicini saltano a catena. Se il bersaglio cade recuperi Energia e il Passo d\'Ombra torna pronto. Richiede pugnali.' },
+  danza_lame: { name: 'Danza delle Lame', cls: 'ombra', via: 'pugnali', req: 'daggers', lvl: 10, ruolo: 'medio', type: 'aoe_target', range: 'weapon', radius: 5, dmg: 'phys', mult: [0.62, 0.031], waves: 4, waveGap: 0.3, cost: 30, cd: 16, marca: 1, glyph: '舞', color: 0xb08ae0, fx: 'danza', desc: 'Quattro fendenti in un secondo su tutti i nemici attorno al bersaglio: ognuno incide un Marchio. Poi un\'Esecuzione li fa saltare tutti. Richiede pugnali.' },
+  passo_ombra: { name: "Passo d'Ombra", cls: 'ombra', lvl: 3, type: 'strike', dash: true, behindDash: true, scatto: true, offgcd: true, range: 14, buff: 'agguato', cd: 8, glyph: '潜', color: 0x7a5aa8, fx: 'dash', desc: "Svanisci e riappari alle spalle del bersaglio in AGGUATO: il prossimo Colpo Rapido incide un Marchio in più, la prossima Esecuzione fa il 30% in più." },
   // Via dell'Arco
-  pioggia_frecce: { name: 'Pioggia di Frecce', cls: 'ombra', via: 'arco', req: 'bow', lvl: 5, ruolo: 'medio', type: 'aoe_target', range: 'weapon', radius: 5, dmg: 'phys', mult: [1.5, 0.075], cost: 35, glyph: '雨', color: 0xffe08a, fx: 'rain', desc: "Scarico medio ad area: frecce sull'area del bersaglio. Il Colpo Rapido può renderla gratuita." },
-  freccia_inchiodante: { name: 'Freccia Inchiodante', cls: 'ombra', via: 'arco', req: 'bow', lvl: 7, type: 'strike', range: 'weapon', dmg: 'phys', mult: [3.4, 0.17], gen: 20, pts: 1, stun: [1.5, 0.03], cd: 10, glyph: '釘', color: 0xe8dcc0, fx: 'arrow', desc: 'Inchioda il bersaglio stordendolo. Genera Energia e 1 Punto combo.' },
-  freccia_perforante: { name: 'Freccia Perforante', cls: 'ombra', via: 'arco', req: 'bow', lvl: 9, ruolo: 'potente', type: 'strike', range: 'weapon', dmg: 'phys', mult: [0.68, 0.034], cost: 60, spend: true, ignoreDef: 50, glyph: '貫', color: 0xffc04a, fx: 'arrow', desc: 'Scarico potente: consuma i Punti combo in una freccia che ignora metà della difesa.' },
-  raffica_esplosiva: { name: 'Raffica Esplosiva', cls: 'ombra', via: 'arco', req: 'bow', lvl: 12, ruolo: 'potente', type: 'aoe_target', range: 'weapon', radius: 6.5, dmg: 'phys', mult: [0.62, 0.031], cost: 60, spend: true, glyph: '爆', color: 0xff8a3a, fx: 'rain', desc: 'Scarico potente ad area: consuma i Punti combo in una salva di frecce che esplodono sul bersaglio.' },
-  occhio_falco: { name: 'Occhio del Falco', cls: 'ombra', via: 'arco', lvl: 15, type: 'buff', offgcd: true, buff: 'occhio_falco', cd: 60, glyph: '鷹', color: 0xffc04a, fx: 'aura', desc: "Rapidità e rigenerazione dell'Energia aumentate per 12 secondi." },
+  freccia_perforante: { name: 'Freccia Perforante', cls: 'ombra', via: 'arco', req: 'bow', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.25, 0.062], cost: 25, ignoreDef: 30, esplode: { pct: 60, raggio: 6, catena: 60, energia: 25 }, behind: { dmg: 30, pts: 0 }, glyph: '貫', color: 0xffc070, fx: 'pesante', desc: 'ESECUZIONE dell\'Arco: una freccia che trapassa e fa esplodere i Marchi del bersaglio, +60% per ogni Marchio; i nemici marchiati vicini saltano a catena. Ignora parte della difesa. Richiede un arco.' },
+  pioggia_frecce: { name: 'Pioggia di Frecce', cls: 'ombra', via: 'arco', req: 'bow', lvl: 10, ruolo: 'medio', type: 'aoe_target', range: 'weapon', radius: 6, dmg: 'phys', mult: [0.62, 0.031], waves: 4, waveGap: 0.3, cost: 30, cd: 16, marca: 1, slow: { dur: 2 }, glyph: '雨', color: 0xb0e8ff, fx: 'danza', desc: 'Quattro scrosci di frecce sulla zona del bersaglio: ognuno incide un Marchio e rallenta. Poi un\'Esecuzione li fa saltare tutti. Richiede un arco.' },
+  ala_vento: { name: 'Ala di Vento', cls: 'ombra', via: 'arco', req: 'bow', lvl: 7, type: 'strike', dash: true, dashDist: 9, scatto: true, offgcd: true, range: 20, dmg: 'phys', mult: [0.6, 0.03], slow: { dur: 2 }, marca: 1, buff: 'occhio_falco', cd: 15, glyph: '翼', color: 0xb0e8ff, fx: 'dash', desc: "Scatto: una folata ti porta a 9 metri dal bersaglio (avanti se sei lontano, indietro se ti sta addosso) e gli scagli contro una raffica di penne che lo rallenta e lo marchia. Per 6 secondi hai l'Occhio del Falco (rapidità e rigenerazione dell'Energia)." },
 
-  // ======================= MONACO (Chi + Sfere, sequenza Pugno → Calcio → Palmo)
-  pugno_ferro: { name: 'Pugno di Ferro', cls: 'monaco', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.96, 0.098], gen: 9, pts: 1, glyph: '拳', color: 0xffd27a, fx: 'slash', desc: 'Accumulo: primo colpo della sequenza. Genera 1 Sfera.' },
-  calcio_gru: { name: 'Calcio della Gru', cls: 'monaco', lvl: 1, ruolo: 'accumulo', type: 'aoe_self', dmg: 'phys', mult: [1.08, 0.054], radius: 4, gen: 9, pts: 1, glyph: '鶴', color: 0xffb04a, fx: 'spin', desc: 'Accumulo ad area: secondo colpo della sequenza, colpisce chi ti circonda. Genera 1 Sfera.' },
-  palmo_chi: { name: 'Palmo di Chi', cls: 'monaco', lvl: 3, ruolo: 'medio', type: 'strike', range: 14, dmg: 'hybrid', mult: [3.1, 0.155], cost: 30, glyph: '掌', color: 0xffb04a, fx: 'bolt', desc: 'Scarico medio a distanza. Pugno → Calcio → Palmo in ordine attiva la Forma Perfetta (+2 Sfere).' },
+  // ======================= MONACO (Chi) — 5 tasti
+  pugno_ferro: { name: 'Pugno di Ferro', cls: 'monaco', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.55, 0.078], gen: 9, pts: 1, glyph: '拳', color: 0xffb060, fx: 'slash', desc: 'Colpo base: un pugno su un bersaglio. Genera Chi e 1 Sfera.' },
+  calcio_gru: { name: 'Calcio della Gru', cls: 'monaco', lvl: 1, ruolo: 'accumulo', type: 'aoe_self', dmg: 'phys', mult: [0.95, 0.048], radius: 4.5, gen: 7, risonanza: true, glyph: '鶴', color: 0x9fe0c0, fx: 'spin', desc: 'Colpo base ad area: un calcio rotante su tutti i nemici intorno. Se ne prende 3 o più accende la Risonanza.' },
+  onda_chi: { name: 'Onda di Chi', cls: 'monaco', lvl: 2, ruolo: 'potente', finale: true, finoVia: true, type: 'strike', range: 8, dmg: 'hybrid', mult: [2.9, 0.145], cost: 40, glyph: '波', color: 0x7fe0c0, fx: 'bolt', desc: 'Colpo finale: scarica Chi e Sfere in un globo di energia. Con la Risonanza investe tutti i nemici attorno al bersaglio.' },
+  calcio_volante: { name: 'Calcio Volante', cls: 'monaco', lvl: 4, type: 'strike', dash: true, scatto: true, offgcd: true, range: 12, dmg: 'phys', mult: [0.9, 0.045], gen: 10, pts: 1, cd: 10, glyph: '飛', color: 0xffa040, fx: 'dash', desc: 'Scatto: un balzo avvolto nel chi fino al bersaglio, che colpisci con un calcio in volo. Genera Chi e 1 Sfera.' },
+  palmo_chi: { name: 'Palmo che Spezza', cls: 'monaco', lvl: 3, type: 'strike', offgcd: true, interrupt: true, range: 'weapon', dmg: 'phys', mult: [0.7, 0.035], gen: 8, stun: [1.2, 0.02], cd: 12, glyph: '掌', color: 0x7fe0c0, fx: 'bolt', desc: 'Interruzione: un palmo al petto spezza il lancio del bersaglio e lo stordisce.' },
   // Via del Pugno di Ferro
-  ascesa_drago: { name: 'Ascesa del Drago', cls: 'monaco', via: 'ferro', lvl: 5, ruolo: 'medio', type: 'aoe_self', dmg: 'phys', mult: [1.28, 0.064], radius: 5, cost: 35, glyph: '昇', color: 0xff8a3a, fx: 'quake', desc: 'Scarico medio ad area: un montante infuocato su tutti i nemici intorno.' },
-  pelle_bronzo: { name: 'Pelle di Bronzo', cls: 'monaco', via: 'ferro', lvl: 7, type: 'buff', offgcd: true, buff: 'pelle_bronzo', cd: 60, glyph: '銅', color: 0xc8883a, fx: 'aura', desc: 'Riduce i danni subiti e rigenera vita per 10 secondi.' },
-  raffica: { name: 'Raffica dei Cento Pugni', cls: 'monaco', via: 'ferro', lvl: 9, ruolo: 'potente', type: 'strike', range: 'weapon', dmg: 'phys', mult: [0.152, 0.008], hits: 4, cost: 45, spend: true, glyph: '連', color: 0xffd27a, fx: 'slash', desc: 'Scarico potente: consuma tutte le Sfere in 4 colpi, ognuno più forte per ogni Sfera.' },
-  onda_vuoto: { name: 'Onda del Vuoto', cls: 'monaco', via: 'ferro', lvl: 12, ruolo: 'potente', type: 'aoe_self', dmg: 'phys', mult: [0.38, 0.019], radius: 6.5, cost: 50, spend: true, stun: [1, 0.02], glyph: '空', color: 0xc0d8ff, fx: 'quake', desc: 'Scarico potente ad area: consuma le Sfere, il vuoto implode e stordisce tutti i nemici intorno.' },
-  spirito_tigre: { name: 'Spirito della Tigre', cls: 'monaco', via: 'ferro', lvl: 15, type: 'buff', offgcd: true, buff: 'spirito_tigre', cd: 90, glyph: '虎', color: 0xff8a3a, fx: 'aura', desc: 'Danni e rigenerazione del Chi aumentati per 15 secondi.' },
+  raffica: { name: 'Raffica dei Cento Pugni', cls: 'monaco', via: 'ferro', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [3.9, 0.195], cost: 40, glyph: '連', color: 0xffa040, fx: 'slash', desc: 'Colpo finale: una raffica di pugni. Con la Risonanza travolge tutti i nemici attorno al bersaglio.' },
+  pelle_bronzo: { name: 'Pelle di Bronzo', cls: 'monaco', via: 'ferro', lvl: 7, type: 'buff', offgcd: true, buff: 'pelle_bronzo', cd: 30, glyph: '銅', color: 0xc08a4a, fx: 'aura', desc: 'Mossa: per 10 secondi subisci meno danni e rigeneri vita.' },
   // Via del Loto Interiore
-  onda_chi: { name: 'Onda di Chi', cls: 'monaco', via: 'loto', lvl: 5, ruolo: 'medio', type: 'aoe_target', range: 14, radius: 5, dmg: 'magic', mult: [2.3, 0.115], cost: 35, dot: { mult: [0.72, 0.036], dur: 10, every: 2 }, glyph: '波', color: 0xf0a0d0, fx: 'bolt', desc: "Scarico medio ad area: un'onda esplode sul bersaglio e lascia un Fiore di Loto che consuma i nemici per 10 secondi." },
-  meditazione: { name: 'Meditazione', cls: 'monaco', via: 'loto', lvl: 7, type: 'hot_self', heal: [0.035, 0.003], dur: 10, offgcd: true, cd: 40, glyph: '禅', color: 0x7fd07f, fx: 'heal', desc: 'Rigenera vita ogni secondo per 10 secondi.' },
-  vortice_interiore: { name: 'Vortice Interiore', cls: 'monaco', via: 'loto', lvl: 9, ruolo: 'potente', type: 'strike', range: 14, dmg: 'magic', mult: [1.18, 0.059], cost: 55, spend: true, bonusVs: { dot: 'onda_chi', dmg: 20 }, glyph: '渦', color: 0xffc85a, fx: 'bolt', desc: 'Scarico potente: consuma le Sfere in un colpo concentrato. +20% sui bersagli col Fiore di Loto.' },
-  mille_petali: { name: 'Loto dei Mille Petali', cls: 'monaco', via: 'loto', lvl: 12, ruolo: 'potente', type: 'aoe_target', range: 14, radius: 6.5, dmg: 'magic', mult: [0.82, 0.041], cost: 60, spend: true, bonusVs: { dot: 'onda_chi', dmg: 20 }, glyph: '蓮', color: 0xff9ad0, fx: 'bolt', desc: 'Scarico potente ad area: consuma le Sfere, un loto di chi sboccia ed esplode sul bersaglio. +20% sui bersagli col Fiore di Loto.' },
-  sigillo_interiore: { name: 'Sigillo Interiore', cls: 'monaco', via: 'loto', lvl: 15, type: 'buff', offgcd: true, buff: 'sigillo_interiore', cd: 90, glyph: '印', color: 0xffe0a0, fx: 'aura', desc: 'Attacco magico e fisico aumentati per 15 secondi.' },
+  vortice_interiore: { name: 'Vortice Interiore', cls: 'monaco', via: 'loto', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 10, dmg: 'hybrid', mult: [4.5, 0.225], cost: 40, glyph: '渦', color: 0xf0a0d0, fx: 'bolt', desc: 'Colpo finale a media distanza: un vortice di chi. Con la Risonanza si apre su tutti i nemici attorno al bersaglio.' },
+  meditazione: { name: 'Meditazione', cls: 'monaco', via: 'loto', lvl: 7, type: 'hot_self', offgcd: true, heal: [0.035, 0.002], dur: 8, cd: 20, glyph: '禅', color: 0x9fe0c0, fx: 'heal', desc: 'Mossa: rigeneri la vita per 8 secondi.' },
 
-  // ======================= MISTICO (Mana in % + Cariche celesti): gli accumuli si lanciano, gli scarichi sono istantanei
-  dardo_luce: { name: 'Dardo di Luce', cls: 'mistico', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 20, dmg: 'magic', mult: [2.6, 0.13], gen: 4, pts: 1, cast: 1.5, glyph: '光', color: 0xfff4b0, fx: 'bolt', desc: 'Accumulo (1,5 s): genera 1 Carica celeste e un po\' di Mana.' },
-  sfera_celeste: { name: 'Sfera Celeste', cls: 'mistico', lvl: 1, ruolo: 'accumulo', type: 'aoe_target', range: 20, radius: 4.5, dmg: 'magic', mult: [1.9, 0.095], gen: 4, pts: 2, cast: 2.0, cd: 8, glyph: '球', color: 0xc0e8ff, fx: 'bolt', desc: 'Accumulo ad area (2 s): una sfera esplode sul bersaglio. Genera 2 Cariche celesti.' },
-  lancia_luce: { name: 'Lancia di Luce', cls: 'mistico', lvl: 3, ruolo: 'medio', type: 'strike', range: 20, dmg: 'magic', mult: [2.85, 0.143], cost: 4, glyph: '槍', color: 0xffe890, fx: 'lightning', desc: 'Scarico medio, istantaneo: una lancia di luce trafigge il bersaglio.' },
-  tocco_curativo: { name: 'Tocco Curativo', cls: 'mistico', lvl: 4, type: 'heal_target', range: 20, heal: [2.0, 0.12], cost: 5, cast: 1.5, glyph: '癒', color: 0x7fd07f, fx: 'heal', desc: 'Cura un alleato del regno (o te stesso).' },
+  // ======================= MISTICO (Mana) — 5 tasti
+  dardo_luce: { name: 'Dardo di Luce', cls: 'mistico', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 20, dmg: 'magic', mult: [1.95, 0.098], gen: 3, pts: 1, cast: 1.0, mobile: true, glyph: '光', color: 0xfff4b0, fx: 'bolt', desc: 'Colpo base (0,5 s, anche camminando): un dardo su un bersaglio. Rende Mana e 1 Carica celeste.' },
+  sfera_celeste: { name: 'Sfera Celeste', cls: 'mistico', lvl: 1, ruolo: 'accumulo', type: 'aoe_target', range: 20, radius: 4.5, dmg: 'magic', mult: [0.92, 0.046], gen: 3, risonanza: true, cast: 1.2, mobile: true, glyph: '球', color: 0xc0e8ff, fx: 'bolt', desc: 'Colpo base ad area (0,6 s, anche camminando): una sfera esplode sul bersaglio. Se prende 3 o più nemici accende la Risonanza.' },
+  lancia_luce: { name: 'Lancia di Luce', cls: 'mistico', lvl: 2, ruolo: 'potente', finale: true, finoVia: true, type: 'strike', range: 20, dmg: 'magic', mult: [3.2, 0.16], cost: 9, glyph: '槍', color: 0xffe890, fx: 'lightning', desc: 'Colpo finale istantaneo: scarica Mana e Cariche. Con la Risonanza colpisce tutti i nemici attorno al bersaglio.' },
+  passo_luce: { name: 'Passo di Luce', cls: 'mistico', lvl: 4, type: 'blink', dist: 10, scatto: true, offgcd: true, cd: 10, glyph: '閃', color: 0xd8f0ff, fx: 'dash', desc: 'Scatto: ti sciogli in luce e riappari 10 metri più avanti, nella direzione in cui guardi. Non interrompe il lancio in corso.' },
+  sigillo_silenzio: { name: 'Sigillo del Silenzio', cls: 'mistico', lvl: 3, type: 'strike', offgcd: true, interrupt: true, range: 20, dmg: 'magic', mult: [0.5, 0.025], gen: 2, stun: [1, 0.02], cd: 14, glyph: '封', color: 0xa0b0ff, fx: 'mark', desc: 'Interruzione a distanza: spezza il lancio del bersaglio e lo stordisce.' },
   // Via della Tempesta
-  tempesta_saette: { name: 'Tempesta di Saette', cls: 'mistico', via: 'tempesta', lvl: 5, ruolo: 'medio', type: 'aoe_target', range: 20, radius: 5, dmg: 'magic', mult: [1.35, 0.068], cost: 5, glyph: '嵐', color: 0xa0d8ff, fx: 'lightning', desc: 'Scarico medio ad area, istantaneo: saette su tutti i nemici attorno al bersaglio.' },
-  marchio_tuono: { name: 'Marchio del Tuono', cls: 'mistico', via: 'tempesta', lvl: 7, type: 'strike', range: 20, dmg: 'magic', mult: [0.2, 0.01], cost: 2, dot: { mult: [0.9, 0.045], dur: 15, every: 3 }, tickProc: { chance: 0.3, buff: 'tempesta_imminente' }, cd: 6, glyph: '標', color: 0x9ad8ff, fx: 'mark', desc: 'Danni nel tempo per 15 secondi. Ogni impulso può rendere istantaneo il prossimo accumulo.' },
-  giudizio_cielo: { name: 'Giudizio del Cielo', cls: 'mistico', via: 'tempesta', lvl: 9, ruolo: 'potente', type: 'strike', range: 20, dmg: 'magic', mult: [1.2, 0.06], cost: 12, spend: true, glyph: '審', color: 0xffffff, fx: 'lightning', desc: 'Scarico potente, istantaneo: consuma tutte le Cariche celesti, i danni crescono con ogni carica.' },
-  diluvio_folgori: { name: 'Diluvio di Folgori', cls: 'mistico', via: 'tempesta', lvl: 12, ruolo: 'potente', type: 'aoe_target', range: 20, radius: 7, dmg: 'magic', mult: [0.62, 0.031], cost: 12, spend: true, glyph: '霆', color: 0x80c0ff, fx: 'lightning', desc: 'Scarico potente ad area, istantaneo: consuma le Cariche, il cielo scarica folgori su tutta la zona.' },
-  occhio_ciclone: { name: 'Occhio del Ciclone', cls: 'mistico', via: 'tempesta', lvl: 15, type: 'buff', offgcd: true, buff: 'occhio_ciclone', cd: 120, glyph: '旋', color: 0xc0f0ff, fx: 'wind', desc: 'Rapidità e danni aumentati per 15 secondi.' },
-  // Via della Benedizione (gli scarichi sono cure)
-  loto_rigenerante: { name: 'Loto Rigenerante', cls: 'mistico', via: 'benedizione', lvl: 5, ruolo: 'medio', type: 'hot_target', range: 20, heal: [0.03, 0.003], dur: 12, cost: 4, pts: 1, glyph: '蓮', color: 0xf0a0d0, fx: 'heal', desc: 'Scarico medio: rigenera la vita del bersaglio per 12 secondi. Genera 1 Carica.' },
-  benedizione: { name: 'Benedizione', cls: 'mistico', via: 'benedizione', lvl: 7, type: 'buff_allies', radius: 20, buff: 'benedizione', cost: 6, cd: 30, glyph: '福', color: 0xfff0a0, fx: 'aura', desc: 'Tu e gli alleati vicini del regno ricevete difesa e attacco per 5 minuti.' },
-  scudo_giada: { name: 'Scudo di Giada', cls: 'mistico', via: 'benedizione', lvl: 9, ruolo: 'potente', type: 'shield', range: 20, shield: [3.0, 0.15], cost: 10, spendBonus: 20, cd: 8, glyph: '盾', color: 0x6ad8a0, fx: 'shield', desc: 'Scarico potente: uno scudo assorbe i danni del bersaglio per 15 secondi. Consuma le Cariche: +20% per carica.' },
-  pioggia_petali: { name: 'Pioggia di Petali', cls: 'mistico', via: 'benedizione', lvl: 12, ruolo: 'potente', type: 'heal_aoe', range: 20, radius: 10, heal: [1.4, 0.07], cost: 12, cast: 1.5, spendBonus: 20, glyph: '花', color: 0xf0a0d0, fx: 'heal', desc: 'Scarico potente ad area (1,5 s): cura tutti gli alleati vicini al bersaglio. Consuma le Cariche: +20% per carica.' },
-  preghiera_antenati: { name: 'Preghiera degli Antenati', cls: 'mistico', via: 'benedizione', lvl: 15, type: 'heal_aoe', healPct: true, radius: 20, heal: [0.35, 0.01], offgcd: true, cd: 120, glyph: '祖', color: 0xfff0a0, fx: 'heal', desc: 'Cura tutti gli alleati vicini di una grande parte della loro vita massima.' },
+  giudizio_cielo: { name: 'Giudizio del Cielo', cls: 'mistico', via: 'tempesta', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 20, dmg: 'magic', mult: [3.4, 0.17], cost: 9, glyph: '審', color: 0x9fd4ff, fx: 'lightning', desc: 'Colpo finale istantaneo: una folgore. Con la Risonanza un diluvio di saette su tutti i nemici attorno al bersaglio.' },
+  occhio_ciclone: { name: 'Occhio del Ciclone', cls: 'mistico', via: 'tempesta', lvl: 7, type: 'buff', offgcd: true, buff: 'occhio_ciclone', cd: 45, glyph: '旋', color: 0xa0d8ff, fx: 'wind', desc: 'Mossa: per 15 secondi rapidità e danni aumentano.' },
+  // Via della Benedizione (guaritore): i colpi base fanno danni e, per la Maestria, curano l'alleato più ferito
+  tocco_curativo: { name: 'Benedizione di Giada', cls: 'mistico', via: 'benedizione', lvl: 5, ruolo: 'potente', finale: true, type: 'heal_target', range: 25, heal: [3.2, 0.16], cost: 9, glyph: '癒', color: 0x7fd07f, fx: 'heal', desc: "Colpo finale istantaneo: cura l'alleato scelto (o, se hai un nemico come bersaglio, l'alleato più ferito vicino). Con la Risonanza cura tutti gli alleati vicini." },
+  scudo_giada: { name: 'Scudo di Giada', cls: 'mistico', via: 'benedizione', lvl: 7, type: 'shield', offgcd: true, range: 25, shield: [3.0, 0.15], cost: 4, cd: 10, glyph: '盾', color: 0x6ad8a0, fx: 'shield', desc: "Mossa: uno scudo assorbe i danni dell'alleato scelto (o tuoi) per 15 secondi." },
 };
 // ======================= TECNICHE SUPREME (una per classe, dal livello 15: richiedono la barra Suprema piena)
 // waves/waveGap: il colpo si ripete a ondate sulla stessa zona (o sullo stesso bersaglio se non ha raggio).
 Object.assign(SKILLS, {
-  giudizio_tuoni: { name: 'Giudizio dei Cento Tuoni', cls: 'lama', lvl: 15, sup: true, type: 'strike', dash: true, range: 16, dmg: 'phys', mult: [2.6, 0.13], splash: 7, radius: 7, waves: 4, waveGap: 0.28, stun: [1.5, 0.03], glyph: '轟', color: 0x9fd4ff, fx: 'dash', desc: 'TECNICA SUPREMA. Scatti sul bersaglio e il cielo si spezza: quattro ondate di fulmini colpiscono tutti i nemici intorno, stordendoli.' },
-  mille_ombre: { name: 'Danza delle Mille Ombre', cls: 'ombra', lvl: 15, sup: true, type: 'strike', dash: true, behindDash: true, range: 20, dmg: 'phys', mult: [1.1, 0.055], hits: 3, waves: 3, waveGap: 0.22, pts: 5, glyph: '幻', color: 0xb08ae0, fx: 'dash', desc: 'TECNICA SUPREMA. Ti dissolvi in copie d\'ombra che colpiscono il bersaglio da ogni lato: nove colpi e Punti combo al massimo.' },
-  drago_celeste: { name: 'Ascesa del Drago Celeste', cls: 'monaco', lvl: 15, sup: true, type: 'aoe_self', radius: 9, dmg: 'hybrid', mult: [3.6, 0.18], waves: 3, waveGap: 0.4, stun: [2, 0.03], pts: 3, glyph: '龍', color: 0xffb04a, fx: 'quake', desc: 'TECNICA SUPREMA. Un drago di chi sale dal suolo e ricade tre volte su tutti i nemici intorno, stordendoli. Genera 3 Sfere.' },
+  giudizio_tuoni: { name: 'Giudizio dei Cento Tuoni', cls: 'lama', lvl: 15, sup: true, type: 'strike', dash: true, range: 16, dmg: 'phys', mult: [2.2, 0.11], splash: 7, radius: 7, waves: 4, waveGap: 0.28, stun: [1.5, 0.03], glyph: '轟', color: 0x9fd4ff, fx: 'dash', desc: 'TECNICA SUPREMA. Scatti sul bersaglio e il cielo si spezza: quattro ondate di fulmini colpiscono tutti i nemici intorno, stordendoli.' },
+  mille_ombre: { name: 'Danza delle Mille Ombre', cls: 'ombra', lvl: 15, sup: true, type: 'strike', dash: true, behindDash: true, range: 20, dmg: 'phys', mult: [0.94, 0.047], hits: 3, splash: 5, waves: 3, waveGap: 0.22, marca: 2, glyph: '幻', color: 0xb08ae0, fx: 'dash', desc: 'TECNICA SUPREMA. Ti dissolvi in copie d\'ombra che colpiscono il bersaglio da ogni lato e falciano i nemici attorno: nove colpi, e tutti restano marchiati.' },
+  drago_celeste: { name: 'Ascesa del Drago Celeste', cls: 'monaco', lvl: 15, sup: true, type: 'aoe_self', radius: 9, dmg: 'hybrid', mult: [3.05, 0.153], waves: 3, waveGap: 0.4, stun: [2, 0.03], pts: 3, glyph: '龍', color: 0xffb04a, fx: 'quake', desc: 'TECNICA SUPREMA. Un drago di chi sale dal suolo e ricade tre volte su tutti i nemici intorno, stordendoli. Genera 3 Sfere.' },
   collera_cielo: { name: 'Collera del Cielo', cls: 'mistico', lvl: 15, sup: true, type: 'aoe_target', range: 22, radius: 8, dmg: 'magic', mult: [1.5, 0.075], waves: 5, waveGap: 0.35, pts: 2, glyph: '天', color: 0xa0d8ff, fx: 'lightning', desc: 'TECNICA SUPREMA. Il cielo si apre sul bersaglio: cinque ondate di saette su tutta la zona. Istantanea.' },
 });
 export const supremaOf = (cls) => Object.values(SKILLS).find((s) => s.sup && s.cls === cls) || null;
@@ -314,13 +375,56 @@ export const ITEMS = {
   tomo_tecnica: { name: 'Tomo della Tecnica', type: 'book', price: 5000, stack: true, glyph: '書', color: '#2a6a4a', desc: "Permette di studiare un'abilità oltre il livello 10 (50% di successo). Si usa dal tasto + nella finestra Abilità." },
   sigillo_fabbro: { name: 'Sigillo del Fabbro', type: 'seal', price: 15000, stack: true, glyph: '印', color: '#8a7a2a', desc: "Se un potenziamento rischioso fallisce, l'oggetto non viene distrutto (da +9 in su scende di un livello). Il sigillo si consuma solo se il potenziamento fallisce." },
   essenza_celeste: { name: 'Essenza Celeste', type: 'material', price: 6000, stack: true, glyph: '霊', color: '#3a8ac0', desc: 'Il fabbro la richiede per i potenziamenti da +10 a +15. La lasciano i boss e gli obelischi più potenti.' },
-  sigillo_prova: { name: 'Sigillo della Prova', type: 'key', price: 0, glyph: '鍵', color: '#a02a2a', tier: 4, desc: 'Apre una Prova del Sigillo nella Cripta delle Mille Lanterne (dal Custode Yun). Completala in tempo per far salire il livello del sigillo.' },
+  sigillo_prova: { name: 'Sigillo della Prova', type: 'key', price: 0, glyph: '鍵', color: '#a02a2a', tier: 4, desc: 'Apre una Prova del Sigillo dal Custode Yun: la Cripta delle Mille Lanterne (dal livello 20) o la Forgia del Drago Addormentato (dal 35). Completala in tempo per far salire il livello del sigillo.' },
   // Modificatori: si trascinano su un'arma o un'armatura
   pietra_affinamento: { name: "Pietra dell'Affinamento", type: 'mod', mod: 'refine', price: 2500, stack: true, glyph: '磨', color: '#5a7a8a', desc: "Trascinala su un oggetto: rilancia i valori dei bonus casuali mantenendone i tipi." },
   pergamena_mutamento: { name: 'Pergamena del Mutamento', type: 'mod', mod: 'reroll', price: 6000, stack: true, glyph: '変', color: '#7a5a2a', desc: "Trascinala su un oggetto: rimescola completamente i bonus casuali (tipi e valori)." },
   sigillo_ascensione: { name: "Sigillo dell'Ascensione", type: 'mod', mod: 'ascend', price: 40000, stack: true, glyph: '昇', color: '#a05ac0', desc: "Trascinalo su un oggetto: 35% di probabilità di alzarne la rarità di un grado (nuovo bonus e incavi). Si consuma comunque." },
   scalpello: { name: 'Scalpello del Gioielliere', type: 'mod', mod: 'extract', price: 1500, stack: true, glyph: '鑿', color: '#6a6a6a', desc: "Trascinalo su un oggetto: estrae tutte le gemme incastonate e te le restituisce." },
 };
+
+// ------------------------------------------------------------------ gradi intermedi (un pezzo ogni 5 livelli)
+// Fra i quattro gradi dei livelli 1/10/20/30 c'erano dieci livelli vuoti: qui un pezzo ai livelli 5, 15, 25, 35, 40 e 45
+// per ogni arma e per armatura, copricapo e calzari. L'aspetto nel client viene dal grado (`tier`, 1-4) come per gli
+// altri; copricapi e calzari hanno anche `aspetto`, l'id del pezzo di cui usano il modello (i modelli si chiamano come
+// gli oggetti dei quattro gradi). Statistiche e prezzi stanno a metà fra i gradi vicini (oltre il 30 crescono allo stesso passo).
+export const LIV_INTERMEDI = [5, 15, 25, 35, 40, 45];
+const tierDi = (l) => (l < 10 ? 1 : l < 20 ? 2 : l < 30 ? 3 : 4);
+const ELMO_DI = ['', 'cappello_paglia', 'elmo_bronzo', 'elmo_cornuto', 'elmo_drago'];
+const CALZARE_DI = ['', 'sandali', 'stivali_cuoio', 'stivali_vento', 'stivali_nube'];
+const PREZZI_ARMI = [1000, 7000, 24000, 60000, 85000, 115000];
+const PREZZI_CORAZZE = [800, 6500, 22000, 55000, 78000, 105000];
+const INTERMEDI = [
+  // [prefisso dell'id, campi comuni, valori per livello, nomi per livello]
+  ['spada', { type: 'weapon', wt: 'sword', glyph: '剣' }, { atk: [22, 43, 68, 95, 108, 121] },
+    ['Spada del Viandante', 'Lama di Ferro Temprato', 'Spada del Fiume di Giada', 'Spada della Gru Argentata', 'Spada del Vento Rosso', 'Spada delle Dune Cantanti']],
+  ['pugnali', { type: 'weapon', wt: 'daggers', glyph: '刃' }, { atk: [18, 35, 56, 79, 90, 101] },
+    ['Pugnali del Cacciatore', 'Pugnali a Dente di Lupo', 'Pugnali della Vipera Verde', 'Pugnali della Luna Nuova', 'Pugnali dello Scorpione Rosso', 'Pugnali del Miraggio']],
+  ['arco', { type: 'weapon', wt: 'bow', glyph: '弓' }, { atk: [16, 33, 53, 75, 86, 97], range: [15, 16, 17, 18, 18, 18] },
+    ['Arco di Gelso', 'Arco del Cacciatore di Gole', 'Arco del Salice Piangente', 'Arco della Canna Cava', 'Arco del Simun', 'Arco del Sole Calante']],
+  ['pugni', { type: 'weapon', wt: 'fists', glyph: '拳' }, { atk: [16, 33, 52, 72, 82, 92], matk: [9, 20, 33, 47, 54, 61] },
+    ['Fasce di Cuoio Intrecciato', 'Nocche di Bronzo', 'Artigli della Gru di Giada', 'Guanti del Tuono Verde', 'Guanti della Sabbia Rovente', 'Pugni del Leone delle Dune']],
+  ['bastone', { type: 'weapon', wt: 'staff', glyph: '杖' }, { atk: [7, 13, 19, 25, 28, 31], matk: [22, 43, 67, 93, 106, 119], range: [15, 16, 17, 18, 18, 18] },
+    ['Bastone di Bambù Nero', 'Bastone della Lanterna', "Bastone del Loto d'Argento", 'Bastone dello Smeraldo Cavo', 'Bastone del Vento Rosso', 'Bastone del Miraggio Eterno']],
+  ['corazza', { type: 'body', glyph: '鎧' }, { def: [10, 23, 38, 54, 62, 70] },
+    ['Giubba Imbottita', 'Corazza di Cuoio Borchiato', 'Corazza del Guardiano di Giada', 'Armatura della Gru Celeste', 'Armatura delle Dune', 'Armatura del Sole Rosso']],
+  ['elmo', { type: 'head', glyph: '兜' }, { def: [4, 8, 14, 20, 23, 26] },
+    ['Fascia del Viandante', 'Elmo del Predone', 'Elmo del Guardiano di Giada', 'Elmo della Gru Celeste', 'Elmo delle Dune', 'Elmo del Sole Rosso']],
+  ['calzari', { type: 'feet', glyph: '靴' }, { def: [2, 4, 6, 9, 10, 11], speed: [2, 7, 12, 15, 16, 17] },
+    ['Calzari di Feltro', 'Stivali delle Gole', 'Stivali del Guardiano di Giada', 'Stivali della Gru Celeste', 'Stivali delle Dune', 'Stivali del Sole Rosso']],
+];
+for (const [pre, comuni, valori, nomi] of INTERMEDI) {
+  LIV_INTERMEDI.forEach((lvl, i) => {
+    const tier = tierDi(lvl);
+    const it = { name: nomi[i], ...comuni, lvl, tier };
+    for (const [k, arr] of Object.entries(valori)) it[k] = arr[i];
+    const prezzi = comuni.type === 'weapon' ? PREZZI_ARMI : PREZZI_CORAZZE;
+    it.price = Math.round(prezzi[i] * (comuni.type === 'head' ? 0.7 : comuni.type === 'feet' ? 0.65 : 1));
+    if (comuni.type === 'head') it.aspetto = ELMO_DI[tier];
+    if (comuni.type === 'feet') it.aspetto = CALZARE_DI[tier];
+    ITEMS[`${pre}_${lvl}`] = it;
+  });
+}
 
 // ------------------------------------------------------------------ rarità e bonus casuali
 export const RARITIES = [
@@ -333,6 +437,7 @@ export const RARITIES = [
 // probabilità (in peso) delle rarità per fonte del bottino
 export const RARITY_WEIGHTS = {
   mob: [60, 26, 10, 3.4, 0.6],
+  elite: [20, 40, 28, 10, 2],   // solitari élite (vita ≥ 1000): pezzi migliori
   stone: [25, 35, 25, 12, 3],
   boss: [0, 20, 40, 28, 12],
 };
@@ -396,40 +501,49 @@ for (const [type, g] of Object.entries(GEM_TYPES)) {
 
 // ------------------------------------------------------------------ mostri
 // drops: [oggetto, probabilità, min, max]
+// cast: lancio interrompibile { name, ms, mult (× attacco), cd, raggio (se colpisce ad area attorno al mostro) }
 export const MOBS = {
-  lupo: { name: 'Lupo Grigio', lvl: 2, hp: 90, atk: 9, def: 2, exp: 30, speed: 5.5, aggro: 0, range: 2.0, aspd: 1600, model: 'wolf', color: 0x777370, scale: 1, respawn: 20, tael: [4, 10],
-    drops: [['zanna_lupo', 0.35], ['ginseng_p', 0.08], ['tunica_canapa', 0.01], ['sandali', 0.01]] },
-  cinghiale: { name: 'Cinghiale Selvatico', lvl: 3, hp: 140, atk: 11, def: 4, exp: 42, speed: 5, aggro: 0, range: 2.2, aspd: 1700, model: 'boar', color: 0x5a3e2b, scale: 1, respawn: 20, tael: [5, 12],
-    drops: [['pelle_cinghiale', 0.35], ['ginseng_p', 0.1], ['cappello_paglia', 0.015], ['loto_p', 0.06]] },
+  lupo: { name: 'Lupo Grigio', lvl: 2, hp: 72, atk: 9, def: 2, exp: 25, speed: 5.5, aggro: 0, range: 2.0, aspd: 1600, model: 'wolf', color: 0x777370, scale: 1, bott: 0.8, respawn: 24, tael: [3, 8],
+    drops: [['zanna_lupo', 0.35], ['ginseng_p', 0.08]] },
+  cinghiale: { name: 'Cinghiale Selvatico', lvl: 3, hp: 112, atk: 11, def: 4, exp: 34, speed: 5, aggro: 0, range: 2.2, aspd: 1700, model: 'boar', color: 0x5a3e2b, scale: 1, bott: 0.8, respawn: 24, tael: [4, 10],
+    drops: [['pelle_cinghiale', 0.35], ['ginseng_p', 0.1], ['loto_p', 0.06]] },
   lupo_alfa: { name: 'Lupo Alfa', lvl: 5, hp: 260, atk: 17, def: 6, exp: 85, speed: 6, aggro: 9, range: 2.3, aspd: 1500, model: 'wolf', color: 0x3c3a40, scale: 1.3, respawn: 30, tael: [10, 25],
     drops: [['zanna_lupo', 0.6, 1, 2], ['ginseng_p', 0.15], ['loto_p', 0.1], ['pergamena_ritorno', 0.03]] },
-  bandito: { name: 'Bandito della Strada', lvl: 8, hp: 420, atk: 26, def: 10, exp: 150, speed: 5, aggro: 10, range: 2.4, aspd: 1500, model: 'bandit', color: 0x3b2f2f, scale: 1, respawn: 30, tael: [25, 55],
-    drops: [['benda_bandito', 0.4], ['ginseng_m', 0.08], ['minerale_ferro', 0.04], ['sciabola_bronzo', 0.006], ['pugnali_acciaio', 0.006], ['artigli_ferro', 0.006], ['bastone_pruno', 0.006], ['arco_corno', 0.006], ['corazza_lamelle', 0.006]] },
-  scimmia: { name: 'Scimmia Ladra', lvl: 10, hp: 480, atk: 30, def: 12, exp: 185, speed: 6.5, aggro: 0, range: 2.0, aspd: 1200, model: 'monkey', color: 0x7a5230, scale: 1, respawn: 30, tael: [40, 90],
-    drops: [['ginseng_m', 0.12], ['loto_m', 0.1], ['minerale_ferro', 0.05], ['elmo_bronzo', 0.008], ['stivali_cuoio', 0.008]] },
-  arciere_bandito: { name: 'Arciere Bandito', lvl: 12, hp: 520, atk: 36, def: 12, exp: 230, speed: 5, aggro: 14, range: 13, ranged: true, aspd: 1900, model: 'bandit_archer', color: 0x3b3a2f, scale: 1, respawn: 35, tael: [40, 85],
-    drops: [['benda_bandito', 0.4], ['ginseng_m', 0.1], ['minerale_ferro', 0.06], ['arco_corno', 0.01], ['corazza_lamelle', 0.008]] },
+  lupo_anziano: { name: 'Lupo Anziano', lvl: 6, hp: 1000, atk: 20, def: 8, exp: 330, speed: 5.5, aggro: 8, range: 2.4, aspd: 1500, model: 'wolf', color: 0xb8b8c4, scale: 1.45, respawn: 60, tael: [30, 60],
+    drops: [['zanna_lupo', 0.7, 1, 2], ['ginseng_p', 0.25], ['loto_p', 0.12], ['pergamena_ritorno', 0.05]] },
+  bandito: { name: 'Bandito della Strada', lvl: 8, hp: 330, atk: 26, def: 10, exp: 118, speed: 5, aggro: 10, range: 2.4, aspd: 1500, model: 'bandit', color: 0x3b2f2f, scale: 1, bott: 0.9, respawn: 32, tael: [20, 45],
+    drops: [['benda_bandito', 0.4], ['ginseng_m', 0.08], ['minerale_ferro', 0.04]] },
+  scimmia: { name: 'Scimmia Ladra', lvl: 10, hp: 380, atk: 30, def: 12, exp: 146, speed: 6.5, aggro: 0, range: 2.0, aspd: 1200, model: 'monkey', color: 0x7a5230, scale: 1, bott: 0.9, respawn: 32, tael: [32, 72],
+    drops: [['ginseng_m', 0.12], ['loto_m', 0.1], ['minerale_ferro', 0.05]] },
+  arciere_bandito: { name: 'Arciere Bandito', cast: { name: 'Tiro Mirato', ms: 1800, mult: 2.4, cd: 9000 }, lvl: 12, hp: 420, atk: 36, def: 12, exp: 185, speed: 5, aggro: 14, range: 13, ranged: true, aspd: 1900, model: 'bandit_archer', color: 0x3b3a2f, scale: 1, bott: 0.9, respawn: 36, tael: [32, 68],
+    drops: [['benda_bandito', 0.4], ['ginseng_m', 0.1], ['minerale_ferro', 0.06]] },
   orso_nero: { name: 'Orso Nero della Gola', lvl: 14, hp: 1100, atk: 48, def: 20, exp: 380, speed: 4.5, aggro: 0, range: 2.8, aspd: 2000, model: 'bear', color: 0x2a2420, scale: 1.25, respawn: 45, tael: [60, 120],
-    drops: [['ginseng_m', 0.2, 1, 2], ['minerale_ferro', 0.1], ['elmo_bronzo', 0.01], ['corazza_lamelle', 0.01]] },
-  spirito_lanterna: { name: 'Spirito della Lanterna', lvl: 16, hp: 800, atk: 52, def: 16, exp: 420, speed: 4, aggro: 12, range: 12, ranged: true, magic: true, aspd: 2000, model: 'lantern', color: 0xff8a3a, scale: 1, respawn: 40, tael: [70, 140],
-    drops: [['loto_m', 0.2], ['loto_g', 0.04], ['minerale_ferro', 0.08], ['bastone_cielo', 0.004], ['stivali_vento', 0.004]] },
+    drops: [['ginseng_m', 0.2, 1, 2], ['minerale_ferro', 0.15], ['frammento_obelisco', 0.01]] },
+  spirito_lanterna: { name: 'Spirito della Lanterna', cast: { name: 'Fuoco Fatuo', ms: 2000, mult: 2.4, cd: 9000 }, lvl: 16, hp: 800, atk: 52, def: 16, exp: 420, speed: 4, aggro: 12, range: 12, ranged: true, magic: true, aspd: 2000, model: 'lantern', color: 0xff8a3a, scale: 1, respawn: 40, tael: [70, 140],
+    drops: [['loto_m', 0.2], ['loto_g', 0.04], ['minerale_ferro', 0.08]] },
   terracotta: { name: 'Guerriero di Terracotta', lvl: 18, hp: 1500, atk: 62, def: 30, exp: 560, speed: 4, aggro: 10, range: 2.6, aspd: 1800, model: 'terracotta', color: 0xa86a42, scale: 1.1, respawn: 45, tael: [90, 180],
-    drops: [['coccio_terracotta', 0.4], ['ginseng_g', 0.05], ['minerale_ferro', 0.1], ['spada_giada', 0.004], ['pugnali_serpe', 0.004], ['artigli_tigre', 0.004], ['arco_airone', 0.004], ['armatura_giada', 0.004], ['elmo_cornuto', 0.004]] },
+    drops: [['coccio_terracotta', 0.4], ['ginseng_g', 0.05], ['minerale_ferro', 0.15], ['frammento_obelisco', 0.015]] },
   tigre_spettrale: { name: 'Tigre Spettrale', lvl: 21, hp: 1900, atk: 78, def: 32, exp: 720, speed: 6.5, aggro: 12, range: 2.6, aspd: 1500, model: 'tiger', color: 0xc8d0f0, scale: 1.2, respawn: 60, tael: [120, 220],
-    drops: [['ginseng_g', 0.08], ['frammento_obelisco', 0.02], ['minerale_ferro', 0.12], ['artigli_tigre', 0.006], ['stivali_vento', 0.006]] },
-  generale: { name: 'Generale Senza Volto', lvl: 25, hp: 18000, atk: 120, def: 45, exp: 9000, speed: 4.5, aggro: 14, range: 3.4, aspd: 2200, model: 'general', color: 0x2a1a1a, scale: 1.9, respawn: 900, boss: true, tael: [3000, 6000],
+    drops: [['ginseng_g', 0.08], ['frammento_obelisco', 0.02], ['minerale_ferro', 0.15]] },
+  generale: { name: 'Generale Senza Volto', cast: { name: 'Grido di Guerra', ms: 2600, mult: 2.4, cd: 14000, raggio: 9 }, lvl: 25, hp: 18000, atk: 120, def: 45, exp: 9000, speed: 4.5, aggro: 14, range: 3.4, aspd: 2200, model: 'general', color: 0x2a1a1a, scale: 1.9, respawn: 900, boss: true, tael: [3000, 6000],
     drops: [['frammento_obelisco', 0.9, 2, 4], ['tomo_tecnica', 0.7, 1, 2], ['sigillo_fabbro', 0.35], ['spada_gru', 0.12], ['pugnali_eclissi', 0.12], ['arco_autunno', 0.12], ['guanti_sole', 0.12], ['bastone_nubi', 0.12], ['armatura_nubi', 0.1], ['elmo_drago', 0.1], ['stivali_nube', 0.1]] },
   fantoccio: { name: "Fantoccio d'Addestramento", lvl: 30, hp: 9999999, atk: 0, def: 25, exp: 0, dummy: true, model: 'dummy', color: 0xc8a860, scale: 1, respawn: 0, speed: 0, aggro: 0, drops: [] },
-  lupo_branco: { name: 'Lupo del Branco', lvl: 6, hp: 150, atk: 14, def: 4, exp: 40, speed: 5.5, aggro: 8, range: 2.0, aspd: 1600, model: 'wolf', color: 0x8a8378, scale: 0.9, respawn: 12, tael: [4, 9],
+  lupo_branco: { name: 'Lupo del Branco', lvl: 6, hp: 120, atk: 14, def: 4, exp: 33, speed: 5.5, aggro: 8, range: 2.0, aspd: 1600, model: 'wolf', color: 0x8a8378, scale: 0.9, bott: 0.8, respawn: 24, tael: [3, 7],
     drops: [['zanna_lupo', 0.25], ['ginseng_p', 0.05]] },
-  predone: { name: 'Predone delle Colline', lvl: 12, hp: 320, atk: 30, def: 10, exp: 95, speed: 5, aggro: 9, range: 2.4, aspd: 1600, model: 'bandit', color: 0x4a3a2f, scale: 1, respawn: 12, tael: [12, 26],
+  predone: { name: 'Predone delle Colline', lvl: 12, hp: 255, atk: 30, def: 10, exp: 76, speed: 5, aggro: 9, range: 2.4, aspd: 1600, model: 'bandit', color: 0x4a3a2f, scale: 1, bott: 0.9, respawn: 30, tael: [10, 21],
     drops: [['benda_bandito', 0.25], ['ginseng_m', 0.04], ['minerale_ferro', 0.02]] },
-  soldato_terracotta: { name: 'Soldato di Terracotta', lvl: 20, hp: 650, atk: 58, def: 22, exp: 210, speed: 4.2, aggro: 9, range: 2.5, aspd: 1700, model: 'terracotta', color: 0xb07a52, scale: 0.95, respawn: 12, tael: [30, 60],
+  soldato_terracotta: { name: 'Soldato di Terracotta', lvl: 20, hp: 520, atk: 58, def: 22, exp: 175, speed: 4.2, aggro: 9, range: 2.5, aspd: 1700, model: 'terracotta', color: 0xb07a52, scale: 0.95, bott: 0.85, respawn: 36, tael: [24, 48],
     drops: [['coccio_terracotta', 0.25], ['ginseng_g', 0.02], ['minerale_ferro', 0.04]] },
+  // Razziatori delle Gole (Terre di Confine lontane, 14-18) e Lancieri di Bronzo (cuore dell'Altopiano, 22-28): riempiono
+  // i due buchi della curva (prima non c'erano branchi adatti fra il 13 e il 19 né fra il 22 e il 28).
+  razziatore_gola: { name: 'Razziatore delle Gole', lvl: 15, hp: 340, atk: 40, def: 14, exp: 108, speed: 5.2, aggro: 10, range: 2.4, aspd: 1550, model: 'bandit', color: 0x5a2a22, scale: 1.02, bott: 0.9, respawn: 30, tael: [14, 30],
+    drops: [['benda_bandito', 0.25], ['ginseng_m', 0.05], ['minerale_ferro', 0.03]] },
+  lanciere_bronzo: { name: 'Lanciere di Bronzo', lvl: 24, hp: 640, atk: 70, def: 26, exp: 228, speed: 4.3, aggro: 10, range: 2.8, aspd: 1750, model: 'terracotta', color: 0x8a6a3a, scale: 1.0, bott: 0.85, respawn: 36, tael: [30, 60],
+    drops: [['coccio_terracotta', 0.25], ['ginseng_g', 0.03], ['minerale_ferro', 0.05]] },
   sentinella_cripta: { name: 'Sentinella di Bronzo', lvl: 26, hp: 2600, atk: 72, def: 40, exp: 420, speed: 4, aggro: 11, range: 2.7, aspd: 1900, model: 'terracotta', color: 0x8a6a3a, scale: 1.25, respawn: 0, dungeon: true, tael: [60, 120], drops: [] },
   ombra_cripta: { name: 'Ombra Velata', lvl: 26, hp: 1400, atk: 66, def: 20, exp: 300, speed: 6.5, aggro: 13, range: 2.3, aspd: 1300, model: 'shade', color: 0x3a2a5a, scale: 1, respawn: 0, dungeon: true, tael: [40, 90], drops: [] },
-  lanterna_cripta: { name: 'Lanterna Insonne', lvl: 26, hp: 1300, atk: 78, def: 18, exp: 320, speed: 3.5, aggro: 13, range: 12, ranged: true, magic: true, aspd: 2100, model: 'lantern', color: 0x8a5aff, scale: 1.05, respawn: 0, dungeon: true, tael: [40, 90], drops: [] },
-  custode_insonne: { name: 'Shen, il Custode Insonne', lvl: 28, hp: 60000, atk: 135, def: 50, exp: 15000, speed: 4.2, aggro: 16, range: 3.6, aspd: 2200, model: 'custode', color: 0x1a2a4a, scale: 2.0, respawn: 0, dungeon: true, boss: true, dungeonBoss: true, tael: [3000, 5000], drops: [] },
+  lanterna_cripta: { name: 'Lanterna Insonne', cast: { name: 'Fiamma Spettrale', ms: 2200, mult: 2.6, cd: 8000 }, lvl: 26, hp: 1300, atk: 78, def: 18, exp: 320, speed: 3.5, aggro: 13, range: 12, ranged: true, magic: true, aspd: 2100, model: 'lantern', color: 0x8a5aff, scale: 1.05, respawn: 0, dungeon: true, tael: [40, 90], drops: [] },
+  custode_insonne: { name: 'Shen, il Custode Insonne', cast: { name: 'Giudizio delle Lanterne', ms: 3000, mult: 2.8, cd: 16000, raggio: 10 }, lvl: 28, hp: 60000, atk: 135, def: 50, exp: 15000, speed: 4.2, aggro: 16, range: 3.6, aspd: 2200, model: 'custode', color: 0x1a2a4a, scale: 2.0, respawn: 0, dungeon: true, boss: true, dungeonBoss: true, tael: [3000, 5000], drops: [] },
   lanterna_instabile: { name: 'Lanterna Instabile', lvl: 26, hp: 900, atk: 0, def: 10, exp: 0, speed: 2.6, aggro: 40, range: 1.5, aspd: 99999, model: 'lantern', color: 0xff4a20, scale: 0.8, respawn: 0, dungeon: true, explode: { after: 10, radius: 6, mult: 2.2 }, drops: [] },
   eco_spirito: { name: 'Eco Inquieta', lvl: 24, hp: 500, atk: 40, def: 10, exp: 60, speed: 5, aggro: 20, range: 10, ranged: true, magic: true, aspd: 1800, model: 'lantern', color: 0xa0d8ff, scale: 0.6, respawn: 0, dungeon: true, drops: [] },
   obelisco_minore: { name: 'Obelisco Corrotto', lvl: 8, hp: 3000, atk: 0, def: 12, exp: 900, stone: true, waves: ['lupo_alfa', 'bandito'], wave: 3, model: 'obelisk', color: 0x8a3ac0, scale: 1, respawn: 300, tael: [200, 400],
@@ -478,7 +592,8 @@ export const GUARD_LINES = [
 // ------------------------------------------------------------------ Prove del Sigillo
 // Coordinate locali rispetto all'origine dell'istanza. rooms: rettangoli calpestabili [x1, z1, x2, z2].
 export const DUNGEON = {
-  name: 'Cripta delle Mille Lanterne', trial: 'Prova del Sigillo',
+  id: 'cripta', name: 'Cripta delle Mille Lanterne', trial: 'Prova del Sigillo',
+  desc: "Un labirinto di sale funebri dove le lanterne non si spengono mai. In fondo veglia Shen, il Custode Insonne.",
   minLevel: 20, startKey: 2, timeLimit: 900, deathPenalty: 5, forcesNeeded: 100, maxKey: 30,
   originX: 1200, slotSpacing: 400, boundsMin: [-15, -15], boundsMax: [82, 125],
   spawn: [0, -5],
@@ -538,9 +653,22 @@ export function keyChange(elapsed, limit) {
 }
 
 // Il punto (coordinate locali della cripta) è calpestabile? margin = raggio del personaggio.
-export function dungeonWalkable(lx, lz, margin = 0.5) {
-  for (const [x1, z1, x2, z2] of DUNGEON.rooms) {
+export function dungeonWalkable(lx, lz, margin = 0.5, dg = DUNGEON) {
+  for (const [x1, z1, x2, z2] of dg.rooms) {
     if (lx >= x1 + margin && lx <= x2 - margin && lz >= z1 + margin && lz <= z2 - margin) return true;
   }
   return false;
 }
+
+// Mostri e PNG delle mappe da esperienza e dell'Arena (definiti in shared/mappe.js).
+Object.assign(MOBS, MOBS_MAPPE);
+Object.assign(NPC_ROLES, NPC_MAPPE);
+Object.assign(NPC_ROLES, NPC_MISSIONI);
+
+// Contenuto per il livello alto (shared/altolivello.js): boss del mondo, Forgia, pezzi unici e trofei.
+Object.assign(MOBS, MOBS_ALTO);
+Object.assign(ITEMS, OGGETTI_ALTO);
+// Prove del Sigillo disponibili dal Custode (la Cripta e la Forgia): id → definizione con stanze, muri, branchi e boss.
+export const PROVE = { cripta: DUNGEON, forgia: FORGIA };
+
+Object.assign(NPC_ROLES, NPC_SOCIALE);
