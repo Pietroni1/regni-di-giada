@@ -53,7 +53,8 @@ const MAPPA := {
 	"squarcio": ["ira", "squarcio"], "fendente": ["ira", "fendente"], "affondo_ira": ["ira", "affondo"],
 	"carica": ["fulmine", "carica"], "lama_tuono": ["fulmine", "lama_tuono"], "martello_monte": ["terra", "martello"],
 	"colpo_rapido": ["ombra", "colpo_rapido"], "ventaglio": ["ombra", "ventaglio"], "taglio_netto": ["ombra", "taglio_netto"],
-	"colpo_gola": ["sangue", "colpo_gola"], "taglio_finale": ["veleno", "morso_vipera"], "taglio_gemello": ["ombra", "taglio_gemello"],
+	"colpo_gola": ["sangue", "colpo_gola"], "taglio_finale": ["veleno", "morso_vipera"], "risveglio_drago": ["ira", "risv_drago"], "eclissi": ["neutro", "risv_eclissi"],
+	"cuore_sole": ["luce", "risv_sole"], "congiunzione": ["cielo", "risv_astri"], "taglio_gemello": ["ombra", "taglio_gemello"],
 	"danza_lame": ["ombra", "danza_lame"], "pioggia_frecce": ["vento", "pioggia_frecce"], "ferita": ["sangue", "ferita"], "flusso": ["ombra", "flusso"], "passo_ombra": ["ombra", "passo_ombra"],
 	"freccia_perforante": ["luce", "freccia_perf"], "occhio_falco": ["luce", "occhio"],
 	# scatti e mosse della fase «flow», potenziamenti di classe
@@ -537,6 +538,30 @@ class Pennello:
 				lin(14, 70, 86, 48, 9.0, SCURO)
 				lin(14, 70, 86, 48, 5.5, ROSSO)
 				lin(16, 68, 84, 47, 1.8, ROSSO_C)
+			"risv_drago":
+				# occhio di drago fra le fiamme
+				fiamma(50, 54, 1.9, ROSSO, AMBRA_C)
+				occhio_forma(50, 54, 30, 15, AMBRA_C)
+				pol([48, 44, 52, 44, 53, 64, 47, 64], SCURO, SCURO, 0.0)
+				esplosione(50, 54, 30, 44, 8, ORO, 0.4, 1.0)
+			"risv_eclissi":
+				# sole nero con la corona bianca
+				esplosione(50, 50, 30, 46, 16, BIANCO, 0.0, 1.0)
+				disco(50, 50, 31, BIANCO, 1.6)
+				disco(53, 48, 27, Color(0.04, 0.03, 0.08), 1.2)
+				arco(53, 48, 27, -2.2, 0.4, 2.2, Color(1.0, 0.2, 0.3))
+			"risv_sole":
+				# sole raggiante dentro un pugno di luce
+				esplosione(50, 50, 20, 46, 12, ORO, 0.0, 1.4)
+				disco(50, 50, 22, AMBRA_C, 1.8)
+				disco(50, 50, 13, BIANCO, 0.0)
+			"risv_astri":
+				# due astri allineati su un'orbita
+				arco(50, 50, 36, 0.0, TAU, 2.2, ORO)
+				scint(28, 34, 15, ORO, 1.2)
+				scint(72, 66, 15, BIANCO, 1.2)
+				lin(28, 34, 72, 66, 2.0, AMBRA_C)
+				disco(50, 50, 6, BIANCO, 1.0)
 			"taglio_gemello":
 				# due lame incrociate a X con la scintilla al centro
 				lama(14, 88, 84, 14, 11, ACCIAIO, ACCIAIO_O, VIOLA)

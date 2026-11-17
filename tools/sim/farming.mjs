@@ -547,7 +547,8 @@ class Bot {
     const lanciando = this.lancio && !this.lancio.finito;
     if (!lanciando && ora >= this.prossimoAtk) { this.manda({ t: 'atk', id }); this.prossimoAtk = ora + me.aspd; }
     const S = this.stato(q);
-    for (const [sid, cond] of Object.entries(this.rot.fuori || {})) {
+    const risveglio = Object.values(SKILLS).find((s) => s.risveglio && s.cls === VIE[this.via].cls);
+    for (const [sid, cond] of Object.entries({ ...(this.rot.fuori || {}), ...(risveglio ? { [risveglio.id]: () => true } : {}) })) {
       if ((this.blocco[sid] || 0) > ora || !S.ok(sid) || !cond(S)) continue;
       // le auree si accendono una volta sola (ripremere il tasto le spegnerebbe)
       if (SKILLS[sid].aura) { if ((me.buffs || []).some((b) => b.b === SKILLS[sid].buff) || ora < (this.auraProva || 0)) continue; this.auraProva = ora + 3000; }

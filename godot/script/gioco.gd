@@ -56,6 +56,7 @@ var mappa: MappaGrande = null      # mappa grande delle zone (tasto M)
 var viaggi: Viaggi = null           # finestra dei viaggi e classifica dell'arena (viaggi.gd)
 var missioni: Missioni = null       # diario, elenco a lato e segni sopra i PNG (missioni.gd)
 var altolivello: AltoLivello = null # boss del mondo, imprese e titoli, onori dell'arena (altolivello.gd)
+var contatore: Contatore = null     # contatore dei danni (contatore.gd)
 var sociale: Sociale = null         # scambio, deposito, amici, tasti (sociale.gd)
 var terra: TerraLontana = null      # la mappa lontana in cui si trova il personaggio (terra_lontana.gd)
 var _zona_amb := "-"                # ambiente in uso: "" mondo dei regni, "cripta" o id della mappa
@@ -91,6 +92,9 @@ func _ready() -> void:
 	sociale.gioco = self
 	hud.radice.add_child(sociale)
 	sociale.aggancia()
+	contatore = Contatore.new()
+	contatore.gioco = self
+	hud.radice.add_child(contatore)
 	mappa = MappaGrande.new()
 	mappa.gioco = self
 	hud.radice.add_child(mappa)
@@ -254,6 +258,8 @@ func _su_fx(m: Dictionary) -> void:
 				colore = Color(1.0, 0.8, 0.25)
 			if int(m.get("dot", 0)) == 1:
 				colore = Color(0.75, 0.9, 0.45) if mio else Color(0.7, 0.7, 0.7)
+			if contatore != null and s != null and v > 0:
+				contatore.colpo(s, v, String(m.get("sk", "")))
 			if mio or d == me or v > 0:
 				hud.numero(d.testa(), str(v) + ("!" if critico else ""), colore, 1.35 if critico else (0.8 if int(m.get("dot", 0)) == 1 else 1.0))
 			if d == me and bersaglio == null and ostile(s):
@@ -321,6 +327,9 @@ func _su_fx(m: Dictionary) -> void:
 			if d != null:
 				d.afflizione("__stordito", float(m.get("ms", 1000)))
 				_segna_effetto(d.id, "__stordito", float(m.get("ms", 1000)))
+		"risveglio":
+			if s != null:
+				fx.risveglio(s, String(m.get("a", "")), float(m.get("ms", 12000)))
 		"aff":
 			# effetto messo su qualcuno (veleno, ferita, rallentamento, marchio...): si vede addosso a lui finché dura
 			if d != null:
@@ -837,6 +846,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			missioni.apri_chiudi()
 		elif k == KEY_J:
 			altolivello.apri_imprese()
+		elif az == "contatore":
+			contatore.apri_chiudi()
 		elif az == "amici":
 			sociale.apri_chiudi("amici")
 		elif az == "cavalcatura":

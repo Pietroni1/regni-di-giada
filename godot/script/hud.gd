@@ -4,8 +4,8 @@ extends CanvasLayer
 
 const ORO := Color(0.86, 0.72, 0.40)
 const SFONDO := Color(0.06, 0.05, 0.05, 0.82)
-const RUOLI := {"accumulo": Color(0.35, 0.80, 0.40), "medio": Color(0.90, 0.75, 0.30), "potente": Color(0.90, 0.28, 0.22), "interr": Color(0.40, 0.70, 1.0), "scatto": Color(0.75, 0.55, 1.0), "pot": Color(1.0, 0.62, 0.25), "aura": Color(1.0, 0.62, 0.25), "gen": Color(0.35, 0.80, 0.40), "pesante": Color(0.90, 0.28, 0.22)}
-const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale", "interr": "Interruzione", "scatto": "Scatto", "pot": "Potenziamento", "aura": "Aura", "gen": "Generatore", "pesante": "Scarico pesante"}
+const RUOLI := {"accumulo": Color(0.35, 0.80, 0.40), "medio": Color(0.90, 0.75, 0.30), "potente": Color(0.90, 0.28, 0.22), "interr": Color(0.40, 0.70, 1.0), "scatto": Color(0.75, 0.55, 1.0), "pot": Color(1.0, 0.62, 0.25), "aura": Color(1.0, 0.62, 0.25), "gen": Color(0.35, 0.80, 0.40), "pesante": Color(0.90, 0.28, 0.22), "risveglio": Color(1.0, 0.85, 0.3)}
+const NOMI_RUOLO := {"accumulo": "Colpo base", "medio": "Scarico", "potente": "Colpo finale", "interr": "Interruzione", "scatto": "Scatto", "pot": "Potenziamento", "aura": "Aura", "gen": "Generatore", "pesante": "Scarico pesante", "risveglio": "Risveglio"}
 
 
 ## Ruolo di una tecnica per l'interfaccia (tacca colorata sotto il tasto, titolo nella finestra Abilità).
@@ -16,6 +16,8 @@ static func ruolo_di(sk: Dictionary) -> String:
 		return "scatto"
 	if sk.get("aura", false):
 		return "aura"
+	if sk.get("risveglio", false):
+		return "risveglio"
 	if sk.get("potenziamento", false):
 		return "pot"
 	# kit a generatore e scarichi (Ombra): chi spende risorsa per dare Punti genera, chi costa Punti scarica
@@ -697,7 +699,10 @@ func _process(dt: float) -> void:
 	var ora := Time.get_ticks_msec()
 	var sta_lanciando: bool = b != null and gioco.lanci_nemici.has(b.id) and float(gioco.lanci_nemici[b.id].fine) > ora
 	var risonanza := false
+	var risvegliato := false          # Risveglio acceso: i tasti dei colpi base brillano d'oro
 	for bf in gioco.io.get("buffs", []):
+		if Dati.BUFFS.get(String(bf.b), {}).has("risveglio"):
+			risvegliato = true
 		if String(bf.b) == "risonanza" or String(bf.b) == "occasione":
 			risonanza = true      # il finale lampeggia: Risonanza (ad area) o Occasione (gratuito e pieno)
 	var con_flusso: bool = Dati.CLASSES.get(String(gioco.classe), {}).has("flusso")
@@ -705,6 +710,9 @@ func _process(dt: float) -> void:
 		var tt := t as Tasto
 		tt.tempo(ora, gioco.ricariche, gioco.gcd_fine, gioco.gcd_durata)
 		var acceso := (tt.ruolo == "interr" and sta_lanciando) or (tt.ruolo == "potente" and risonanza) or (tt.pts_costo > 0 and risonanza)
+		if risvegliato != tt.risvegliato and tt.base:
+			tt.risvegliato = risvegliato
+			tt.queue_redraw()
 		# Flusso: la tecnica appena usata è segnata (ripeterla spezza il Flusso)
 		var rip: bool = con_flusso and not tt.ruolo.is_empty() and tt.voce is Dictionary and String(tt.voce.get("id", "")) == gioco.ultima_tecnica
 		if acceso != tt.acceso or acceso or rip != tt.ripetuta:
@@ -863,6 +871,8 @@ class Tasto:
 	var colore := Color(0.8, 0.8, 0.8)
 	var pts_costo := 0             # Punti consumati (scarichi dell'Ombra): disegnati come rombi sul tasto
 	var ripetuta := false          # è l'ultima tecnica usata: ripeterla spezza il Flusso
+	var base := false              # colpo base (cambia durante il Risveglio)
+	var risvegliato := false       # Risveglio acceso: cornice d'oro
 	var spento := false            # risorsa insufficiente o non imparata
 	var acceso := false            # lampeggia: è il momento di premerlo
 	var quota := 0.0               # 0..1 di ricarica rimasta
@@ -880,6 +890,7 @@ class Tasto:
 		nome = ""
 		ruolo = ""
 		spento = false
+		base = false
 		pts_costo = 0
 		tooltip_text = ""
 		if v is Dictionary and v.get("k") == "s" and Dati.SKILLS.has(v.id):
@@ -895,6 +906,7 @@ class Tasto:
 				costo = float(io.get("rmax", 0)) * costo / 100.0
 			spento = costo > ho + 0.5
 			pts_costo = int(sk.get("ptsCost", 0))
+			base = String(sk.get("ruolo", "")) == "accumulo" or sk.get("base", false)
 			if pts_costo > int(io.get("pts", 0)):
 				var gratis := false
 				for bf in io.get("buffs", []):
@@ -1002,6 +1014,9 @@ class Tasto:
 			var cb: Color = Hud.RUOLI.get(ruolo, Color.WHITE)
 			draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color(cb.r, cb.g, cb.b, p), false, 3.0)
 			draw_rect(Rect2(3, 3, size.x - 6, size.y - 6), Color(cb.r, cb.g, cb.b, p * 0.18), true)
+		if base and risvegliato:            # colpo base risvegliato: cornice e velo d'oro
+			draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color(1.0, 0.85, 0.3, 0.95), false, 3.0)
+			draw_rect(Rect2(4, 4, size.x - 8, size.y - 8), Color(1.0, 0.75, 0.2, 0.2), true)
 		for k in range(pts_costo):          # costo in Punti: rombi in basso a destra
 			var cx := size.x - 9.0 - k * 9.0
 			var cy := size.y - 13.0

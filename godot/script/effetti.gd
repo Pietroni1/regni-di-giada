@@ -824,6 +824,16 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 		_suprema(c)
 		_arricchisci(c)
 		return
+	if String(c.fx) == "risveglio":
+		_risveglio_accendi(c)
+		return
+	# colpo base durante il Risveglio: colori del Risveglio e un effetto in più, diverso per classe
+	c["pot"] = int(m.get("pot", 0)) == 1 and PALETTE_RISVEGLIO.has(c.cls)
+	if c.pot:
+		var pr: Array = PALETTE_RISVEGLIO[c.cls]
+		c.colore = pr[0]
+		c.c2 = pr[1]
+		c.c3 = pr[2]
 	if String(c.fx).begins_with("buff_"):
 		if int(m.get("off", 0)) == 0:      # spegnendo l'aura non si rifà l'effetto d'accensione
 			_buff_classe(c)
@@ -831,7 +841,11 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 	if c.cls == "ombra" and not c.fx in ["dash"]:
 		# Ombra: effetti propri per ogni tecnica, lame o frecce secondo l'arma; niente segni a terra
 		_ombra_kit(c)
+		if c.pot:
+			_potenziato(c)
 		return
+	if c.pot:
+		_potenziato(c)
 	_arricchisci(c)
 	if int(m.get("ris", 0)) == 1:
 		_risonanza(c)
@@ -986,6 +1000,136 @@ func _ombra(c: Dictionary) -> void:
 			_generico(c)
 
 
+# ------------------------------------------------------------------ Risvegli (cooldown offensivi)
+## Colori dei colpi base durante il Risveglio: [principale, secondo, terzo]. Lama rosso e oro del drago, Ombra bianco
+## lunare con bordo cremisi, Monaco bianco e oro del sole, Mistico oro e bianco degli astri.
+const PALETTE_RISVEGLIO := {
+	"lama": [Color(1.0, 0.3, 0.08), Color(1.0, 0.8, 0.25), Color(1.0, 0.55, 0.1)],
+	"ombra": [Color(0.95, 0.95, 1.0), Color(0.05, 0.03, 0.08), Color(1.0, 0.15, 0.25)],
+	"monaco": [Color(1.0, 0.95, 0.7), Color(1.0, 0.8, 0.3), Color(1.0, 1.0, 1.0)],
+	"mistico": [Color(1.0, 0.85, 0.3), Color(1.0, 1.0, 0.9), Color(1.0, 0.6, 0.15)],
+}
+const RISVEGLIO_DI := {"risveglio_drago": "lama", "eclissi": "ombra", "cuore_sole": "monaco", "congiunzione": "mistico"}
+
+
+## Accensione del Risveglio: uno scoppio attorno al corpo nei colori della classe (niente segni a terra).
+func _risveglio_accendi(c: Dictionary) -> void:
+	var pr: Array = PALETTE_RISVEGLIO.get(c.cls, [Color.WHITE, Color.WHITE, Color.WHITE])
+	var p: Vector3 = c.qui + Vector3(0, 1.1, 0)
+	bagliore(p, pr[0], 4.5, 0.4)
+	scintille(p, pr[1], 40, 9.0, 0.7, -3.0, 0.16)
+	match String(c.cls):
+		"lama":
+			fiamme(c.qui, pr[0], 26, 0.7, 3.2, 0.9)
+			for i in range(3):
+				_dopo(0.08 * i, taglio.bind(p, randf() * TAU, pr[1], 2.6 + 0.4 * i, TAU, 0.35, randf_range(-0.5, 0.5)))
+		"ombra":
+			fumo(p, pr[1], 16, 1.0, 1.2, 1.6, 0.4)
+			for i in range(4):
+				_dopo(0.06 * i, taglio_ombra.bind(p, randf() * TAU, pr[0], pr[1], 2.6, 2.6, 0.35, randf_range(-1.2, 1.2)))
+		"monaco":
+			fiamme(c.qui, pr[1], 30, 0.8, 3.6, 1.0)
+			stelle(p, pr[2], 16, 6.0, 0.8, 1.5, 0.3)
+		_:
+			stelle(p, pr[0], 28, 7.0, 1.0, 2.0, 0.34)
+			spirale(c.qui, pr[1], 1.0, 3.0, 1.0, 2.5, "stella", 0.3)
+	scuoti(0.35)
+
+
+## L'effetto in più di un colpo base risvegliato (il server ha già fatto il secondo colpo o lo scoppio).
+func _potenziato(c: Dictionary) -> void:
+	var da: Entita = c.da
+	var su: Entita = c.su
+	var col: Color = c.colore
+	var c2: Color = c.c2
+	var c3: Color = c.c3
+	var la: Vector3 = c.la
+	var p := su.petto() if su != null else la + Vector3(0, 1.2, 0)
+	if c.area and su == null:
+		p = c.qui + Vector3(0, 1.2, 0)
+	match String(c.cls):
+		"lama":
+			# il secondo colpo: un fendente d'oro di traverso, con lingue di fuoco e scintille
+			_dopo(0.14, taglio.bind(c.qui + Vector3(0, 1.2, 0), da.r, c2, (float(c.raggio) if c.area else 3.2), (TAU if c.area else 2.6), 0.3, randf_range(0.7, 1.1)))
+			_dopo(0.14, fiamme.bind(p - Vector3(0, 0.9, 0), col, 12, 0.5, 2.2, 0.5))
+			_dopo(0.14, scintille.bind(p, c2, 22, 9.0, 0.45, -14.0, 0.13))
+		"ombra":
+			# il taglio d'eclissi: una mezzaluna bianca col bordo cremisi e un alone scuro
+			_dopo(0.16, taglio_ombra.bind(p, da.r + PI * 0.5, col, c2, 2.9, 2.8, 0.34, randf_range(-0.4, 0.4)))
+			_dopo(0.16, scintille.bind(p, c3, 12, 6.0, 0.4, -6.0, 0.11))
+			_dopo(0.16, bagliore.bind(p, col, 1.8, 0.16))
+		"monaco":
+			# la vampa del sole: scoppio di fiamme chiare e faville tutt'attorno al bersaglio
+			_dopo(0.08, fiamme.bind(p - Vector3(0, 1.0, 0), c2, 26, 2.2, 2.6, 0.6))
+			_dopo(0.08, stelle.bind(p, c3, 14, 8.0, 0.5, 0.0, 0.3))
+			_dopo(0.08, bagliore.bind(p, col, 4.0, 0.25))
+			_dopo(0.08, scuoti.bind(0.25))
+		"mistico":
+			# il secondo astro: una stella d'oro che segue la prima, con una pioggia di scintille all'arrivo
+			if su != null:
+				_dopo(0.14, proiettile.bind(c.mano + Vector3(randf_range(-0.6, 0.6), 0.8, 0), su, c3, 34.0, 0.2, stelle.bind(p, c2, 14, 6.0, 0.6, 0.5, 0.3), false, 20))
+			else:
+				_dopo(0.14, stelle.bind(p, c2, 20, 7.0, 0.7, 0.5, 0.32))
+
+
+## Finché dura il Risveglio il corpo arde nei colori della classe: particelle agganciate a chi l'ha acceso.
+class Temporaneo:
+	extends Node3D
+	var resto := 1.0
+
+	func _process(dt: float) -> void:
+		resto -= dt
+		if resto <= 0.0:
+			set_process(false)
+			for f in get_children():
+				if f is CPUParticles3D:
+					(f as CPUParticles3D).emitting = false
+			get_tree().create_timer(1.6).timeout.connect(queue_free)
+
+
+func risveglio(chi: Entita, id: String, ms: float) -> void:
+	var cls := String(RISVEGLIO_DI.get(id, ""))
+	if chi == null or not PALETTE_RISVEGLIO.has(cls):
+		return
+	var vecchio := chi.get_node_or_null("risveglio")
+	if vecchio != null:
+		vecchio.name = "risveglio_vecchio"
+		vecchio.queue_free()
+	var pr: Array = PALETTE_RISVEGLIO[cls]
+	var g := Temporaneo.new()
+	g.name = "risveglio"
+	g.resto = ms / 1000.0
+	chi.add_child(g)
+	var h := chi.corpo.altezza if chi.corpo != null else 2.0
+	# lingue che salgono lungo il corpo
+	var su := Equip.particelle(g, 22, 0.42, 0.8, pr[0], pr[2], 0.85, cls == "ombra")
+	su.position = Vector3(0, 0.3, 0)
+	su.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	su.emission_sphere_radius = 0.45
+	su.direction = Vector3.UP
+	su.spread = 14.0
+	su.initial_velocity_min = 1.6
+	su.initial_velocity_max = 3.2
+	su.gravity = Vector3(0, 1.2, 0)
+	# faville (o stelle) che orbitano all'altezza del petto
+	var fa := Equip.particelle(g, 14, 0.2, 1.1, pr[1] if cls != "ombra" else pr[2], pr[0], 0.95)
+	fa.position = Vector3(0, h * 0.55, 0)
+	fa.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	fa.emission_ring_axis = Vector3.UP
+	fa.emission_ring_radius = 0.75
+	fa.emission_ring_inner_radius = 0.6
+	fa.emission_ring_height = h * 0.5
+	fa.direction = Vector3.UP
+	fa.spread = 40.0
+	fa.initial_velocity_min = 0.4
+	fa.initial_velocity_max = 1.2
+	if cls == "mistico" or cls == "monaco":
+		fa.material_override = Afflizioni.mat_stella().duplicate()
+		(fa.material_override as StandardMaterial3D).billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		(fa.material_override as StandardMaterial3D).vertex_color_use_as_albedo = true
+		(fa.material_override as StandardMaterial3D).albedo_color = Color.WHITE
+
+
 # ------------------------------------------------------------------ Ombra: kit a generatore e scarichi
 ## Ogni tecnica dell'Ombra ha il suo effetto, diverso con i pugnali (tagli d'ombra dal bordo acido, fumo viola, copie
 ## d'ombra, gocce di veleno) e con l'arco (frecce vere, scie d'aria, penne). Niente cerchi, rune o segni sul terreno:
@@ -1000,6 +1144,12 @@ func _arma_di(e: Entita) -> String:
 func _ombra_kit(c: Dictionary) -> void:
 	var da: Entita = c.da
 	var arco := _arma_di(da) == "bow"
+	if c.get("pot", false):
+		if arco:
+			_ombra_arco(c)
+		else:
+			_ombra_lame(c)
+		return
 	if arco:
 		var pv: Array = PALETTE.vento
 		c.colore = pv[0] if int(c.g) < 4 else (pv[0] as Color).lerp(ORO_PERFETTO, 0.35)

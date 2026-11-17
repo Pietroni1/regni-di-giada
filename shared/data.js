@@ -99,7 +99,7 @@ export const CLASSES = {
     desc: "Combattente con la spada, la classe più diretta. Squarcio e Fendente accumulano Ira e Impeto, il colpo finale li scarica; la Carica ti porta addosso al nemico e lo interrompe.",
     start: { vit: 5, str: 6, dex: 3, int: 2 }, hp: [130, 26, 22], mp: [0, 0, 0],
     primary: 'str', autoMagic: false, weapons: ['sword'], res: 'ira', autoRes: 7,
-    vie: ['fulmine', 'montagna'], pts: { name: 'Impeto', glyph: '▲' }, baseSkills: ['squarcio', 'fendente', 'affondo_ira', 'carica', 'grido_guerra'], startWeapon: 'spada_ferro', extraItems: [],
+    vie: ['fulmine', 'montagna'], pts: { name: 'Impeto', glyph: '▲' }, baseSkills: ['squarcio', 'fendente', 'affondo_ira', 'carica', 'grido_guerra', 'risveglio_drago'], startWeapon: 'spada_ferro', extraItems: [],
     look: { robe: 0x5b3a2c, trim: 0xb8a070, pants: 0x2e2620, armor: 0x8a8f96, hair: 0x1a1210, hairStyle: 'topknot' },
   },
   ombra: {
@@ -110,7 +110,7 @@ export const CLASSES = {
     flusso: 15, occasionePct: 14, ferita: { mult: [0.4, 0.02], dur: 10, every: 2 },
     start: { vit: 3, str: 4, dex: 7, int: 2 }, hp: [105, 21, 18], mp: [0, 0, 0],
     primary: 'dex', autoMagic: false, weapons: ['daggers', 'bow'], res: 'energia', pts: { name: 'Punti combo', glyph: '◆' },
-    vie: ['pugnali', 'arco'], baseSkills: ['colpo_rapido', 'taglio_gemello', 'colpo_gola', 'ventaglio', 'taglio_netto', 'velo_ombra'], startWeapon: 'pugnali_osso', extraItems: ['arco_bambu'],
+    vie: ['pugnali', 'arco'], baseSkills: ['colpo_rapido', 'taglio_gemello', 'colpo_gola', 'ventaglio', 'taglio_netto', 'velo_ombra', 'eclissi'], startWeapon: 'pugnali_osso', extraItems: ['arco_bambu'],
     look: { robe: 0x26293a, trim: 0x7a1e22, pants: 0x1c1e28, hair: 0x0e0e10, hairStyle: 'hood' },
   },
   monaco: {
@@ -118,7 +118,7 @@ export const CLASSES = {
     desc: 'Combatte a mani nude ed è la classe più tecnica: la sua Maestria premia chi alterna i colpi. Pugno e Calcio accumulano Chi e Sfere, il colpo finale li scarica; il Calcio Volante lo porta sul nemico.',
     start: { vit: 4, str: 5, dex: 4, int: 3 }, hp: [115, 24, 20], mp: [0, 0, 0],
     primary: 'str', autoMagic: false, weapons: ['fists'], res: 'chi', pts: { name: 'Sfere', glyph: '●' },
-    vie: ['ferro', 'loto'], baseSkills: ['pugno_ferro', 'calcio_gru', 'onda_chi', 'palmo_chi', 'calcio_volante', 'respiro_drago'], startWeapon: 'bende_seta', extraItems: [],
+    vie: ['ferro', 'loto'], baseSkills: ['pugno_ferro', 'calcio_gru', 'onda_chi', 'palmo_chi', 'calcio_volante', 'respiro_drago', 'cuore_sole'], startWeapon: 'bende_seta', extraItems: [],
     look: { robe: 0xc8681c, trim: 0x7a3b10, pants: 0x6a3a14, hair: null, hairStyle: 'bald' },
   },
   mistico: {
@@ -126,7 +126,7 @@ export const CLASSES = {
     desc: 'Incantatore con il bastone. Dardo e Sfera (brevi lanci, anche camminando) accumulano Cariche celesti, il colpo finale è istantaneo; il Passo di Luce lo sposta in un lampo. Può diventare guaritore.',
     start: { vit: 3, str: 2, dex: 3, int: 8 }, hp: [95, 19, 17], mp: [120, 14, 26],
     primary: 'int', autoMagic: true, weapons: ['staff'], res: 'mana', pts: { name: 'Cariche celesti', glyph: '✦' },
-    vie: ['tempesta', 'benedizione'], baseSkills: ['dardo_luce', 'sfera_celeste', 'lancia_luce', 'sigillo_silenzio', 'passo_luce', 'benedizione_astri'], startWeapon: 'bastone_salice', extraItems: [],
+    vie: ['tempesta', 'benedizione'], baseSkills: ['dardo_luce', 'sfera_celeste', 'lancia_luce', 'sigillo_silenzio', 'passo_luce', 'benedizione_astri', 'congiunzione'], startWeapon: 'bastone_salice', extraItems: [],
     look: { robe: 0xdcd6c4, trim: 0x2f6a8a, pants: 0xbab4a0, hair: 0x22201e, hairStyle: 'long' },
   },
 };
@@ -166,6 +166,14 @@ export const BUFFS = {
   occhio_ciclone: { name: 'Occhio del Ciclone', glyph: '旋', dur: 15, stats: { hastePct: [30, 1], dmgPct: [10, 0.5] }, desc: 'Rapidità e danni aumentati.' },
   benedizione: { name: 'Benedizione', glyph: '福', dur: 300, stats: { defPct: [12, 1.2], atkPct: [6, 0.6], matkPct: [6, 0.6] }, desc: 'Difesa e attacco aumentati.' },
   risonanza: { name: 'Risonanza', glyph: '響', dur: 8, proc: true, desc: 'Il prossimo colpo finale colpisce (o cura) ad area.' },
+  // Risvegli (cooldown offensivi di classe): per `dur` secondi i colpi base (ruolo `accumulo` o `base: true`) cambiano.
+  // risveglio: eco = dopo ogni colpo base un secondo colpo al N% · scoppio = il colpo base singolo esplode attorno al
+  // bersaglio · genPct = risorsa generata in più · gratis = i colpi base non costano risorsa · ptsExtra = Punti in più ·
+  // istantanei = i colpi base non hanno tempo di lancio. Le statistiche valgono per tutta la durata.
+  risveglio_drago: { name: 'Risveglio del Drago', glyph: '龍', dur: 12, stats: { dmgPct: [12, 0.4] }, risveglio: { eco: 60, genPct: 50 }, desc: 'Squarcio e Fendente colpiscono due volte e danno il 50% di Ira in più; tutti i danni aumentano.' },
+  eclissi: { name: 'Eclissi', glyph: '蝕', dur: 12, stats: { dmgPct: [10, 0.3] }, risveglio: { gratis: true, ptsExtra: 1, eco: 50 }, desc: 'Il Colpo Rapido non costa Energia e dà 3 Punti combo; Colpo Rapido e Taglio Gemello lasciano un taglio d\'eclissi in più; tutti i danni aumentano.' },
+  cuore_sole: { name: 'Cuore del Sole', glyph: '陽', dur: 12, stats: { dmgPct: [10, 0.3] }, risveglio: { scoppio: { raggio: 4.5, pct: 60 }, eco: 45, ptsExtra: 1 }, desc: 'Il Pugno di Ferro esplode in una vampa attorno al bersaglio e dà una Sfera in più; il Calcio della Gru colpisce due volte; tutti i danni aumentano.' },
+  congiunzione: { name: 'Congiunzione', glyph: '合', dur: 12, stats: { dmgPct: [6, 0.2] }, risveglio: { istantanei: true, eco: 35 }, desc: 'Dardo di Luce e Sfera Celeste sono istantanei e ognuno scaglia un secondo astro; tutti i danni aumentano.' },
   occasione: { name: 'Occasione', glyph: '機', dur: 8, proc: true, finaleGratis: true, desc: 'Il prossimo colpo finale non costa risorsa e vale come se avessi la Concentrazione piena. Per l\'Ombra: il prossimo scarico non consuma Punti combo.' },
   baluardo: { name: 'Baluardo', glyph: '塁', dur: 6, stats: { dmgTaken: [-25, -0.3] }, desc: 'Danni subiti ridotti.' },
   // potenziamenti di classe (uno per classe, livello 8; quelli con «gruppo» valgono anche per i compagni vicini)
@@ -215,6 +223,11 @@ export const SKILLS = {
   velo_ombra: { name: "Aura d'Ombra", cls: 'ombra', lvl: 8, type: 'aura', offgcd: true, aura: true, buff: 'velo_ombra', cd: 2, glyph: '幽', color: 0x7a5aa8, fx: 'buff_ombra', desc: "Aura: un velo di fumo scuro ti avvolge e resta acceso finché non lo spegni (o cadi). Critico e velocità di movimento aumentano. Premi di nuovo per spegnerla." },
   respiro_drago: { name: 'Aura del Drago', cls: 'monaco', lvl: 8, type: 'aura', offgcd: true, aura: true, buff: 'respiro_drago', cd: 2, glyph: '龍', color: 0xffb040, fx: 'buff_monaco', desc: "Aura: il chi ti arde attorno e resta acceso finché non lo spegni (o cadi). Sei più rapido e i tuoi colpi ti curano. Premi di nuovo per spegnerla." },
   benedizione_astri: { name: 'Aura degli Astri', cls: 'mistico', lvl: 8, type: 'aura', offgcd: true, aura: true, buff: 'benedizione_astri', gruppo: 20, cd: 2, glyph: '星', color: 0xbfe0ff, fx: 'buff_mistico', desc: "Aura: una corona di stelle ti gira attorno e resta accesa finché non la spegni (o cadi). Tu e i compagni di gruppo entro 20 metri avete attacco e rigenerazione aumentati. Premi di nuovo per spegnerla." },
+  // Risvegli: i cooldown offensivi (livello 12, un minuto di ricarica, fuori dal tempo globale)
+  risveglio_drago: { name: 'Risveglio del Drago', cls: 'lama', lvl: 12, type: 'buff', offgcd: true, risveglio: true, buff: 'risveglio_drago', cd: 60, glyph: '龍', color: 0xff5a2a, fx: 'risveglio', desc: 'RISVEGLIO (12 s): Squarcio e Fendente colpiscono due volte in rosso e oro e danno più Ira; tutti i danni aumentano.' },
+  eclissi: { name: 'Eclissi', cls: 'ombra', lvl: 12, type: 'buff', offgcd: true, risveglio: true, buff: 'eclissi', cd: 60, glyph: '蝕', color: 0xe8e8ff, fx: 'risveglio', desc: 'RISVEGLIO (12 s): il Colpo Rapido non costa Energia e dà 3 Punti combo; Colpo Rapido e Taglio Gemello lasciano un taglio bianco d\'eclissi in più; tutti i danni aumentano.' },
+  cuore_sole: { name: 'Cuore del Sole', cls: 'monaco', lvl: 12, type: 'buff', offgcd: true, risveglio: true, buff: 'cuore_sole', cd: 60, glyph: '陽', color: 0xfff0a0, fx: 'risveglio', desc: 'RISVEGLIO (12 s): il Pugno di Ferro esplode in una vampa bianca e oro attorno al bersaglio e dà una Sfera in più, il Calcio della Gru colpisce due volte; tutti i danni aumentano.' },
+  congiunzione: { name: 'Congiunzione', cls: 'mistico', lvl: 12, type: 'buff', offgcd: true, risveglio: true, buff: 'congiunzione', cd: 60, glyph: '合', color: 0xffe070, fx: 'risveglio', desc: 'RISVEGLIO (12 s): Dardo di Luce e Sfera Celeste diventano istantanei, dorati, e ognuno scaglia un secondo astro; tutti i danni aumentano.' },
   carica: { name: 'Carica Fulminea', cls: 'lama', lvl: 3, type: 'strike', dash: true, scatto: true, offgcd: true, interrupt: true, range: 14, dmg: 'phys', mult: [0.8, 0.04], gen: 20, stun: [1, 0.02], cd: 12, glyph: '馳', color: 0x9fd4ff, fx: 'dash', desc: 'Interruzione e scatto: carichi in linea retta e ti fermi davanti al bersaglio, spezzi il suo lancio e lo stordisci; ottieni 20 Ira.' },
   // Via del Fulmine
   lama_tuono: { name: 'Lama del Tuono', cls: 'lama', via: 'fulmine', lvl: 5, ruolo: 'potente', finale: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [3.0, 0.15], cost: 40, glyph: '雷', color: 0x9fd4ff, fx: 'lightning', desc: 'Colpo finale: un fulmine cala con la lama. Con la Risonanza le saette colpiscono tutti i nemici attorno al bersaglio.' },
@@ -227,7 +240,7 @@ export const SKILLS = {
   // ptsCost: Punti combo consumati. riduceCd: secondi tolti alle ricariche indicate. affligge: lascia Ferita (o Veleno).
   // bonusAfflitto: +% sui bersagli feriti/avvelenati. perAfflitto: +% per ogni nemico afflitto preso dall'area (fino a max).
   colpo_rapido: { name: 'Colpo Rapido', cls: 'ombra', lvl: 1, ruolo: 'accumulo', type: 'strike', range: 'weapon', dmg: 'phys', mult: [1.15, 0.058], cost: 40, pts: 2, affligge: true, glyph: '速', color: 0xd0d0e0, fx: 'slash', desc: 'Generatore: un colpo veloce. Spende Energia, dà 2 Punti combo e lascia una Ferita. A volte apre un\'Occasione (prossimo scarico gratuito).' },
-  taglio_gemello: { name: 'Taglio Gemello', cls: 'ombra', lvl: 2, ruolo: 'medio', type: 'strike', range: 'weapon', dmg: 'phys', mult: [0.95, 0.048], hits: 2, ptsCost: 1, affligge: true, riduceCd: { ids: ['taglio_netto', 'taglio_finale', 'freccia_perforante', 'danza_lame', 'pioggia_frecce'], s: 1 }, glyph: '双', color: 0xc8a8ff, fx: 'gemello', desc: 'Scarico rapido (1 Punto combo): due tagli incrociati. Ogni uso toglie 1 secondo alle ricariche del colpo pesante e della danza.' },
+  taglio_gemello: { name: 'Taglio Gemello', cls: 'ombra', lvl: 2, ruolo: 'medio', base: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [0.95, 0.048], hits: 2, ptsCost: 1, affligge: true, riduceCd: { ids: ['taglio_netto', 'taglio_finale', 'freccia_perforante', 'danza_lame', 'pioggia_frecce'], s: 1 }, glyph: '双', color: 0xc8a8ff, fx: 'gemello', desc: 'Scarico rapido (1 Punto combo): due tagli incrociati. Ogni uso toglie 1 secondo alle ricariche del colpo pesante e della danza.' },
   ventaglio: { name: 'Ventaglio di Lame', cls: 'ombra', lvl: 4, ruolo: 'medio', type: 'aoe_target', range: 'weapon', radius: 5, dmg: 'phys', mult: [1.2, 0.06], ptsCost: 2, affligge: true, perAfflitto: { pct: 12, max: 5 }, glyph: '扇', color: 0xa0d070, fx: 'ventaglio', desc: 'Scarico ad area (2 Punti combo): lame o frecce a ventaglio attorno al bersaglio. +12% per ogni nemico già ferito o avvelenato (fino a 5) e ferisce tutti quelli che prende.' },
   taglio_netto: { name: 'Taglio Netto', cls: 'ombra', lvl: 3, ruolo: 'potente', finoVia: true, type: 'strike', range: 'weapon', dmg: 'phys', mult: [3.1, 0.155], ptsCost: 2, cd: 8, affligge: true, bonusAfflitto: 20, glyph: '斬', color: 0xe06a4a, fx: 'pesante', desc: 'Colpo pesante (2 Punti combo): +20% sui bersagli feriti.' },
   colpo_gola: { name: 'Colpo alla Gola', cls: 'ombra', lvl: 3, type: 'strike', offgcd: true, interrupt: true, range: 'weapon', dmg: 'phys', mult: [0.6, 0.03], gen: 8, stun: [1, 0.02], cd: 12, glyph: '黙', color: 0xb08ae0, fx: 'mark', desc: "Interruzione: spezzi il lancio del bersaglio e lo stordisci. Funziona anche con l'arco." },

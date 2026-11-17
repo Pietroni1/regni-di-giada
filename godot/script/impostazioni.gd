@@ -8,6 +8,7 @@ var qualita := 2               # 0 bassa, 1 media, 2 alta
 var volume := 0.7              # 0..1
 var sensibilita := 1.0         # visuale col mouse
 var numeri_danno := true
+var contatore := true          # contatore dei danni visibile
 var server := "localhost:3000"
 var utente := ""
 var _tema: Theme
@@ -22,6 +23,7 @@ func _ready() -> void:
 		volume = c.get_value("audio", "volume", volume)
 		sensibilita = c.get_value("comandi", "sensibilita", sensibilita)
 		numeri_danno = c.get_value("comandi", "numeri_danno", numeri_danno)
+		contatore = c.get_value("comandi", "contatore", contatore)
 		server = c.get_value("accesso", "server", server)
 		utente = c.get_value("accesso", "utente", utente)
 		Tasti.carica(c)
@@ -35,6 +37,7 @@ func salva() -> void:
 	c.set_value("audio", "volume", volume)
 	c.set_value("comandi", "sensibilita", sensibilita)
 	c.set_value("comandi", "numeri_danno", numeri_danno)
+	c.set_value("comandi", "contatore", contatore)
 	c.set_value("accesso", "server", server)
 	c.set_value("accesso", "utente", utente)
 	Tasti.salva(c)

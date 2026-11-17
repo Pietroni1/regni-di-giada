@@ -370,6 +370,24 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   - Visto a schermo in gioco: le tecniche con i pugnali e il veleno sui fantocci; con l'arco frecce a coppia e perforante.
     **Non visti**: Pioggia di Frecce e Ventaglio con l'arco, Ferita (sangue) da vicino, stelle dello stordimento, il segno
     del tasto ripetuto, Flusso spezzato; PvP con il kit nuovo non misurato.
+- **Risvegli: i cooldown offensivi** (l'autore: «cooldown offensivi per tutte le classi: abilità che potenziano le abilità
+  base e le cambiano, cambiano colori ed effetti»). Una tecnica per classe, livello 12, in `baseSkills`: `type: 'buff'`,
+  `risveglio: true`, fuori dal tempo globale, ricarica 60 s, effetto di 12 s (stesso id per tecnica ed effetto).
+  `BUFFS[id].risveglio` dice come cambiano i colpi base (ruolo `accumulo` o `base: true`): `eco` (secondo colpo al N%),
+  `scoppio` (il colpo singolo esplode attorno al bersaglio), `genPct`, `gratis`, `ptsExtra`, `istantanei`; più `stats`
+  (`dmgPct`) per tutta la durata. In `resolveSkill`: `risv`, `scalaColpo`, e `pot: 1` nell'effetto `sk` del colpo base.
+  **Risveglio del Drago** (Lama: Squarcio e Fendente colpiscono due volte, +50% Ira; rosso e oro), **Eclissi** (Ombra:
+  Colpo Rapido gratuito e 3 Punti, un taglio in più anche sul Taglio Gemello; bianco lunare e cremisi), **Cuore del Sole**
+  (Monaco: il Pugno esplode attorno al bersaglio e dà una Sfera in più, il Calcio colpisce due volte; bianco e oro),
+  **Congiunzione** (Mistico: Dardo e Sfera istantanei e a coppie; oro). Client: `Effetti.PALETTE_RISVEGLIO`, `_potenziato`
+  (l'effetto in più per classe), `_risveglio_accendi`, `risveglio()` (il corpo arde finché dura: effetto `risveglio` con
+  `a`, `ms`, a tutti i vicini); ruolo «Risveglio» (tacca d'oro), i tasti dei colpi base hanno la cornice d'oro finché
+  dura, icone nuove. I bot di `sim` e `farming` lo usano appena pronto. Misura (60 s, velocità 4, una prova): Vie da
+  danno −5% … +3%, Montagna 65%, Benedizione 59%; i danni salgono di circa il 5% per tutti.
+- **Contatore dei danni** (`godot/script/contatore.gd`, tasto **N** rimappabile, visibile di base, scelta salvata):
+  si alimenta dagli effetti `hit` (nessun messaggio nuovo): danni al secondo, totale e quota di ogni giocatore in vista
+  (barre nel colore della classe), e le quattro tecniche proprie più pesanti. Vista «Scontro» (si chiude dopo 6 s senza
+  colpi) o «Totale» (clic per cambiare, clic destro per azzerare). Non conta le cure.
 - **Postura** di élite e boss: fatta (`shared/postura.js`, `colpisciPostura`/`tickPostura` nel server, barre nel client).
 - **Simulazione senza browser**: `npm run sim` (`tools/sim/simula.mjs`). Avvia da sé un server di prova, crea un personaggio
   per Via (livello, arma, punti statistica e abilità), lo porta davanti ai fantocci e gioca una rotazione sensata (tabella

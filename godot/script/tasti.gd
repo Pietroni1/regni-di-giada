@@ -35,6 +35,7 @@ const AZIONI := [
 	["mappa", "Mappa grande", "Finestre", KEY_M],
 	["diario", "Diario delle missioni", "Finestre", KEY_L],
 	["amici", "Amici", "Finestre", KEY_F],
+	["contatore", "Contatore dei danni", "Finestre", KEY_N],
 	["aiuto", "Comandi e aiuto", "Finestre", KEY_H],
 	["impostazioni", "Impostazioni", "Finestre", KEY_O],
 ]

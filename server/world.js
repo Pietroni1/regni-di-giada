@@ -1328,6 +1328,7 @@ export class World {
     if (!sk.cost) return 0;
     if (this.hasBuffWith(p, 'free', sk.id)) return 0;
     if (sk.finale && p.buffs.some(b => BUFFS[b.id].finaleGratis)) return 0;   // Occasione
+    if (sk.ruolo === 'accumulo' && p.buffs.some(b => BUFFS[b.id].risveglio && BUFFS[b.id].risveglio.gratis)) return 0;   // Risveglio
     let c = sk.cost;
     for (const b of p.buffs) { const cm = BUFFS[b.id].costMod; if (cm && cm[sk.id]) c += cm[sk.id]; }
     c = Math.max(0, c);
@@ -1414,7 +1415,8 @@ export class World {
     if (chk.err) return this.skfail(p, sid, chk.err);
     const gcd = sk.offgcd ? 0 : this.gcdMs(p);
     if (gcd) p.gcdUntil = t + gcd;
-    const castMs = sk.cast && !this.hasBuffWith(p, 'instant', sid) ? Math.round(sk.cast * 1000 / (1 + p.haste / 100)) : 0;
+    const svegliaIst = (sk.ruolo === 'accumulo' || sk.base) && p.buffs.some(b => BUFFS[b.id].risveglio && BUFFS[b.id].risveglio.istantanei);
+    const castMs = sk.cast && !svegliaIst && !this.hasBuffWith(p, 'instant', sid) ? Math.round(sk.cast * 1000 / (1 + p.haste / 100)) : 0;
     if (castMs > 0) {
       p.casting = { sid, tid, until: t + castMs, x: p.x, z: p.z };
       this.send(p, { t: 'cast', s: sid, ms: castMs, gcd });
@@ -1471,6 +1473,10 @@ export class World {
       else p.pts = Math.max(0, p.pts - sk.ptsCost);
       if ((p.supAt || 0) > NOW()) p.supAt -= sk.ptsCost * (SUPREMA.puntoS || 0) * 1000;
     }
+    // Risveglio (cooldown offensivo): i colpi base cambiano finché dura
+    const rb = p.buffs.find(b => BUFFS[b.id].risveglio);
+    const risv = rb && (sk.ruolo === 'accumulo' || sk.base) ? BUFFS[rb.id].risveglio : null;
+    let scalaColpo = 1;
     // Flusso: una tecnica di rotazione diversa dalla precedente fa più danni; ripeterla lo spezza
     const cls = CLASSES[p.cls];
     const rotazione = !!(cls.flusso && sk.ruolo);
@@ -1519,7 +1525,7 @@ export class World {
     };
     // finale: su un bersaglio vale di più per ogni punto di Concentrazione; con la Risonanza colpisce tutti ma meno forte
     const fin = sk.finale ? (ris ? COMBAT.risPct / 100 : 1 + n * COMBAT.concPct / 100) : 1;
-    const dmgFor = (tgt) => base * (sk.mult ? skillVal(sk.mult, lvl) : 0) * (sk.spend ? n : 1) * fin * (1 + pctFor(tgt) / 100);
+    const dmgFor = (tgt) => base * (sk.mult ? skillVal(sk.mult, lvl) : 0) * (sk.spend ? n : 1) * fin * scalaColpo * (1 + pctFor(tgt) / 100);
     let inflitti = 0;
     const opts = { sk: sid, ignoreDef: sk.ignoreDef, threat: sk.threat };
     // Postura: la riducono solo le tecniche che spendono risorsa o punti (costo nominale in % del massimo) e le Supreme
@@ -1539,6 +1545,7 @@ export class World {
       if (sk.slow) this.slow(tgt, sk.slow.dur);
     };
     const fxd = { k: 'sk', s: p.id, sk: sid, l: lvl };   // l: livello dell'abilità, per l'aspetto dell'effetto nel client
+    if (risv) fxd.pot = 1;                                // colpo base risvegliato: altri colori ed effetti nel client
     if (ris) fxd.ris = 1;                                 // finale ad area: il client lo mostra su tutta la zona
     switch (sk.type) {
       case 'strike': {
@@ -1612,6 +1619,7 @@ export class World {
       }
       case 'buff': {
         this.addBuff(p, sk.buff, lvl);
+        if (sk.risveglio) this.fx(p, { k: 'risveglio', s: p.id, a: sk.buff, ms: BUFFS[sk.buff].dur * 1000 });   // a tutti: il corpo arde finché dura
         if (sk.gruppo && p.party) {
           // potenziamenti di gruppo: anche i compagni vivi entro il raggio
           const party = this.parties.get(p.party);
@@ -1671,20 +1679,33 @@ export class World {
         break;
       }
     }
+    if (risv && offensive && sk.mult) {
+      const presi = [...colpiti].map(id => this.ents.get(id)).filter(Boolean);
+      if (risv.scoppio && sk.type === 'strike' && target) {
+        // il colpo singolo esplode attorno al bersaglio
+        scalaColpo = risv.scoppio.pct / 100;
+        for (const e of this.hostilesAround(p, target.x, target.z, risv.scoppio.raggio)) if (e !== target) strikeOne(e, 1);
+      } else if (risv.eco) {
+        // eco: un secondo colpo su chi è stato preso
+        scalaColpo = risv.eco / 100;
+        for (const e of presi) strikeOne(e, 1);
+      }
+      scalaColpo = 1;
+    }
     if (sk.waves > 1 && offensive) {
       const cx = sk.type === 'aoe_self' ? p.x : target.x, cz = sk.type === 'aoe_self' ? p.z : target.z;
       const dmg = base * skillVal(sk.mult, lvl) * (1 + (p.dmgPct + bonus + (inFlusso ? cls.flusso : 0) + areaAfflitti) / 100);
       for (let i = 1; i < sk.waves; i++) p.waves.push({ at: t + i * sk.waveGap * 1000, sid, x: cx, z: cz, tid: target ? target.id : 0, dmg, post: postDi(sk.radius ? 1 : (sk.hits || 1)) });
     }
     // generazione di risorsa e punti, effetti su di sé
-    if (sk.gen) this.giveRes(p, sk.gen);
+    if (sk.gen) this.giveRes(p, sk.gen * (risv && risv.genPct ? 1 + risv.genPct / 100 : 1));
     if (colpiti.size) {
       // più bersagli insieme e colpi critici rendono risorsa; ogni tecnica a segno alimenta lo Slancio
       if (colpiti.size > 1) this.giveRes(p, Math.min(BONUS_RISORSA.multiMax, (colpiti.size - 1) * BONUS_RISORSA.multi));
       if (crit) this.giveRes(p, BONUS_RISORSA.crit);
       this.gainSlancio(p);
     }
-    if (sk.pts) p.pts = Math.min(PTS_MAX, p.pts + sk.pts + (behind ? sk.behind.pts : 0));
+    if (sk.pts) p.pts = Math.min(PTS_MAX, p.pts + sk.pts + (behind ? sk.behind.pts : 0) + (risv && risv.ptsExtra ? risv.ptsExtra : 0));
     if (sk.risonanza && colpiti.size >= COMBAT.risMin) this.addBuff(p, 'risonanza', 1);
     if (affl) for (const id of colpiti) { const e = this.ents.get(id); if (e && this.canAttack(p, e)) this.applyDot(p, e, affl, lvl, 0, base, p.dmgPct); }
     if (rotazione) {
