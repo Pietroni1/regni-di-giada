@@ -164,12 +164,16 @@ function rotazione(S, c) {
 // Ventaglio contro un gruppo, Taglio Gemello per riempire, Colpo Rapido per i Punti; mai due volte la stessa tecnica.
 function ombra(S, c) {
   if (S.ok(S.sup)) return S.sup;
-  const pes = S.ok(c.pes) || !S.ok('taglio_netto') ? c.pes : 'taglio_netto';
-  const ordine = S.multi ? [c.dan, 'ventaglio', pes, 'taglio_gemello', 'colpo_rapido'] : [pes, c.dan, 'taglio_gemello', 'colpo_rapido'];
-  if (S.pts >= PTS_MAX - 1) ordine.splice(ordine.indexOf('colpo_rapido'), 1);
-  const pronti = ordine.filter((id) => S.ok(id));
-  const diversi = pronti.filter((id) => id !== S.ultimaTecnica);
-  return diversi[0] || pronti[0] || 'colpo_rapido';
+  const ese = S.sa(c.pes) ? c.pes : 'taglio_netto';
+  if (S.multi) {
+    // gruppo: la danza marchia tutti quattro volte, il Ventaglio aggiunge Marchi, poi l'Esecuzione li fa saltare a catena
+    if (S.marchi >= 3 && S.ok(ese)) return ese;
+    if (S.ok(c.dan)) return c.dan;
+    return S.ok('ventaglio') ? 'ventaglio' : 'colpo_rapido';
+  }
+  if ((S.marchi >= 5 || (S.b('occasione') && S.marchi >= 3)) && S.ok(ese)) return ese;
+  if (S.marchi < 2 && S.ok(c.dan)) return c.dan;       // da soli la danza serve a marchiare in fretta
+  return 'colpo_rapido';
 }
 // scatti: tecniche con `scatto` usate per raggiungere prima il bersaglio (Carica, Passo d'Ombra, Ala di Vento,
 // Calcio Volante, Passo di Luce) quando è a più di qualche metro.
@@ -290,7 +294,8 @@ class Bot {
         this.blocco[m.s] = 0;
         break;
       case 'cd': if (m.rid) { this.cds[m.s] = ora + m.ms; break; } this.usata(m, ora); break;   // rid: ricarica accorciata da un'uccisione
-      case 'fx': if (m.k === 'hit' && m.d === this.id && m.s !== this.id) { if (this.inCorso) this.subiti += m.v || 0; this.ostili.set(m.s, ora); } break;
+      case 'fx': if (m.k === 'marchi') { if (m.s === this.id) (this.marchi || (this.marchi = {}))[m.d] = m.n; break; }
+        if (m.k === 'hit' && m.d === this.id && m.s !== this.id) { if (this.inCorso) this.subiti += m.v || 0; this.ostili.set(m.s, ora); } break;
       case 'gain':
         if (!this.inCorso) break;
         if (m.exp) { this.exp += m.exp; this.uccisioni++; }
@@ -473,7 +478,7 @@ class Bot {
   stato(bers) {
     const ora = this.ora(), me = this.me, bot = this;
     return {
-      sup: this.sup, res: me.res, rmax: me.rmax, pts: me.pts, ultimoBase: this.ultimoBase, ultimaTecnica: this.ultimaTecnica,
+      sup: this.sup, res: me.res, rmax: me.rmax, pts: me.pts, marchi: (this.marchi || {})[bers && bers.id !== undefined ? bers.id : bers] || 0, sa: (id) => bot.conosce(id), ultimoBase: this.ultimoBase, ultimaTecnica: this.ultimaTecnica,
       multi: this.vicini(bers, 4.5) >= 3,
       b: (id) => Math.max(0, (bot.buffs[id] || 0) - ora),
       ok: (id) => {

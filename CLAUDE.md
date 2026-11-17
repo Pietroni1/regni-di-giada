@@ -337,39 +337,35 @@ dinamico e divertente, difficoltà delle classi progressiva. **Niente schivata p
   mostra i secondi e lampeggia «PRONTA» (`Hud._aggiorna_suprema`). GM `/suprema` la rende pronta.
   Misura (40 s, velocità 4, una prova, macchina carica): 1 bersaglio Vie da danno −4% … +5%, Montagna 67%, Benedizione
   60%, Suprema al 10-19% dei danni; 5 bersagli −12% … +11%, Suprema 8-31%. **Non visto a schermo** (macchina satura).
-- **Kit a generatore e scarichi — per ora solo l'Ombra** (richiesta dell'autore: «gameplay come quello di un monaco da
-  MMO: generazione e scarico di risorse con un bel flow, combinazioni dinamiche, effetti diversi per ogni tecnica, niente
-  linee per terra, gli effetti messi sui nemici si devono vedere sul nemico; parti dall'Ombra, poi le altre»). **Le altre
-  tre classi vanno ancora portate a questo schema** (hanno il kit della fase 4).
-  - Dati (`shared/data.js`): Energia 10/s. **Colpo Rapido** (generatore: 40 Energia, 2 Punti combo), **Taglio Gemello**
-    (1 Punto, due colpi; `riduceCd`: −1 s alle ricariche di colpo pesante e danza), **Ventaglio di Lame** (2 Punti, area;
-    `perAfflitto`: +12% per nemico già afflitto, fino a 5), colpo pesante (2 Punti, ricarica 8 s, `bonusAfflitto` +20%):
-    Taglio Netto (base) → **Morso della Vipera** (Pugnali, id `taglio_finale`) / Freccia Perforante (Arco), danza (3 Punti,
-    ricarica 18 s, 5 ondate su tutta la zona): **Danza delle Lame** / **Pioggia di Frecce** (livello 10). Campi nuovi:
-    `ptsCost` (Punti consumati; l'Occasione rende gratuito lo scarico), `affligge`, `riduceCd`, `bonusAfflitto`, `perAfflitto`.
-    Niente più `finale`/Risonanza per l'Ombra. `CLASSES.ombra`: `flusso: 15`, `occasionePct: 14`, `ferita`.
-  - **Flusso** (`resolveSkill`, `p.ultimaTecnica`): ogni tecnica con `ruolo` diversa dalla precedente fa +15%; ripeterla
-    toglie l'effetto `flusso` (fx `flusso` con `rotto: 1`). **Ferita** (effetto `ferita`, danni ogni 2 secondi) lasciata dalle
-    tecniche `affligge`; con la Via dei Pugnali diventa **Veleno** (maestria `veleno`, più forte). La Suprema torna prima
-    anche con i Punti spesi (`SUPREMA.puntoS` 0,8 s a Punto); Mille Ombre dà 2 Punti.
-  - **Effetti addosso ai nemici** (`godot/script/afflizioni.gd`, `Entita.afflizione`): il server manda a tutti i vicini
-    l'effetto `aff` (`a` = id, `ms`) per danni nel tempo, marchi e rallentamenti (`__lento`); lo stordimento usa `stun`.
-    Tipi: veleno (gocce e vapore verdi, bolle), sangue (gocce e nebbia rossa), stelle sopra la testa, brina, fuoco,
-    marchio. Durata in tempo di gioco (non d'orologio). Vale per tutte le classi (campo `tipo` in `BUFFS`, altrimenti dedotto).
-  - **Effetti delle tecniche** (`Effetti._ombra_kit`): diversi per tecnica e per arma (`_ombra_lame`: tagli d'ombra a X,
-    zanne, guizzi di fumo, coltelli lanciati a raggiera; `_ombra_arco`: frecce vere a coppia, freccia che trapassa, salve
-    dal cielo). `dardo()` = freccia o coltello con coda (al posto dei globi luminosi). **Niente segni a terra** per l'Ombra
-    (né `_firma`, né `_arricchisci`, né cerchio dell'aura): i gradi aggiungono colpi, non strati. Vale come regola per le
-    prossime classi.
-  - Interfaccia: rombi sul tasto = costo in Punti, tasto spento senza Punti, tasto appena usato velato (ripeterlo spezza
-    il Flusso), ruoli «Generatore» / «Scarico» / «Scarico pesante», icone nuove, paragrafo nell'aiuto (H).
-  - Bot: `ombra()` in `simula.mjs` e `farming.mjs` (pesante e danza appena pronti, Ventaglio sui gruppi, Gemello per
-    riempire, mai due volte la stessa). Misura (40 s, velocità 4, una prova): liv. 30 su 1 bersaglio Pugnali +4%, Arco +3%;
-    su 5 bersagli −6% / −7%; liv. 15 +8% / +1%; Suprema ogni 16 s. Energia al massimo il 38% del tempo (poco vincolante:
-    se serve più tensione, rigenerazione a 9). Farming zona media: 55-59 uccisioni/min, nessuna morte.
-  - Visto a schermo in gioco: le tecniche con i pugnali e il veleno sui fantocci; con l'arco frecce a coppia e perforante.
-    **Non visti**: Pioggia di Frecce e Ventaglio con l'arco, Ferita (sangue) da vicino, stelle dello stordimento, il segno
-    del tasto ripetuto, Flusso spezzato; PvP con il kit nuovo non misurato.
+- **Ombra: assassino a Marchi** (terza versione). Storia: il kit «generatore e scarichi a Punti combo con Flusso» è stato
+  **bocciato dall'autore** («non mi piace il gameplay, rifallo»: colpi senza impatto, non sembrava un assassino); ha scelto
+  «assassino a Marchi». **Non riproporre Flusso, Taglio Gemello, scarichi a Punti.** Le altre tre classi hanno ancora il kit
+  della fase 4: prima di portarle a uno schema nuovo chiedere all'autore.
+  - **Marchi** (`CLASSES.ombra.marchi = { max: 5, dur: 14 }`; `marchiDi`, `mettiMarchi`, `togliMarchi` in `server/world.js`;
+    stanno sul nemico in `e.marchi[idGiocatore]`): li incidono le tecniche con `marca: N` (anche a ogni ondata). Effetto
+    `marchi` a tutti i vicini (`d`, `s`, `n`, `ms`; `boom: N` quando esplodono). Con la Via dei Pugnali ogni Marchio avvelena.
+  - Tecniche: **Colpo Rapido** (12 Energia, 1 Marchio; 2 alle spalle o in Agguato: `behind.marchi`), **Esecuzione** (id
+    `taglio_netto`; con la Via **Morso della Vipera** `taglio_finale` / **Freccia Perforante**; `finale: true`, 25 Energia,
+    `esplode: { pct: 60, raggio: 6, catena: 60, energia: 25 }`: +60% per Marchio, i nemici marchiati entro 6 m saltano a
+    catena, se il bersaglio cade rende Energia e azzera le ricariche degli scatti), **Passo d'Ombra** (ora di base, livello
+    3, ricarica 8 s: alle spalle + effetto `agguato` per 5 s), **Ventaglio** (30 Energia, 1 Marchio a tutti), **Danza delle
+    Lame / Pioggia di Frecce** (livello 10, 4 ondate, un Marchio a ondata su tutta la zona, ricarica 16 s), Colpo alla Gola,
+    Ala di Vento (marca), Mille Ombre (`marca: 2`). Risveglio **Eclissi**: Colpo Rapido gratuito e un Marchio in più.
+    L'Occasione rende gratuita l'Esecuzione e vale come prima per il finale. I Punti combo non si usano più per l'Ombra.
+  - Client: schegge cremisi che girano attorno al nemico (`Afflizioni.marchi`, `Entita.marchi`), contatore «✦✦✦··» sotto
+    l'Energia per il bersaglio (`gioco.marchi_miei`), tasto dell'Esecuzione che lampeggia a 5 Marchi, esplosione
+    (`Effetti.esplosione_marchi`: i tagli si chiudono uno dopo l'altro, poi lo scoppio; scritta «ESECUZIONE ✦×N» e
+    fermo-immagine proporzionale). Restano gli effetti per tecnica e per arma (`_ombra_lame`, `_ombra_arco`, `dardo()`),
+    **senza segni a terra**, e gli **effetti addosso ai nemici** (`afflizioni.gd`: effetto `aff` per danni nel tempo, marchi
+    e rallentamenti; veleno, sangue, stelle dello stordimento, brina; valgono per tutte le classi).
+  - Bot (`ombra()` in `simula.mjs` e `farming.mjs`): Colpo Rapido fino a 5 Marchi poi Esecuzione; sui gruppi danza,
+    Ventaglio, Esecuzione a 3 Marchi. Misura (60 s, velocità 4, una prova): liv. 30 su 1 bersaglio Pugnali e Arco ±0%; su 5
+    bersagli +12% / +4%; liv. 15 +4% / −2%. Esecuzione a 5 Marchi ~2050 contro ~290 del Colpo Rapido (livello 40).
+    Farming zona media 60 uccisioni/min, nessuna morte.
+  - Prove a schermo: con `--fixed-fps` i Marchi (14 s d'orologio) scadevano fra un comando e l'altro: avviare il server
+    con l'orologio rallentato, `SIM_VELOCITA=0.06 node --import ./tools/sim/orologio.mjs server/index.js`.
+  - Visto in gioco (pugnali): Marchi sul nemico e nel riquadro, Agguato, Esecuzione a 5 Marchi, Danza e catena su 4
+    fantocci. **Non visti**: con l'arco, l'uccisione che rende il Passo d'Ombra, PvP, Marchi di due Ombre sullo stesso nemico.
 - **Risvegli: i cooldown offensivi** (l'autore: «cooldown offensivi per tutte le classi: abilità che potenziano le abilità
   base e le cambiano, cambiano colori ed effetti»). Una tecnica per classe, livello 12, in `baseSkills`: `type: 'buff'`,
   `risveglio: true`, fuori dal tempo globale, ricarica 60 s, effetto di 12 s (stesso id per tecnica ed effetto).

@@ -611,7 +611,7 @@ func aggiorna_io(io: Dictionary, nome: String) -> void:
 	risorsa.add_theme_stylebox_override("fill", stile(Dati.colore(R.get("color", "#888888")), Color(0, 0, 0, 0), 3))
 	risorsa_txt.text = "%s  %d / %d" % [R.get("name", ""), int(io.get("res", 0)), int(io.get("rmax", 100))]
 	var cls: Dictionary = Dati.CLASSES.get(gioco.classe, {})
-	if cls.has("pts"):
+	if cls.has("pts") and not cls.has("marchi"):
 		var n := int(io.get("pts", 0))
 		var g := String(cls.pts.glyph)
 		punti.text = g.repeat(n)
@@ -705,11 +705,27 @@ func _process(dt: float) -> void:
 			risvegliato = true
 		if String(bf.b) == "risonanza" or String(bf.b) == "occasione":
 			risonanza = true      # il finale lampeggia: Risonanza (ad area) o Occasione (gratuito e pieno)
+	# Ombra: al posto dei punti si vedono i Marchi incisi sul bersaglio
+	if Dati.CLASSES.get(String(gioco.classe), {}).has("marchi"):
+		var dtm := get_process_delta_time()
+		for idm in gioco.marchi_miei.keys():
+			gioco.marchi_miei[idm].resto = float(gioco.marchi_miei[idm].resto) - dtm
+			if float(gioco.marchi_miei[idm].resto) <= 0.0:
+				gioco.marchi_miei.erase(idm)
+		var nm := int(gioco.marchi_miei.get(b.id, {}).get("n", 0)) if b != null else 0
+		var testo_m := ""
+		for i in range(5):
+			testo_m += "✦" if i < nm else "·"
+		if punti.text != testo_m:
+			punti.text = testo_m
+			punti.add_theme_color_override("font_color", Color(1.0, 0.25, 0.35) if nm >= 5 else Color(0.95, 0.6, 0.65))
 	var con_flusso: bool = Dati.CLASSES.get(String(gioco.classe), {}).has("flusso")
 	for t in tasti:
 		var tt := t as Tasto
 		tt.tempo(ora, gioco.ricariche, gioco.gcd_fine, gioco.gcd_durata)
 		var acceso := (tt.ruolo == "interr" and sta_lanciando) or (tt.ruolo == "potente" and risonanza) or (tt.pts_costo > 0 and risonanza)
+		if tt.esplode and b != null and int(gioco.marchi_miei.get(b.id, {}).get("n", 0)) >= 5:
+			acceso = true
 		if risvegliato != tt.risvegliato and tt.base:
 			tt.risvegliato = risvegliato
 			tt.queue_redraw()
@@ -871,6 +887,7 @@ class Tasto:
 	var colore := Color(0.8, 0.8, 0.8)
 	var pts_costo := 0             # Punti consumati (scarichi dell'Ombra): disegnati come rombi sul tasto
 	var ripetuta := false          # è l'ultima tecnica usata: ripeterla spezza il Flusso
+	var esplode := false           # Esecuzione dell'Ombra: lampeggia con 5 Marchi sul bersaglio
 	var base := false              # colpo base (cambia durante il Risveglio)
 	var risvegliato := false       # Risveglio acceso: cornice d'oro
 	var spento := false            # risorsa insufficiente o non imparata
@@ -890,6 +907,7 @@ class Tasto:
 		nome = ""
 		ruolo = ""
 		spento = false
+		esplode = false
 		base = false
 		pts_costo = 0
 		tooltip_text = ""
@@ -907,6 +925,7 @@ class Tasto:
 			spento = costo > ho + 0.5
 			pts_costo = int(sk.get("ptsCost", 0))
 			base = String(sk.get("ruolo", "")) == "accumulo" or sk.get("base", false)
+			esplode = sk.has("esplode")
 			if pts_costo > int(io.get("pts", 0)):
 				var gratis := false
 				for bf in io.get("buffs", []):

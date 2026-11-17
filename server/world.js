@@ -679,7 +679,10 @@ export class World {
       for (const w of due) {
         const sk = SKILLS[w.sid], rad = sk.radius || 0;
         const list = rad ? this.hostilesAround(p, w.x, w.z, rad) : [this.ents.get(w.tid)].filter(e => this.canAttack(p, e));
-        for (const e of list) for (let i = 0; i < (rad ? 1 : (sk.hits || 1)); i++) if (this.canAttack(p, e)) this.hit(p, e, w.dmg * (1 + this.vulnFrom(e, p) / 100), { sk: w.sid, aoe: rad > 0, i, post: w.post });
+        for (const e of list) {
+          for (let i = 0; i < (rad ? 1 : (sk.hits || 1)); i++) if (this.canAttack(p, e)) this.hit(p, e, w.dmg * (1 + this.vulnFrom(e, p) / 100), { sk: w.sid, aoe: rad > 0, i, post: w.post });
+          if (sk.marca && sk.cls === p.cls) this.mettiMarchi(p, e, sk.marca, this.lvlOf(p, w.sid) || 1);
+        }
       }
     }
     // risorsa
@@ -1451,6 +1454,31 @@ export class World {
     }
   }
 
+  // ---- Marchi dell'Ombra: stanno sul nemico, per chi li ha incisi (shared/data.js, CLASSES.ombra.marchi)
+  marchiDi(e, p) {
+    const m = e && e.marchi && e.marchi[p.id];
+    return m && m.until > NOW() ? m.n : 0;
+  }
+
+  mettiMarchi(p, e, k, lvl = 1) {
+    const M = CLASSES[p.cls].marchi;
+    if (!M || !k || !this.canAttack(p, e)) return;
+    const n = Math.min(M.max, this.marchiDi(e, p) + k);
+    (e.marchi || (e.marchi = {}))[p.id] = { n, until: NOW() + M.dur * 1000 };
+    this.fx(e, { k: 'marchi', d: e.id, s: p.id, n, ms: M.dur * 1000 });
+    // Via dei Pugnali: ogni Marchio avvelena
+    const mae = p.ch.via && VIE[p.ch.via].maestria;
+    if (mae && mae.veleno) this.applyDot(p, e, { id: 'veleno', dot: mae.veleno }, lvl, 0, p.atk, p.dmgPct);
+  }
+
+  // l'Esecuzione consuma i Marchi: ritorna quanti erano; `boom` = effetto dell'esplosione nel client
+  togliMarchi(p, e) {
+    const n = this.marchiDi(e, p), cera = !!(e.marchi && e.marchi[p.id]);
+    if (e.marchi) delete e.marchi[p.id];
+    if (n || cera) this.fx(e, { k: 'marchi', d: e.id, s: p.id, n: 0, boom: n });
+    return n;
+  }
+
   // lanciata: la tecnica arriva dalla fine di un tempo di lancio vero (non resa istantanea da un effetto)
   resolveSkill(p, sid, tid, gcd, lanciata = false) {
     const sk = SKILLS[sid];
@@ -1525,7 +1553,7 @@ export class World {
     };
     // finale: su un bersaglio vale di più per ogni punto di Concentrazione; con la Risonanza colpisce tutti ma meno forte
     const fin = sk.finale ? (ris ? COMBAT.risPct / 100 : 1 + n * COMBAT.concPct / 100) : 1;
-    const dmgFor = (tgt) => base * (sk.mult ? skillVal(sk.mult, lvl) : 0) * (sk.spend ? n : 1) * fin * scalaColpo * (1 + pctFor(tgt) / 100);
+    const dmgFor = (tgt) => base * (sk.mult ? skillVal(sk.mult, lvl) : 0) * (sk.spend ? n : 1) * fin * scalaColpo * (sk.esplode ? 1 + this.marchiDi(tgt, p) * sk.esplode.pct / 100 : 1) * (1 + pctFor(tgt) / 100);
     let inflitti = 0;
     const opts = { sk: sid, ignoreDef: sk.ignoreDef, threat: sk.threat };
     // Postura: la riducono solo le tecniche che spendono risorsa o punti (costo nominale in % del massimo) e le Supreme
@@ -1678,6 +1706,33 @@ export class World {
         fxd.d = target.id;
         break;
       }
+    }
+    if (sk.esplode && target) {
+      // Esecuzione: i Marchi del bersaglio esplodono; se ce n'erano, saltano a catena quelli dei nemici marchiati vicini
+      const era = this.togliMarchi(p, target);
+      fxd.mk = era;
+      if (era) {
+        scalaColpo = sk.esplode.catena / 100;
+        for (const e of this.hostilesAround(p, target.x, target.z, sk.esplode.raggio)) {
+          if (e === target || !this.marchiDi(e, p)) continue;
+          strikeOne(e, 1);
+          this.togliMarchi(p, e);
+        }
+        scalaColpo = 1;
+      }
+      // assassinio riuscito: Energia resa e scatti di nuovo pronti
+      if ((target.kind === 'mob' && target.hp <= 0) || target.dead) {
+        this.giveRes(p, sk.esplode.energia || 0);
+        for (const id of Object.keys(p.cds)) {
+          if (!SKILLS[id] || !SKILLS[id].scatto || p.cds[id] <= t) continue;
+          p.cds[id] = t;
+          this.send(p, { t: 'cd', s: id, ms: 0, tot: SKILLS[id].cd * 1000, rid: 1 });
+        }
+      }
+    }
+    if (sk.marca && offensive) {
+      const k = sk.marca + (behind && sk.behind.marchi ? sk.behind.marchi : 0) + (risv && risv.marchiExtra ? risv.marchiExtra : 0);
+      for (const id of colpiti) this.mettiMarchi(p, this.ents.get(id), k, lvl);
     }
     if (risv && offensive && sk.mult) {
       const presi = [...colpiti].map(id => this.ents.get(id)).filter(Boolean);

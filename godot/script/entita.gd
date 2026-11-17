@@ -369,6 +369,19 @@ func afflizione(nome: String, ms: float) -> void:
 	_aff.metti(nome, ms)
 
 
+## Marchi dell'Ombra addosso (0 = tolti).
+func marchi(n: int, ms: float) -> void:
+	if morto and n > 0:
+		return
+	if _aff == null:
+		if n <= 0:
+			return
+		_aff = Afflizioni.new()
+		_aff.altezza = corpo.altezza if corpo != null else 2.0
+		add_child(_aff)
+	_aff.marchi(n, ms)
+
+
 func guarda(verso: Entita) -> void:
 	if verso != null:
 		r = atan2(verso.x - x, verso.z - z)

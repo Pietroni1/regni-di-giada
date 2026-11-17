@@ -1343,6 +1343,27 @@ func _scroscio(la: Vector3, R: float, col: Color, c2: Color, quante: int, ultima
 		polvere(la, R * 0.7, 14)
 
 
+## I Marchi esplodono (Esecuzione dell'Ombra): le schegge cremisi si chiudono sul nemico una dopo l'altra, poi lo scoppio.
+## Più Marchi, più grande: n = 1..5. Niente segni a terra.
+func esplosione_marchi(su: Entita, n: int) -> void:
+	if su == null:
+		return
+	var p := su.petto()
+	var rosso := Color(1.0, 0.12, 0.3)
+	var scuro := Color(0.08, 0.02, 0.1)
+	var k := float(clampi(n, 1, 5))
+	for i in range(int(k)):
+		var a := TAU * i / k + randf() * 0.4
+		_dopo(0.035 * i, taglio_ombra.bind(p, a, rosso, scuro, 2.0 + 0.25 * k, 2.0, 0.3, randf_range(-1.3, 1.3)))
+	var t0 := 0.035 * k + 0.03
+	_dopo(t0, bagliore.bind(p, Color(1.0, 0.85, 0.9), 1.6 + 0.9 * k, 0.22))
+	_dopo(t0, bagliore.bind(p, rosso, 2.4 + 1.1 * k, 0.35))
+	_dopo(t0, scintille.bind(p, rosso, 10 + int(8 * k), 6.0 + 1.6 * k, 0.55, -9.0, 0.14))
+	_dopo(t0, fumo.bind(p - Vector3(0, 0.3, 0), scuro, 4 + int(2 * k), 0.4 + 0.15 * k, 0.9, 1.3, 0.5))
+	_dopo(t0, petali.bind(p, rosso, 4 + int(3 * k), 0.4, 0.9, -1.2, Vector2(0.08, 0.3), true, rosso))
+	_dopo(t0, scuoti.bind(0.2 + 0.1 * k))
+
+
 ## Guizzo d'ombra da un punto a un altro: una fila di sbuffi di fumo scuro e scintille viola (una copia che attraversa).
 func _guizzo(da: Vector3, a: Vector3, scuro: Color, viola: Color) -> void:
 	var n := clampi(int((a - da).length() / 0.9), 3, 7)

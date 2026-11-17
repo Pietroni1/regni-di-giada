@@ -54,7 +54,7 @@ const MAPPA := {
 	"carica": ["fulmine", "carica"], "lama_tuono": ["fulmine", "lama_tuono"], "martello_monte": ["terra", "martello"],
 	"colpo_rapido": ["ombra", "colpo_rapido"], "ventaglio": ["ombra", "ventaglio"], "taglio_netto": ["ombra", "taglio_netto"],
 	"colpo_gola": ["sangue", "colpo_gola"], "taglio_finale": ["veleno", "morso_vipera"], "risveglio_drago": ["ira", "risv_drago"], "eclissi": ["neutro", "risv_eclissi"],
-	"cuore_sole": ["luce", "risv_sole"], "congiunzione": ["cielo", "risv_astri"], "taglio_gemello": ["ombra", "taglio_gemello"],
+	"cuore_sole": ["luce", "risv_sole"], "congiunzione": ["cielo", "risv_astri"], "taglio_gemello": ["ombra", "taglio_gemello"], "agguato": ["ombra", "passo_ombra"],
 	"danza_lame": ["ombra", "danza_lame"], "pioggia_frecce": ["vento", "pioggia_frecce"], "ferita": ["sangue", "ferita"], "flusso": ["ombra", "flusso"], "passo_ombra": ["ombra", "passo_ombra"],
 	"freccia_perforante": ["luce", "freccia_perf"], "occhio_falco": ["luce", "occhio"],
 	# scatti e mosse della fase «flow», potenziamenti di classe

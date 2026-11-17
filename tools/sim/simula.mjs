@@ -137,12 +137,16 @@ function rotazione(S, c) {
 // mai la stessa tecnica due volte di fila (Flusso), se c'è un'alternativa.
 function ombra(S, c) {
   if (S.ok(S.sup)) return S.sup;
-  const pes = S.sa(c.pes) ? c.pes : 'taglio_netto';
-  const ordine = S.multi ? [c.dan, 'ventaglio', pes, 'taglio_gemello', 'colpo_rapido'] : [pes, c.dan, 'taglio_gemello', 'colpo_rapido'];
-  if (S.pts >= PTS_MAX - 1) ordine.splice(ordine.indexOf('colpo_rapido'), 1);     // niente Punti sprecati
-  const pronti = ordine.filter((id) => S.ok(id));
-  const diversi = pronti.filter((id) => id !== S.ultimaTecnica);
-  return diversi[0] || pronti[0] || 'colpo_rapido';
+  const ese = S.sa(c.pes) ? c.pes : 'taglio_netto';
+  if (S.multi) {
+    // gruppo: la danza marchia tutti quattro volte, il Ventaglio aggiunge Marchi, poi l'Esecuzione li fa saltare a catena
+    if (S.marchi >= 3 && S.ok(ese)) return ese;
+    if (S.ok(c.dan)) return c.dan;
+    return S.ok('ventaglio') ? 'ventaglio' : 'colpo_rapido';
+  }
+  if ((S.marchi >= 5 || (S.b('occasione') && S.marchi >= 3)) && S.ok(ese)) return ese;
+  if (S.marchi < 2 && S.ok(c.dan)) return c.dan;       // da soli la danza serve a marchiare in fretta
+  return 'colpo_rapido';
 }
 
 // gcd: scelta a ogni GCD. fuori: tecniche fuori dal GCD, usate appena pronte se la condizione è vera
@@ -151,8 +155,8 @@ function ombra(S, c) {
 const ROTAZIONI = {
   fulmine: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'lama_tuono' }), fuori: { grido_guerra: () => true, carica: (S) => S.res <= S.rmax - 25 } },
   montagna: { distanza: 1.6, vitalita: 2 / 3, gcd: (S) => rotazione(S, { f1: 'squarcio', f2: 'fendente', fin: 'martello_monte' }), fuori: { grido_guerra: () => true, radici_monte: () => true, carica: (S) => S.res <= S.rmax - 25 } },
-  pugnali: { distanza: 1.6, gcd: (S) => ombra(S, { pes: 'taglio_finale', dan: 'danza_lame' }), fuori: { velo_ombra: () => true, passo_ombra: (S) => S.pts <= PTS_MAX - 2, colpo_gola: () => true } },
-  arco: { distanza: 10, gcd: (S) => ombra(S, { pes: 'freccia_perforante', dan: 'pioggia_frecce' }), fuori: { velo_ombra: () => true, ala_vento: (S) => S.pts <= PTS_MAX - 2, colpo_gola: () => true } },
+  pugnali: { distanza: 1.6, gcd: (S) => ombra(S, { pes: 'taglio_finale', dan: 'danza_lame' }), fuori: { velo_ombra: () => true, passo_ombra: () => true, colpo_gola: () => true } },
+  arco: { distanza: 10, gcd: (S) => ombra(S, { pes: 'freccia_perforante', dan: 'pioggia_frecce' }), fuori: { velo_ombra: () => true, ala_vento: () => true, colpo_gola: () => true } },
   ferro: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'raffica', ritmo: true }), fuori: { respiro_drago: (S) => S.pts <= PTS_MAX - 2, pelle_bronzo: () => true, calcio_volante: (S) => S.pts < PTS_MAX, palmo_chi: () => true } },
   loto: { distanza: 1.6, gcd: (S) => rotazione(S, { f1: 'pugno_ferro', f2: 'calcio_gru', fin: 'vortice_interiore' }), fuori: { respiro_drago: (S) => S.pts <= PTS_MAX - 2, meditazione: () => true, calcio_volante: (S) => S.pts < PTS_MAX, palmo_chi: () => true } },
   tempesta: { distanza: 12, gcd: (S) => rotazione(S, { f1: 'dardo_luce', f2: 'sfera_celeste', fin: 'giudizio_cielo' }), fuori: { benedizione_astri: () => true, occhio_ciclone: () => true, sigillo_silenzio: () => true } },
@@ -304,6 +308,7 @@ class Bot {
   }
 
   effetto(m, ora) {
+    if (m.k === 'marchi') { if (m.s === this.id) (this.marchi || (this.marchi = {}))[m.d] = m.n; return; }
     if (m.k === 'hit') {
       if (m.d === this.id && m.s !== this.id) { if (this.inCorso) this.subiti += m.v || 0; this.ostili.add(m.s); return; }
       if (m.s !== this.id || !this.inCorso || !this.bersagli.includes(m.d)) return;
@@ -427,7 +432,7 @@ class Bot {
   stato() {
     const ora = this.ora(), me = this.me, bot = this;
     return {
-      par: this.opt.par, sup: this.sup, res: me.res, rmax: me.rmax, pts: me.pts, multi: this.opt.bersagli > 1, catena: me.chain || 0, ultimo: this.ultimo, ultimoBase: this.ultimoBase, ultimaTecnica: this.ultimaTecnica,
+      par: this.opt.par, sup: this.sup, res: me.res, rmax: me.rmax, marchi: (this.marchi || {})[this.primo] || 0, pts: me.pts, multi: this.opt.bersagli > 1, catena: me.chain || 0, ultimo: this.ultimo, ultimoBase: this.ultimoBase, ultimaTecnica: this.ultimaTecnica,
       pct: (x) => me.rmax * x / 100,
       sa: (id) => bot.conosce(id),
       eta: (id) => (bot.ultimoUso[id] === undefined ? Infinity : ora - bot.ultimoUso[id]),

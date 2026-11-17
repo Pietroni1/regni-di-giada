@@ -63,6 +63,58 @@ func metti(nome: String, ms: float) -> void:
 	set_process(true)
 
 
+## Marchi dell'Ombra: n schegge cremisi che girano attorno al petto del nemico (0 = tolti).
+func marchi(n: int, ms: float) -> void:
+	if _attivi.has("marchi"):
+		(_attivi["marchi"].nodo as Node3D).queue_free()
+		_attivi.erase("marchi")
+	if n <= 0:
+		return
+	var g := Node3D.new()
+	g.set_meta("giro", 2.6)
+	g.position = Vector3(0, altezza * 0.62, 0)
+	var raggio := clampf(altezza * 0.3, 0.45, 1.2)
+	for i in range(n):
+		var perno := Node3D.new()
+		perno.rotation.y = TAU * i / float(n)
+		g.add_child(perno)
+		var mi := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(0.2, 0.52)
+		mi.mesh = q
+		mi.material_override = mat_marchio()
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.position = Vector3(raggio, 0, 0)
+		mi.rotation = Vector3(0, PI * 0.5, PI)        # la punta in giù, la lama rivolta al nemico
+		perno.add_child(mi)
+		var mi2 := MeshInstance3D.new()             # una seconda lamina di traverso: si vede da ogni lato
+		mi2.mesh = q
+		mi2.material_override = mat_marchio()
+		mi2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi2.position = Vector3(raggio, 0, 0)
+		mi2.rotation = Vector3(0, 0, PI)
+		perno.add_child(mi2)
+	add_child(g)
+	_attivi["marchi"] = {"resto": ms / 1000.0, "nodo": g}
+	set_process(true)
+
+
+static var _mat_marchio: StandardMaterial3D
+
+
+static func mat_marchio() -> StandardMaterial3D:
+	if _mat_marchio == null:
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.albedo_texture = Effetti._texture("petalo")
+		m.albedo_color = Color(1.0, 0.12, 0.3)
+		_mat_marchio = m
+	return _mat_marchio
+
+
 func togli_tutto() -> void:
 	for t in _attivi.keys():
 		(_attivi[t].nodo as Node3D).queue_free()

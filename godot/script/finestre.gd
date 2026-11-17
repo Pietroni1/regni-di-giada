@@ -848,11 +848,11 @@ Il colpo base singolo dà punti di Concentrazione: il finale fa più danni su un
 Il colpo base ad area, se prende 3 o più nemici, accende la RISONANZA: il prossimo finale colpisce tutti (il tasto lampeggia).
 OCCASIONE (il finale lampeggia): il prossimo finale è gratuito e a Concentrazione piena. Arriva a volte da un colpo base,
 sempre da un'interruzione riuscita e ogni 5 uccisioni di fila.
-OMBRA — generatore e scarichi: il Colpo Rapido spende Energia e dà 2 Punti combo; gli scarichi li consumano (i rombi
-sul tasto dicono quanti): Taglio Gemello (1), Ventaglio (2, sui gruppi), il colpo pesante (2, ricarica 8 s) e la danza (3,
-ricarica 18 s). Ogni Taglio Gemello accorcia di 1 s le due ricariche. FLUSSO: ogni tecnica diversa dalla precedente fa il
-15% in più; il tasto appena usato si scurisce, ripeterlo spezza il Flusso. Le tecniche lasciano FERITA (Veleno con i
-Pugnali): la vedi colare dal nemico, e colpo pesante e Ventaglio fanno più male a chi ce l'ha.
+OMBRA — assassino a Marchi: il Colpo Rapido incide Marchi sul nemico (schegge rosse che gli girano attorno, fino a 5; li
+conti anche sotto la tua Energia). Il Passo d'Ombra ti porta alle sue spalle in AGGUATO: il colpo dopo incide un Marchio in
+più, l'Esecuzione fa più male. L'ESECUZIONE fa esplodere tutti i Marchi insieme (+60% a Marchio: il tasto lampeggia a 5) e,
+se il nemico cade, ti rende Energia e il Passo d'Ombra. Sui gruppi: Ventaglio o Danza per marchiare tutti, poi
+un'Esecuzione li fa saltare a catena.
 RISVEGLIO (livello 12, tacca d'oro, un minuto di ricarica): per 12 secondi i tuoi colpi base cambiano colore ed effetto
 e colpiscono di più — la Lama colpisce due volte, l'Ombra genera gratis, il Pugno del Monaco esplode, il Mistico lancia
 senza attesa e a coppie. I tasti dei colpi base si accendono d'oro finché dura.

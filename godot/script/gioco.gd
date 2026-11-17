@@ -40,6 +40,7 @@ var _fermo_immagine := 0.0
 var cripta: Cripta = null
 var prova: Dictionary = {}         # ultimo stato della Prova del Sigillo (messaggio `dg`)
 var gruppo: Dictionary = {}        # ultimo messaggio `party`
+var marchi_miei: Dictionary = {}       # id del nemico → { n, resto }: i Marchi che ho inciso io (Ombra)
 var ultima_tecnica := ""               # ultima tecnica di rotazione usata (Flusso: ripeterla lo spezza)
 var effetti_bersagli: Dictionary = {}   # id → { nome effetto: millisecondi di fine } (ferite, veleni, marchi, stordimenti)
 var lanci_nemici: Dictionary = {}  # id → { nome, fine, durata }: lanci in corso di mostri e giocatori nemici (da interrompere)
@@ -327,6 +328,21 @@ func _su_fx(m: Dictionary) -> void:
 			if d != null:
 				d.afflizione("__stordito", float(m.get("ms", 1000)))
 				_segna_effetto(d.id, "__stordito", float(m.get("ms", 1000)))
+		"marchi":
+			# Marchi dell'Ombra su un nemico: si vedono addosso a lui; `boom` = l'Esecuzione li ha fatti esplodere
+			if d != null:
+				var quanti := int(m.get("n", 0))
+				d.marchi(quanti, float(m.get("ms", 14000)))
+				if s == me:
+					if quanti > 0:
+						marchi_miei[d.id] = {"n": quanti, "resto": float(m.get("ms", 14000)) / 1000.0}
+					else:
+						marchi_miei.erase(d.id)
+				if int(m.get("boom", 0)) > 0:
+					fx.esplosione_marchi(d, int(m.boom))
+					if s == me:
+						hud.numero(d.testa() + Vector3(0, 0.6, 0), "ESECUZIONE  ✦×%d" % int(m.boom), Color(1.0, 0.3, 0.4), 1.0 + 0.12 * int(m.boom))
+						_fermo_immagine = maxf(_fermo_immagine, 0.05 + 0.025 * int(m.boom))
 		"risveglio":
 			if s != null:
 				fx.risveglio(s, String(m.get("a", "")), float(m.get("ms", 12000)))
