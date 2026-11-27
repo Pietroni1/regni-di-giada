@@ -594,6 +594,24 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   (script `prendi.py`, tenuto nello scratchpad). Provato con Chromium senza scheda video (Playwright): accesso, elenco dei
   personaggi, ingresso nel mondo con terreno, piante, personaggio e interfaccia. **Non provati**: un browser vero con GPU
   (fluidità), suoni, tastiera e mouse in gioco, telefono, tunnel https.
+- **Pacchetto «gioca da solo»** (l'autore: l'amico deve poter giocare «da solo sul suo pc senza che io apra nulla»):
+  `npm run pacchetto` (`tools/pacchetto/solo.mjs`, dopo l'esportazione «Windows») → `esporta/solo/RegniDiGiada/` e
+  `esporta/RegniDiGiada-solo-windows.zip` (117 MB): l'eseguibile più la cartella `server_locale/` (`server/`, `shared/`,
+  `node_modules/ws` e il `node.exe` ufficiale 22.12 scaricato da nodejs.org con controllo dell'impronta, tenuto in
+  `esporta/cache/`). Opzioni: `--piattaforma linux` (copia il Node in uso), `--node file`, `--gm` (l'account interno ha
+  i comandi GM), `--niente-zip`. Client: `godot/script/solo.gd` (`Solo`): se accanto all'eseguibile c'è
+  `server_locale/server/index.js` la schermata iniziale mostra «Gioca» (e «Gioca in rete con gli amici…» per i soliti
+  campi); `Solo.avvia()` lancia Node senza finestra con `SOLO=1`, `PORT=31717` (se la porta è presa prova 31718 e 31719)
+  e `DB_FILE` nella cartella dei dati dell'utente (`…/app_userdata/Regni di Giada/salvataggi/solitaria.json`: i
+  personaggi restano quando si sostituisce la cartella del gioco), poi `principale.gd` riprova il collegamento finché
+  il server risponde (fino a 45 s) ed entra con l'account interno `giocatore` (creato alla prima partita). Server
+  (`SOLO` in `server/index.js`): ascolta solo su 127.0.0.1 (niente avviso del firewall), scrive in `server.log` accanto
+  ai salvataggi, si spegne salvando dopo 10 s senza nessuno collegato (120 s all'avvio); il gioco non lo uccide mai.
+  Prova automatica: `./RegniDiGiada.x86_64 -- --solo=Nome [--foto_inizio=1] --foto=cartella "--comandi=…"` (crea il
+  personaggio se manca ed entra). Provato col pacchetto Linux sotto `xvfb-run`: prima partita da zero, seconda col
+  personaggio già salvato, porta occupata da un altro programma, spegnimento del server alla chiusura.
+  **Non provato su Windows** (nel container non c'è né Windows né Wine): avvio di `node.exe` senza finestra, percorsi
+  con spazi o accenti, antivirus e SmartScreen sono da verificare sul PC dell'amico.
 - **Difetto delle esportazioni corretto**: `terreno.png`, `variazione.png` e il font venivano letti come file, ma
   l'esportazione tiene solo le risorse importate: negli eseguibili (e nel browser) il terreno restava senza texture e il
   font era quello predefinito. Ora `Mondo.leggi_immagine` e `Impostazioni._metti_font` ripiegano sulla risorsa importata.

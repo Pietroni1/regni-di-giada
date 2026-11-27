@@ -9,7 +9,8 @@
     "sim": "node tools/sim/simula.mjs",
     "farming": "node tools/sim/farming.mjs",
     "godot:dati": "node tools/godot/esporta.mjs",
-    "web:comprimi": "node tools/web/comprimi.mjs"
+    "web:comprimi": "node tools/web/comprimi.mjs",
+    "pacchetto": "node tools/pacchetto/solo.mjs"
   },
   "dependencies": {
     "three": "0.170.0",

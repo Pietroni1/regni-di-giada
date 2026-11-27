@@ -24,6 +24,14 @@ Le preimpostazioni sono già in `export_presets.cfg` (includono la cartella `dat
   3. mettere il server su una macchina in rete sempre accesa (serve solo Node.js).
 Il client ricorda l'ultimo server e l'ultimo account usati.
 
+**Da soli, senza server da tenere acceso: il pacchetto «gioca da solo».** Dopo l'esportazione «Windows»,
+`npm.cmd run pacchetto` prepara `esporta/RegniDiGiada-solo-windows.zip` (circa 120 MB): dentro ci sono il gioco e la
+cartella `server_locale` con il server e un Node già pronto. Chi lo riceve estrae lo zip, apre `RegniDiGiada.exe` e
+preme «Gioca»: il gioco avvia da sé il suo mondo sul computer (nessuna finestra in più, niente da installare, niente
+Internet) e lo spegne quando si chiude. I personaggi stanno in `%APPDATA%\Godot\app_userdata\Regni di Giada\salvataggi`
+e restano quando si sostituisce la cartella con una versione nuova. È una partita a parte: quei personaggi non sono
+quelli del tuo server. Dalla stessa schermata «Gioca in rete con gli amici…» porta ai soliti campi (server, account).
+
 **Senza installare niente: dal browser.** Lo stesso client si esporta anche per il browser (preimpostazione «Web»,
 cartella `web/` accanto a `server/`, fuori da git perché pesa 100 MB). Il server del gioco la serve da solo: chi gioca
 apre `http://INDIRIZZO:3000/gioca`, crea l'account ed entra — nessun programma da scaricare, il server è quello della

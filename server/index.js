@@ -25,12 +25,27 @@ const DEFAULT_CONFIG = {
 const cfg = { ...DEFAULT_CONFIG, ...(fs.existsSync(CONFIG_FILE) ? JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) : {}) };
 cfg.rates = { ...DEFAULT_CONFIG.rates, ...cfg.rates };
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : cfg.port;
+// Partita in solitaria (SOLO=1, lo mette il gioco quando avvia da sé il server che ha accanto: vedi godot/script/solo.gd):
+// si ascolta solo su questo computer (niente avviso del firewall), ci si spegne da soli quando il gioco si chiude e,
+// siccome non c'è una finestra, quello che il server scrive finisce in un file accanto ai salvataggi.
+const SOLO = process.env.SOLO === '1';
 // account GM in più solo per i server di prova (tools/prove): non finiscono in config.json
 const GM_PROVE = String(process.env.GM_ACCOUNTS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 const saveConfig = () => fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2) + '\n');
 if (!fs.existsSync(CONFIG_FILE)) saveConfig();
 
-const db = new DB(process.env.DB_FILE || path.join(ROOT, 'data', 'db.json'));
+const DB_FILE = process.env.DB_FILE || path.join(ROOT, 'data', 'db.json');
+if (SOLO) {
+  const diario = path.join(path.dirname(DB_FILE), 'server.log');
+  try { fs.mkdirSync(path.dirname(diario), { recursive: true }); fs.writeFileSync(diario, ''); } catch { /* senza diario si gioca lo stesso */ }
+  const scrivi = (...a) => {
+    try { fs.appendFileSync(diario, a.map(x => (x instanceof Error ? x.stack : typeof x === 'string' ? x : JSON.stringify(x))).join(' ') + '\n'); } catch { /* disco pieno o cartella sparita */ }
+  };
+  console.log = scrivi;
+  console.error = scrivi;
+  process.on('uncaughtException', (e) => { scrivi('Errore non gestito', e); process.exit(1); });
+}
+const db = new DB(DB_FILE);
 const world = new World(db, cfg, saveConfig);
 world.start();
 
@@ -183,12 +198,28 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-server.listen(PORT, () => {
+if (SOLO) {
+  // nessuno collegato: all'avvio si aspetta il gioco per due minuti, poi bastano 10 secondi senza nessuno (il gioco è
+  // stato chiuso). Chi si ricollega nel frattempo trova il server ancora in piedi e l'attesa riparte.
+  let vuotoDa = Date.now(), visto = false;
+  setInterval(() => {
+    if (wss.clients.size > 0) { vuotoDa = Date.now(); visto = true; return; }
+    if (Date.now() - vuotoDa > (visto ? 10000 : 120000)) shutdown();
+  }, 1000);
+}
+
+server.on('error', (e) => {
+  // porta già occupata (un altro server, o un altro programma): si esce con un codice riconoscibile
+  console.error(e.code === 'EADDRINUSE' ? `La porta ${PORT} è già occupata.` : e);
+  process.exit(e.code === 'EADDRINUSE' ? 3 : 1);
+});
+server.listen(PORT, SOLO ? '127.0.0.1' : undefined, () => {
   console.log('=====================================================');
   console.log('  Regni di Giada — server avviato');
   console.log('=====================================================');
   console.log(`  Su questo computer:   http://localhost:${PORT}`);
-  for (const list of Object.values(os.networkInterfaces())) {
+  if (SOLO) console.log('  Partita in solitaria: si ascolta solo su questo computer, ci si spegne quando il gioco si chiude.');
+  for (const list of SOLO ? [] : Object.values(os.networkInterfaces())) {
     for (const a of list || []) if (a.family === 'IPv4' && !a.internal) console.log(`  In rete locale:       http://${a.address}:${PORT}`);
   }
   console.log(`  Account GM: ${cfg.gmAccounts.join(', ')}  (modificabili in server/config.json)`);

@@ -18,6 +18,11 @@ var scelta_classe: OptionButton
 var scelta_regno: OptionButton
 var scelta_sesso: OptionButton
 var _registra := false
+var riq_solo: Control          # partita in solitaria (c'è solo se accanto all'eseguibile sta il server: vedi solo.gd)
+var _solo := false             # il collegamento in corso è verso il server interno
+var _solo_da := 0              # quando è partito il tentativo (ms)
+var _solo_registrato := false
+var _dentro := false           # accesso riuscito
 var _arg: Dictionary = {}
 var messaggio_iniziale := ""
 
@@ -29,12 +34,22 @@ func _ready() -> void:
 	_interfaccia()
 	Rete.aperta.connect(_connesso)
 	Rete.chiusa.connect(_disconnesso)
-	Rete.su("auth_err", func(m: Dictionary) -> void: messaggio.text = String(m.get("m", "")))
+	Rete.su("auth_err", func(m: Dictionary) -> void:
+		if _solo and not _dentro and not _solo_registrato:
+			# prima partita su questo computer: l'account interno non c'è ancora
+			_solo_registrato = true
+			Rete.manda({"t": "register", "user": Solo.UTENTE, "pass": Solo.PASSWORD})
+			return
+		messaggio.text = String(m.get("m", "")))
 	Rete.su("auth_ok", func(_m: Dictionary) -> void:
-		Impostazioni.server = campo_server.text.strip_edges()
-		Impostazioni.utente = campo_utente.text.strip_edges()
-		Impostazioni.salva()
+		_dentro = true
+		if not _solo:
+			Impostazioni.server = campo_server.text.strip_edges()
+			Impostazioni.utente = campo_utente.text.strip_edges()
+			Impostazioni.salva()
 		riq_accesso.visible = false
+		if riq_solo != null:
+			riq_solo.visible = false
 		riq_scelta.visible = true
 		messaggio.text = "")
 	Rete.su("chars", _su_personaggi)
@@ -46,6 +61,13 @@ func _ready() -> void:
 		if _arg.has("server"):
 			campo_server.text = String(_arg.server)
 		_accedi(false)
+	elif _arg.has("solo") and Solo.disponibile():
+		# prove automatiche del pacchetto: --solo=NomePersonaggio [--foto_inizio=1 fotografa prima la schermata]
+		if _arg.has("foto_inizio"):
+			await get_tree().process_frame
+			await get_tree().process_frame
+			await _foto("solo_inizio")
+		_gioca_solo()
 
 
 func _interfaccia() -> void:
@@ -76,7 +98,24 @@ func _interfaccia() -> void:
 	messaggio.add_theme_color_override("font_color", Color(1.0, 0.55, 0.45))
 	messaggio.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
+	if Solo.disponibile() and not _arg.has("server"):
+		# pacchetto «gioca da solo»: un tasto e basta; i campi del server restano per chi vuole giocare in rete
+		riq_solo = VBoxContainer.new()
+		riq_solo.add_theme_constant_override("separation", 10)
+		col.add_child(riq_solo)
+		var nota := Label.new()
+		nota.text = "Partita in solitaria: il mondo gira su questo computer.\nNon serve Internet e non c'è niente da installare."
+		nota.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nota.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		riq_solo.add_child(nota)
+		var gioca := _bottone(riq_solo, "Gioca", _gioca_solo)
+		gioca.custom_minimum_size = Vector2(0, 48)
+		gioca.add_theme_font_size_override("font_size", 22)
+		_bottone(riq_solo, "Gioca in rete con gli amici…", func() -> void:
+			riq_solo.visible = false
+			riq_accesso.visible = true)
 	riq_accesso = VBoxContainer.new()
+	riq_accesso.visible = riq_solo == null
 	col.add_child(riq_accesso)
 	campo_server = _campo(riq_accesso, "Server (chi ospita la partita: localhost:3000 sul suo PC, altrimenti il suo indirizzo)", Impostazioni.server)
 	if OS.has_feature("web"):
@@ -92,6 +131,11 @@ func _interfaccia() -> void:
 	riq_accesso.add_child(riga)
 	_bottone(riga, "Entra", func() -> void: _accedi(false))
 	_bottone(riga, "Crea account", func() -> void: _accedi(true))
+	if riq_solo != null:
+		_bottone(riq_accesso, "← Partita in solitaria", func() -> void:
+			riq_accesso.visible = false
+			riq_solo.visible = true
+			messaggio.text = "")
 
 	riq_scelta = VBoxContainer.new()
 	riq_scelta.visible = false
@@ -146,18 +190,70 @@ func _bottone(genitore: Control, testo: String, azione: Callable) -> Button:
 
 func _accedi(registra: bool) -> void:
 	_registra = registra
+	_solo = false
 	messaggio.text = "Connessione..."
 	Rete.connetti(campo_server.text)
 
 
+## Partita in solitaria: avvia il server che sta accanto all'eseguibile e ci si collega appena risponde.
+func _gioca_solo() -> void:
+	if _solo and not _dentro and Time.get_ticks_msec() - _solo_da < 45000 and _solo_da > 0:
+		return                 # già in corso (secondo clic)
+	_solo = true
+	_solo_registrato = false
+	_solo_da = Time.get_ticks_msec()
+	messaggio.text = "Preparo il mondo..."
+	Solo.avvia()
+	Rete.connetti(Solo.indirizzo())
+
+
+## Il server interno non ha (ancora) risposto: di solito sta finendo di avviarsi, e allora si riprova.
+func _riprova_solo() -> void:
+	if not Solo.in_piedi():
+		# il processo non c'è più: porta presa da un altro programma (si prova la successiva) oppure non parte proprio
+		if not Solo.porta_successiva() or not Solo.avvia():
+			_solo_fallito()
+			return
+	elif Time.get_ticks_msec() - _solo_da > 45000:
+		_solo_fallito()
+		return
+	await get_tree().create_timer(0.4).timeout
+	if _solo and not _dentro:
+		Rete.connetti(Solo.indirizzo())
+
+
+func _solo_fallito() -> void:
+	_solo = false
+	_solo_da = 0
+	Solo.porta = Solo.PORTA
+	messaggio.text = "Il mondo non si avvia. Controlla che la cartella «server_locale» sia accanto al gioco (va estratto tutto lo zip) e che l'antivirus non abbia bloccato node.exe.\nDettagli: %s" % Solo.cartella_salvataggi().path_join("server.log")
+
+
 func _connesso() -> void:
+	if _solo:
+		Rete.manda({"t": "login", "user": Solo.UTENTE, "pass": Solo.PASSWORD})
+		return
 	Rete.manda({"t": "register" if _registra else "login", "user": campo_utente.text.strip_edges(), "pass": campo_pass.text})
 
 
 func _disconnesso() -> void:
+	if _solo and not _dentro:
+		_riprova_solo()
+		return
 	messaggio.text = "Il server %s non risponde. È avviato? (npm.cmd start sul PC di chi ospita)" % campo_server.text
 	if OS.has_feature("web"):
 		messaggio.text = "Il server non risponde: riprova fra poco o ricarica la pagina."
+	if _solo:
+		messaggio.text = "Il mondo si è fermato. Premi di nuovo Gioca."
+	if _dentro and gioco == null:
+		# caduto dalla scelta del personaggio: si torna all'inizio
+		_dentro = false
+		_solo = false
+		riq_scelta.visible = false
+		if riq_solo != null:
+			riq_solo.visible = true
+		else:
+			riq_accesso.visible = true
 	if gioco != null:
 		gioco.queue_free()
 		gioco = null
@@ -172,6 +268,14 @@ func _su_personaggi(m: Dictionary) -> void:
 		elenco.add_item("%s  —  %s livello %d  (%s)" % [c.name, Dati.CLASSES[c.cls].name, int(c.lvl), Dati.KINGDOMS[c.kd].short])
 	if not personaggi.is_empty():
 		elenco.select(0)
+	if _arg.has("solo") and _solo and gioco == null:
+		# prova automatica del pacchetto: alla prima partita crea il personaggio, poi entra
+		if personaggi.is_empty():
+			Rete.manda({"t": "create", "name": String(_arg.solo), "cls": "lama", "kd": Dati.KINGDOMS.keys()[0], "sex": "m"})
+		else:
+			elenco.select(0)
+			_gioca()
+		return
 	if _arg.has("auto") and gioco == null:
 		var voluto := String(_arg.auto).split(":")[2] if String(_arg.auto).split(":").size() > 2 else ""
 		for i in range(personaggi.size()):
