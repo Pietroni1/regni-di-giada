@@ -1,5 +1,6 @@
 // Geografia del mondo, condivisa da server e client.
 // Tutto è deterministico: server e client calcolano esattamente lo stesso terreno.
+import { MAPPE_X, altezzaMappa, zonaSicuraMappa, zonaMappa } from './mappe.js';
 
 export const WORLD_HALF = 300;
 export const PLAY_LIMIT = 280;
@@ -107,6 +108,9 @@ export const VILLAGE_LAYOUT = {
     { role: 'guardia', x: 5, z: 36.5, face: 0 },
     { role: 'stalliere', x: -31, z: -3.5, face: Math.PI / 2 },
     { role: 'custode', x: 7.5, z: -18.4, face: 0 },
+    { role: 'guida', x: 31, z: -3.5, face: -Math.PI / 2 },   // viaggi verso le mappe lontane (shared/mappe.js)
+    { role: 'scrivano', x: -6.5, z: 9, face: Math.PI / 2 },   // incarichi giornalieri (shared/missioni.js)
+    { role: 'magazziniere', x: 6.5, z: 9, face: -Math.PI / 2 },   // deposito dell'account (shared/sociale.js)
   ],
   lanterns: [[-4, 18], [4, 18], [-4, 28], [4, 28], [-14, -8], [14, -8], [-14, 8], [14, 8]],
   trees: [[-28, -25], [28, -25], [-12, 25], [12, 25], [-30, 28], [30, 28]],
@@ -182,7 +186,7 @@ export function roadDistance(x, z) {
 export const DUNGEON_X = 800; // oltre questa x ci sono le istanze delle Prove (pavimento piatto)
 
 export function heightAt(x, z) {
-  if (x > DUNGEON_X) return 0;
+  if (x > DUNGEON_X) return x > MAPPE_X ? altezzaMappa(x, z) : 0;   // oltre: cripta piatta, poi le mappe lontane
   let h = (fbm(x * 0.011, z * 0.011, 4, 11) - 0.43) * 30;
   h += (fbm(x * 0.045 + 100, z * 0.045 - 50, 2, 5) - 0.5) * 3;
   const edge = Math.max(Math.abs(x), Math.abs(z));
@@ -206,6 +210,7 @@ export function heightAt(x, z) {
 const RING_NAMES = { fenice: 'Piana dei Ciliegi Rossi', tigre: 'Boschi del Sussurro', drago: 'Riva delle Gru' };
 
 export function safeZoneAt(x, z) {
+  if (x > MAPPE_X) return zonaSicuraMappa(x, z);
   for (const kid of KINGDOM_IDS) {
     const v = KINGDOMS[kid].village;
     if (Math.hypot(x - v.x, z - v.z) < SAFE_RADIUS) return kid;
@@ -214,6 +219,7 @@ export function safeZoneAt(x, z) {
 }
 
 export function zoneAt(x, z) {
+  if (x > MAPPE_X) return zonaMappa(x, z);
   if (x > DUNGEON_X) return { name: 'Cripta delle Mille Lanterne', dungeon: true };
   const safe = safeZoneAt(x, z);
   if (safe) return { name: KINGDOMS[safe].villageName, safe };

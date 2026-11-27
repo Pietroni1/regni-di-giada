@@ -3,16 +3,25 @@
 import {
   CLASSES, VIE, SKILLS, BUFFS, RESOURCES, ITEMS, MOBS, UPGRADE, SHOPS, NPC_ROLES, WEAPON_TYPES, GUARD_LINES,
   INV_SIZE, QB_SIZE, STACK_MAX, STAT_MAX, EQUIP_SLOTS, MAX_LEVEL, VIA_LEVEL, SKILL_MAX_POINTS, SKILL_MAX, BOOK_CHANCE,
-  PTS_MAX, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, weeklyAffixes, trialScale, keyChange, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES,
-  expToNext, skillVal, upgradedStat, equipSlotOf, SLANCIO, BONUS_RISORSA, SUPREMA,
+  PTS_MAX, COMBAT, dungeonWalkable, GCD_MS, GCD_MIN_MS, DATA_VERSION, MOUNT_SKILLS, HORSE, DUNGEON, AFFIXES, activeAffixes, weeklyAffixes, trialScale, keyChange, RARITIES, RARITY_WEIGHTS, BONUS_STATS, TIER_SCALE, GEM_TYPES, PROVE,
+  expToNext, skillVal, upgradedStat, equipSlotOf, SLANCIO, BONUS_RISORSA, SUPREMA, SERIE,
 } from '../shared/data.js';
 import {
   KINGDOMS, KINGDOM_IDS, CENTER, heightAt, villageFrame, toWorld, VILLAGE_LAYOUT, safeZoneAt, villageSpawn,
   PLAY_LIMIT, mulberry32, DUNGEON_X,
 } from '../shared/world.js';
 import { POSTURA, posturaBase, posturaColpo } from '../shared/postura.js';
+import { installaMappe, MAPPE, arrivoMappa } from './mappe.js';
+import { installaBottino } from './bottino.js';
+import { installaMissioni } from './missioni.js';
+import { installaAltoLivello, radureBoss } from './altolivello.js';
+import { installaSociale } from './sociale.js';
 
 const VIEW = 105;
+const SEP_BRANCHI = 22;          // metri minimi fra due branchi
+const RAGGIO_BRANCO = 10;        // metri entro cui i compagni accorrono se ne colpisci uno
+const RAGGIO_DISPERSIONE = 3.4;  // raggio entro cui compaiono i mostri di un branco
+const RIENTRO_MS = 5 * 60000;    // chi si disconnette ritrova gruppo e Prova se rientra entro 5 minuti
 const NOW = () => Date.now();
 const rand = (a, b) => a + Math.random() * (b - a);
 const randi = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
@@ -29,12 +38,6 @@ function expMod(plvl, mlvl) {
 }
 
 // ------------------------------------------------------------------ oggetti con rarità e bonus
-const GEAR_BY_TIER = {};
-for (const [id, it] of Object.entries(ITEMS)) {
-  if (!equipSlotOf(it)) continue;
-  (GEAR_BY_TIER[it.tier] || (GEAR_BY_TIER[it.tier] = [])).push(id);
-}
-function tierForLevel(l) { return l < 10 ? 1 : l < 20 ? 2 : l < 30 ? 3 : 4; }
 
 export function rollRarity(source) {
   const w = RARITY_WEIGHTS[source] || RARITY_WEIGHTS.mob;
@@ -98,9 +101,21 @@ function defaultQuickbar(ch) {
   ch.qb[QB_SIZE - 1] = { k: 'i', id: c.res === 'mana' ? 'loto_p' : 'pergamena_ritorno' };
 }
 
+// Tecniche tolte o cambiate di classe senza cambiare DATA_VERSION (es. Occhio del Falco → Ala di Vento): si
+// restituiscono i punti spesi (fino al livello 10; i tomi oltre il 10 sono persi) e si toglie il tasto dalla barra.
+function pulisciTecniche(ch) {
+  for (const sid of Object.keys(ch.skills || {})) {
+    if (SKILLS[sid] && SKILLS[sid].cls === ch.cls) continue;
+    ch.skillPts = (ch.skillPts || 0) + Math.max(0, Math.min(ch.skills[sid], SKILL_MAX_POINTS) - 1);
+    delete ch.skills[sid];
+  }
+  if (Array.isArray(ch.qb)) ch.qb = ch.qb.map(q => (q && q.k === 's' && !SKILLS[q.id] ? null : q));
+}
+
 // Adegua i personaggi creati con versioni precedenti dei dati.
 function migrate(ch) {
   if (ch.horse === undefined) ch.horse = null;
+  pulisciTecniche(ch);
   if (ch.v === DATA_VERSION) return;
   ch.skills = {};
   ch.skillPts = Math.max(0, ch.lvl - 1);
@@ -119,6 +134,7 @@ export class World {
     this.spawners = [];
     this.nextId = 1;
     this.parties = new Map();
+    this.assenti = new Map();   // nome (minuscolo) → { party, inst, until }: disconnessi che possono rientrare
     this.instances = new Map();
     this.instSlots = [];
     this.nextInst = 1;
@@ -126,6 +142,8 @@ export class World {
     this.regenAcc = 0;
     this.initNpcs();
     this.initSpawns();
+    this.initMappe();   // mappe da esperienza e arena (server/mappe.js)
+    this.initAltoLivello();   // boss del mondo, stagioni dell'arena, imprese (server/altolivello.js)
   }
 
   start() {
@@ -163,64 +181,93 @@ export class World {
     }
   }
 
+  // ------------------------------------------------------------ branchi (farming nel mondo aperto)
+  // Il mondo aperto è fatto di BRANCHI: gruppi di 4-7 mostri della stessa famiglia a pochi metri l'uno dall'altro, con i
+  // branchi distanziati (almeno SEP_BRANCHI metri), pensati per i colpi ad area e la Risonanza (3 o più nemici colpiti).
+  //  · aggro di branco: se uno viene colpito (o ti nota), i compagni entro RAGGIO_BRANCO metri da lui ti attaccano;
+  //  · rinascita: quando TUTTO il branco è a terra rinasce insieme dopo `respawn` secondi; i superstiti che restano
+  //    soli non bloccano i morti, che tornano comunque dopo tre volte quel tempo;
+  //  · accanto ai branchi ci sono solitari più forti (élite, vita base ≥ 1000: hanno la Postura) con rinascita singola.
   initSpawns() {
-    const rng = mulberry32(20261112);
-    const validPos = (x, z, allowCenter = false) => {
+    const rng = mulberry32(20261113);
+    const radura = (x, z) => Math.hypot(x + 228, z + 228) < 50 || radureBoss(x, z);   // la radura di `npm run sim` (/tp -228 -228) e le arene dei boss restano libere
+    const validPos = (x, z) => {
       if (Math.abs(x) > 245 || Math.abs(z) > 245) return false;
-      if (heightAt(x, z) < 0.6) return false;
+      if (heightAt(x, z) < 0.6 || radura(x, z)) return false;
       for (const kid of KINGDOM_IDS) {
         const v = KINGDOMS[kid].village;
-        if (Math.hypot(x - v.x, z - v.z) < 54) return false;
+        if (Math.hypot(x - v.x, z - v.z) < 58) return false;       // niente branchi alle porte dei villaggi
       }
-      if (!allowCenter && Math.hypot(x - CENTER.x, z - CENTER.z) < 32) return false;
+      if (Math.hypot(x - CENTER.x, z - CENTER.z) < 32) return false;
       return true;
     };
+    const lontano = (x, z, sep) => this.spawners.every(sp => Math.hypot(sp.x - x, sp.z - z) >= sep);
     const pick = (table) => {
-      const tot = table.reduce((s, t) => s + t[1], 0);
+      const tot = table.reduce((a, t) => a + t.peso, 0);
       let r = rng() * tot;
-      for (const [ty, w] of table) { if ((r -= w) <= 0) return ty; }
-      return table[0][0];
+      for (const t of table) { if ((r -= t.peso) <= 0) return t; }
+      return table[0];
     };
-    const place = (cx, cz, rmin, rmax, groups, table, countRange, filter) => {
-      let made = 0, tries = 0;
-      while (made < groups && tries++ < 500) {
+    // composizione: { peso, tipi: [[tipo, min, max], ...] }  →  elenco dei tipi dei singoli mostri
+    const membri = (comp) => {
+      const out = [];
+      for (const [ty, mn, mx] of comp.tipi) { const n = mn + Math.floor(rng() * (mx - mn + 1)); for (let i = 0; i < n; i++) out.push(ty); }
+      return out;
+    };
+    // `n` spawner nell'anello [rmin, rmax] attorno a (cx, cz); sep = distanza minima dagli altri
+    const semina = (cx, cz, rmin, rmax, n, tabella, sep, filtro) => {
+      let fatti = 0, prove = 0;
+      while (fatti < n && prove++ < 800) {
         const a = rng() * Math.PI * 2, r = rmin + rng() * (rmax - rmin);
         const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
-        if (!validPos(x, z) || (filter && !filter(x, z))) continue;
-        const type = pick(table);
-        const stone = MOBS[type].stone;
-        const count = stone ? 1 : countRange[0] + Math.floor(rng() * (countRange[1] - countRange[0] + 1));
-        this.addSpawner(type, x, z, count);
-        made++;
+        if (!validPos(x, z) || (filtro && !filtro(x, z)) || !lontano(x, z, sep)) continue;
+        const comp = pick(tabella), elenco = membri(comp);
+        if (comp.solo) this.addSpawner(elenco[0], x, z, 1);
+        else this.addBranco(elenco, x, z);
+        fatti++;
       }
     };
-    const farFromCenter = (x, z) => Math.hypot(x - CENTER.x, z - CENTER.z) > 95;
+    const lontanoDalCentro = (x, z) => Math.hypot(x - CENTER.x, z - CENTER.z) > 95;
+    const B = SEP_BRANCHI;
     for (const kid of KINGDOM_IDS) {
       const v = KINGDOMS[kid].village;
-      place(v.x, v.z, 58, 115, 16, [['lupo', 3], ['cinghiale', 3], ['lupo_alfa', 1]], [3, 4]);
-      place(v.x, v.z, 118, 175, 12, [['bandito', 3], ['scimmia', 2], ['arciere_bandito', 2], ['orso_nero', 1]], [2, 4], farFromCenter);
-      place(v.x, v.z, 80, 160, 2, [['obelisco_minore', 1]], [1, 1], farFromCenter);
+      // intorno al villaggio: lupi, cinghiali, il branco dei lupi giovani; élite: il Lupo Anziano
+      semina(v.x, v.z, 62, 118, 16, [
+        { peso: 3, tipi: [['lupo', 5, 7]] },
+        { peso: 3, tipi: [['cinghiale', 4, 6]] },
+        { peso: 2, tipi: [['lupo_branco', 6, 7]] },
+      ], B, null);
+      semina(v.x, v.z, 66, 118, 3, [{ peso: 1, solo: true, tipi: [['lupo_anziano', 1, 1]] }], 16, null);
+      semina(v.x, v.z, 70, 118, 2, [{ peso: 1, solo: true, tipi: [['lupo_alfa', 1, 1]] }], 16, null);
+      // più lontano: banditi (con qualche arciere), predoni, scimmie; élite: l'orso nero
+      semina(v.x, v.z, 122, 175, 18, [
+        { peso: 3, tipi: [['bandito', 3, 5], ['arciere_bandito', 1, 2]] },
+        { peso: 2, tipi: [['predone', 5, 7]] },
+        { peso: 2, tipi: [['scimmia', 4, 6]] },
+      ], B, lontanoDalCentro);
+      semina(v.x, v.z, 125, 175, 3, [{ peso: 1, solo: true, tipi: [['orso_nero', 1, 1]] }], 16, lontanoDalCentro);
+      // ancora più in là, nelle gole: i razziatori (livello 15), per chi è fra il 14 e il 18
+      semina(v.x, v.z, 142, 182, 4, [{ peso: 1, tipi: [['razziatore_gola', 4, 6]] }], B, lontanoDalCentro);
+      semina(v.x, v.z, 80, 160, 2, [{ peso: 1, solo: true, tipi: [['obelisco_minore', 1, 1]] }], 24, lontanoDalCentro);
     }
-    place(CENTER.x, CENTER.z, 38, 92, 16, [['terracotta', 3], ['spirito_lanterna', 3], ['tigre_spettrale', 1]], [2, 3]);
-    place(CENTER.x, CENTER.z, 45, 88, 3, [['obelisco_abisso', 1]], [1, 1]);
+    // Altopiano delle Spade Spezzate: soldati di terracotta in branco, spiriti a piccoli gruppi, élite solitarie
+    // Altopiano: al centro, attorno al Generale, la sua guardia di lancieri di bronzo (livello 24); più fuori i soldati
+    semina(CENTER.x, CENTER.z, 36, 60, 5, [{ peso: 1, tipi: [['lanciere_bronzo', 4, 6]] }], B, null);
+    semina(CENTER.x, CENTER.z, 52, 92, 10, [{ peso: 1, tipi: [['soldato_terracotta', 5, 7]] }], B, null);
+    semina(CENTER.x, CENTER.z, 40, 92, 3, [{ peso: 1, tipi: [['spirito_lanterna', 3, 4]] }], B, null);
+    semina(CENTER.x, CENTER.z, 42, 90, 4, [{ peso: 1, solo: true, tipi: [['terracotta', 1, 1]] }], 16, null);
+    semina(CENTER.x, CENTER.z, 42, 90, 3, [{ peso: 1, solo: true, tipi: [['tigre_spettrale', 1, 1]] }], 16, null);
+    semina(CENTER.x, CENTER.z, 45, 88, 3, [{ peso: 1, solo: true, tipi: [['obelisco_abisso', 1, 1]] }], 24, null);
     this.addSpawner('generale', CENTER.x, CENTER.z, 1);
-    // accampamenti: molti mostri deboli e vicini, ricomparsa rapida (grind ad area, ideale a cavallo)
-    const camp = (cx, cz, rmin, rmax, n, type, count, filter) => {
-      let made = 0, tries = 0;
-      while (made < n && tries++ < 400) {
-        const a = rng() * Math.PI * 2, r = rmin + rng() * (rmax - rmin);
-        const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
-        if (!validPos(x, z) || (filter && !filter(x, z))) continue;
-        this.addSpawner(type, x, z, count, 10);
-        made++;
-      }
-    };
-    for (const kid of KINGDOM_IDS) {
-      const v = KINGDOMS[kid].village;
-      camp(v.x, v.z, 82, 118, 2, 'lupo_branco', 12);
-      camp(v.x, v.z, 132, 172, 2, 'predone', 12, farFromCenter);
-    }
-    camp(CENTER.x, CENTER.z, 55, 90, 3, 'soldato_terracotta', 12);
+  }
+
+  // Un branco: `slots` è l'elenco dei tipi dei suoi mostri.
+  addBranco(slots, x, z) {
+    const respawn = Math.max(...slots.map(ty => MOBS[ty].respawn));
+    const sp = { type: slots[0], slots, x, z, count: slots.length, radius: RAGGIO_DISPERSIONE, pending: [], branco: true, membri: new Set(), rinasce: [], respawn };
+    this.spawners.push(sp);
+    for (const ty of slots) this.spawnFromSpawner(sp, ty);
+    return sp;
   }
 
   addSpawner(type, x, z, count, radius = 6) {
@@ -229,17 +276,52 @@ export class World {
     for (let i = 0; i < count; i++) this.spawnFromSpawner(sp);
   }
 
-  spawnFromSpawner(sp) {
+  spawnFromSpawner(sp, tipo = sp.type) {
     let x = sp.x, z = sp.z;
-    if (!MOBS[sp.type].stone && !MOBS[sp.type].boss) {
+    if (!MOBS[tipo].stone && !MOBS[tipo].boss) {
       for (let i = 0; i < 6; i++) {
-        const nx = sp.x + rand(-sp.radius, sp.radius), nz = sp.z + rand(-sp.radius, sp.radius);
+        const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * sp.radius;
+        const nx = sp.x + Math.cos(a) * r, nz = sp.z + Math.sin(a) * r;
         if (heightAt(nx, nz) > 0.3) { x = nx; z = nz; break; }
       }
     }
-    const m = this.spawnMob(sp.type, x, z, sp, false);
-    if (MOBS[sp.type].boss) this.broadcast({ t: 'notice', m: `${m.name} è apparso sull'Altopiano delle Spade Spezzate!` });
+    const m = this.spawnMob(tipo, x, z, sp, false);
+    if (sp.branco) { m.vaga = 2.5; sp.membri.add(m); }
+    if (MOBS[tipo].boss) this.broadcast({ t: 'notice', m: `${m.name} è apparso sull'Altopiano delle Spade Spezzate!` });
     return m;
+  }
+
+  // Un mostro dello spawner è morto: programma la rinascita (singola, o di tutto il branco insieme).
+  programmaRinascita(m) {
+    const sp = m.spawner, t = NOW();
+    if (!sp.branco) { sp.pending.push(t + m.d.respawn * 1000 * rand(0.9, 1.15)); return; }
+    sp.membri.delete(m);
+    if (sp.membri.size === 0) {
+      const quando = t + sp.respawn * 1000 * rand(0.9, 1.15);
+      sp.rinasce = sp.slots.map(ty => ({ t: quando, ty }));
+    } else sp.rinasce.push({ t: t + m.d.respawn * 3000, ty: m.type });
+  }
+
+  tickBranchi(t) {
+    for (const sp of this.spawners) {
+      if (!sp.branco || !sp.rinasce.length) continue;
+      for (let i = sp.rinasce.length - 1; i >= 0; i--) {
+        if (sp.rinasce[i].t <= t) { const { ty } = sp.rinasce[i]; sp.rinasce.splice(i, 1); this.spawnFromSpawner(sp, ty); }
+      }
+    }
+  }
+
+  // Aggro di branco: chi colpisce (o viene notato da) un mostro chiama i compagni del suo branco vicini a lui.
+  chiamaBranco(m, p) {
+    const sp = m.spawner;
+    if (!sp || !sp.branco || !p || p.kind !== 'player') return;
+    for (const q of sp.membri) {
+      if (q === m || q.hp <= 0 || q.target || q.state === 'return' || q.chiamato) continue;
+      if (dist(q, m) > RAGGIO_BRANCO) continue;
+      q.chiamato = true;
+      q.aggro.set(p.id, 1);
+      q.target = p.id;
+    }
   }
 
   spawnMob(type, x, z, spawner, temp) {
@@ -254,44 +336,22 @@ export class World {
     });
   }
 
-  spawnDrop(id, n, x, z, owner, source = 'mob') {
+  // solo: il bottino è soltanto di owner, non del suo gruppo (oggetti delle missioni «raccogli»)
+  spawnDrop(id, n, x, z, owner, source = 'mob', solo = false) {
     const it = ITEMS[id];
-    if (it.stack) return this.dropInstance({ id, n, up: 0 }, x, z, owner);
-    for (let i = 0; i < n; i++) this.dropInstance(makeEquip(id, rollRarity(source)), x, z, owner);
+    if (it.stack) return this.dropInstance({ id, n, up: 0 }, x, z, owner, solo);
+    for (let i = 0; i < n; i++) this.dropInstance(makeEquip(id, rollRarity(source)), x, z, owner, solo);
   }
 
-  dropInstance(inst, x, z, owner) {
+  dropInstance(inst, x, z, owner, solo = false) {
     const op = owner ? this.ents.get(owner) : null;
     return this.add({
       kind: 'drop', item: inst, x: x + rand(-1.8, 1.8), z: z + rand(-1.8, 1.8),
-      owner: owner || 0, ownerParty: (op && op.party) || 0, ownerUntil: NOW() + 20000, expire: NOW() + 120000,
+      owner: owner || 0, ownerParty: (!solo && op && op.party) || 0, ownerUntil: NOW() + (solo ? 60000 : 20000), expire: NOW() + 120000,
     });
   }
 
-  // Bottino aggiuntivo per fascia di livello: equipaggiamento casuale, gemme, modificatori, essenze.
-  extraDrops(m, top) {
-    const d = m.d, lv = d.lvl;
-    const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
-    const mul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100);
-    const owner = top ? top.id : 0;
-    const roll = (ch) => Math.random() < ch * mul;
-    const rolls = d.boss ? 3 : d.stone ? 2 : 1;
-    const gearChance = d.boss ? 1 : d.stone ? 0.7 : 0.05;
-    for (let i = 0; i < rolls; i++) {
-      if (!roll(gearChance)) continue;
-      const pool = GEAR_BY_TIER[d.boss ? 4 : tierForLevel(lv)];
-      this.dropInstance(makeEquip(pool[randi(0, pool.length - 1)], rollRarity(source)), m.x, m.z, owner);
-    }
-    const gems = Object.keys(GEM_TYPES);
-    if (roll(d.boss ? 0.8 : d.stone ? 0.45 : lv >= 5 ? 0.015 : 0)) {
-      const grade = d.boss ? (Math.random() < 0.25 ? 2 : 1) : d.stone && lv >= 15 ? 1 : 0;
-      this.spawnDrop(`gemma_${gems[randi(0, gems.length - 1)]}_${grade}`, 1, m.x, m.z, owner);
-    }
-    if (lv >= 8 && roll(d.boss ? 0.6 : d.stone ? 0.3 : 0.008)) this.spawnDrop('pietra_affinamento', d.boss ? 2 : 1, m.x, m.z, owner);
-    if (roll(d.boss ? 0.4 : d.stone ? 0.12 : lv >= 12 ? 0.002 : 0)) this.spawnDrop('pergamena_mutamento', 1, m.x, m.z, owner);
-    if (roll(d.boss ? 0.25 : d.stone && lv >= 15 ? 0.05 : 0)) this.spawnDrop('sigillo_ascensione', 1, m.x, m.z, owner);
-    if (roll(d.boss ? 0.9 : d.stone && lv >= 15 ? 0.3 : lv >= 18 ? 0.01 : 0)) this.spawnDrop('essenza_celeste', d.boss ? randi(2, 4) : 1, m.x, m.z, owner);
-  }
+  // extraDrops (bottino per classe e livello) è in server/bottino.js
 
   // ------------------------------------------------------------ giocatori
   addPlayer(sess, ch) {
@@ -302,15 +362,17 @@ export class World {
       x: ch.x, z: ch.z, r: 0, hp: ch.hp, buffs: [], hots: [], dots: [], debuffs: [], cds: {},
       rtype: CLASSES[ch.cls].res, res: 0, rmax: 100, pts: 0, gcdUntil: 0, casting: null, chainIdx: 0, chainAt: 0,
       shield: 0, shieldUntil: 0, dmgPct: 0, haste: 0, mounted: false, mountUntil: 0, slancio: 0, slancioUntil: 0, sup: 0, waves: [],
+      serie: 0, serieUntil: 0,
       nextAttack: 0, dead: false, known: new Map(), knownVis: new Map(), stunUntil: 0, slowUntil: 0,
       lastMoveAt: NOW(), lastCombat: 0, selfDirty: true, invDirty: true, resDirty: false, gm: !!sess.gm, online: true,
     };
     this.add(p);
     this.players.add(p);
     this.recalc(p);
+    this.autoQuickbar(p, false);   // chi ha già una Via trova subito il suo finale nella barra
     const R = RESOURCES[p.rtype];
     p.res = p.rtype === 'mana' ? (ch.mp >= 0 ? Math.min(ch.mp, p.rmax) : p.rmax) : Math.round(R.start * p.rmax);
-    if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || p.hp === 0 || p.x > DUNGEON_X) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || p.hp === 0 || (p.x > DUNGEON_X && !this.rientraInMappa(p))) {
       const sp = villageSpawn(p.kingdom); p.x = sp.x; p.z = sp.z; p.hp = p.maxHp;
     }
     if (p.hp < 0 || p.hp > p.maxHp) p.hp = p.maxHp;
@@ -319,17 +381,55 @@ export class World {
       pvp: this.cfg.pvp ? 1 : 0, pvpMin: this.cfg.pvpMinLevel,
     });
     this.broadcast({ t: 'sys', m: `${p.name} (${KINGDOMS[p.kingdom].short}) è entrato nel mondo.` });
+    this.missioniEntra(p);   // missioni (server/missioni.js): stato, incarichi del giorno, segni sui PNG
+    this.altoLivelloEntra(p);   // boss del mondo, titoli, imprese (server/altolivello.js)
+    this.rientra(p);         // disconnesso da poco: torna nel gruppo e nella Prova
+    this.socialeEntra(p);    // pegno di scambi interrotti, amici (server/sociale.js)
     return p;
   }
 
   removePlayer(p) {
-    this.leaveTrial(p, true);
-    this.leaveParty(p, true);
+    // chi si disconnette può rientrare entro RIENTRO_MS nel suo gruppo e nella Prova in corso (rientra, in addPlayer)
+    const assente = { party: p.party || 0, inst: p.inst || 0, until: NOW() + RIENTRO_MS };
+    this.leaveTrial(p, true, true);
+    this.leaveParty(p, true, true);
+    if (assente.party || assente.inst) this.assenti.set(p.name.toLowerCase(), assente);
     p.online = false;
     this.saveChar(p);
     this.remove(p);
     this.players.delete(p);
     this.broadcast({ t: 'sys', m: `${p.name} ha lasciato il mondo.` });
+    this.socialeEsci(p);   // scambio aperto annullato, amici avvisati (server/sociale.js)
+    // lo stesso personaggio è già rientrato da un'altra sessione (la vecchia si chiude dopo): torna subito al suo posto
+    const altro = [...this.players].find(q => q.name === p.name);
+    if (altro) this.rientra(altro);
+  }
+
+  // Rientro dopo una disconnessione: di nuovo nel gruppo (se esiste ancora e ha posto) e nella Prova non ancora finita.
+  rientra(p) {
+    const nome = p.name.toLowerCase(), a = this.assenti.get(nome);
+    if (!a) return;
+    this.assenti.delete(nome);
+    const party = a.party ? this.parties.get(a.party) : null;
+    if (party && party.assenti) party.assenti.delete(nome);
+    if (NOW() > a.until) return;
+    if (party && !p.party && party.members.length < 5) {
+      party.members.push(p.id);
+      p.party = party.id;
+      party.last = '';
+      this.partySys(party, `${p.name} è tornato nel gruppo.`);
+    }
+    const inst = a.inst ? this.instances.get(a.inst) : null;
+    if (inst && !inst.done && !p.inst) {
+      inst.members.add(p.id);
+      p.inst = inst.id;
+      if (inst.ownerName === p.name) inst.owner = p.id;
+      if (p.mounted) { p.mounted = false; this.recalc(p); p.vis++; }
+      p.known.clear(); p.knownVis.clear();
+      this.teleport(p, inst.ox + inst.dg.spawn[0], inst.oz + inst.dg.spawn[1]);
+      this.send(p, { t: 'dg_start', ox: inst.ox, oz: inst.oz, kl: inst.kl, affixes: inst.affixes, dg: inst.dg.id });
+      this.sendTrialState(inst);
+    }
   }
 
   saveChar(p) {
@@ -351,6 +451,7 @@ export class World {
     if (sk && sk.mount) return p.mounted && p.ch.horse && p.ch.horse.lvl >= sk.hlvl ? Math.min(SKILL_MAX, p.ch.horse.lvl) : 0;
     if (!sk || sk.cls !== p.cls || p.lvl < sk.lvl) return 0;
     if (sk.via && sk.via !== p.ch.via) return 0;
+    if (sk.finoVia && p.ch.via) return 0;                    // il finale di base lascia il posto a quello della Via
     return Math.max(1, p.ch.skills[sid] || 0);
   }
 
@@ -391,14 +492,15 @@ export class World {
     p.atk = Math.round((watk + prim * 2 + sec * 0.5 + L * 2) * (1 + ((b.atkPct || 0) + (g.atkPct || 0)) / 100));
     p.matk = Math.round((wmatk + s.int * 2.5 + L * 2) * (1 + ((b.matkPct || 0) + (g.matkPct || 0)) / 100));
     p.def = Math.round((def + (g.def || 0) + s.vit * 1.2 + L) * (1 + (b.defPct || 0) / 100));
-    p.crit = Math.min(60, 2 + s.dex * 0.4 + (b.critPct || 0) + (g.crit || 0));
+    p.crit = Math.min(75, 2 + s.dex * 0.4 + (b.critPct || 0) + (g.crit || 0));
     p.critMult = 1.6 + (g.critDmg || 0) / 100;
     p.evade = Math.min(25, s.dex * 0.2 + (g.evade || 0));
     p.haste = (b.hastePct || 0) + (g.haste || 0) + (p.slancio || 0) * SLANCIO.hastePct;
     p.aspd = Math.round(aspd / (1 + p.haste / 100 + s.dex * 0.004));
-    p.speed = 8 * (1 + (spdPct + (g.moveSpd || 0)) / 100) * (p.mounted && p.ch.horse ? HORSE.speed(p.ch.horse.lvl) : 1);
+    const spdSerie = Math.min(SERIE.velMax, (p.serie || 0) * SERIE.velPct);   // la serie di uccisioni fa correre
+    p.speed = 8 * (1 + (spdPct + (g.moveSpd || 0) + (b.spdPct || 0) + spdSerie) / 100) * (p.mounted && p.ch.horse ? HORSE.speed(p.ch.horse.lvl) : 1);
     p.monDmg = g.monDmg || 0; p.bossDmg = g.bossDmg || 0; p.aoeDmg = g.aoeDmg || 0;
-    p.lifesteal = g.lifesteal || 0; p.dmgRed = Math.min(50, g.dmgRed || 0);
+    p.lifesteal = (g.lifesteal || 0) + (b.lifesteal || 0); p.dmgRed = Math.min(50, g.dmgRed || 0);
     p.expPct = g.expPct || 0; p.taelPct = g.taelPct || 0; p.dropPct = g.dropPct || 0;
     p.range = range;
     p.hpRegen = b.hpRegen || 0;
@@ -431,7 +533,7 @@ export class World {
         return { ...base, k: 'p', n: e.name, cls: e.cls, kd: e.kingdom, sx: e.ch.sex === 'f' ? 'f' : 'm', lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp,
           w: eq.weapon ? eq.weapon.id : null, wu: eq.weapon ? eq.weapon.up : 0, wr: eq.weapon ? eq.weapon.r || 0 : 0,
           b: eq.body ? eq.body.id : null, bu: eq.body ? eq.body.up : 0, br: eq.body ? eq.body.r || 0 : 0, h: eq.head ? eq.head.id : null, f: eq.feet ? eq.feet.id : null,
-          gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0, mt: e.mounted && e.ch.horse ? HORSE.tierOf(e.ch.horse.lvl) : 0 };
+          gm: e.gm ? 1 : 0, dead: e.dead ? 1 : 0, au: e.aura || null, ti: e.ch.titolo || null, mt: e.mounted && e.ch.horse ? HORSE.tierOf(e.ch.horse.lvl) : 0, ml: e.mounted && e.ch.horse ? e.ch.horse.lvl : 0 };
       }
       case 'mob': {
         const o = { ...base, k: 'm', ty: e.type, n: e.name, lvl: e.lvl, hp: Math.round(e.hp), mhp: e.maxHp };
@@ -455,15 +557,19 @@ export class World {
     const chain = this.chainOf(p) && t - p.chainAt < 6000 ? p.chainIdx : 0;
     return {
       t: 'me', lvl: p.lvl, exp: ch.exp, need: expToNext(p.lvl), hp: Math.round(p.hp), mhp: p.maxHp,
-      res: Math.floor(p.res), rmax: p.rmax, rt: p.rtype, pts: p.pts, sl: p.slancio, su: Math.floor(p.sup), chain, shield: Math.round(p.shieldUntil > t ? p.shield : 0),
+      res: Math.floor(p.res), rmax: p.rmax, rt: p.rtype, pts: p.pts, sl: p.slancio, su: this.supPct(p), sums: Math.max(0, Math.round((p.supAt || 0) - NOW())), chain, ...this.serieMsg(p, t), shield: Math.round(p.shieldUntil > t ? p.shield : 0),
       atk: p.atk, matk: p.matk, def: p.def, crit: r1(p.crit), ev: r1(p.evade), aspd: p.aspd, spd: r2(p.speed), range: p.range,
       haste: r1(p.haste), gcd: this.gcdMs(p), dmgPct: r1(p.dmgPct),
       sp: ch.statPts, kp: ch.skillPts, st: ch.stats, via: ch.via, sk: ch.skills, tael: ch.tael, qb: ch.qb,
-      buffs: p.buffs.map(b => ({ b: b.id, ms: b.until - t })), dead: p.dead ? 1 : 0,
+      // l'aura di un compagno dura 2,5 s ma si rinnova senza avvisare il client: la si manda come le auree (senza scadenza)
+      buffs: p.buffs.map(b => ({ b: b.id, ms: b.compagno ? 1e11 : b.until - t })), dead: p.dead ? 1 : 0,
       g: p.gear, cm: r2(p.critMult),
       mounted: p.mounted ? 1 : 0, horse: p.ch.horse ? { lvl: p.ch.horse.lvl, exp: Math.floor(p.ch.horse.exp), need: HORSE.need(p.ch.horse.lvl) } : null,
     };
   }
+
+  // serie di uccisioni per il client: se = uccisioni, sems = millisecondi prima che si spezzi
+  serieMsg(p, t) { return p.serie > 0 ? { se: p.serie, sems: Math.max(0, p.serieUntil - t) } : { se: 0 }; }
 
   partyState(party) {
     return {
@@ -472,11 +578,23 @@ export class World {
         id: q.id, n: q.name, cls: q.cls, lvl: q.lvl, hp: Math.round(q.hp), mhp: q.maxHp, res: Math.floor(q.res), rmax: q.rmax, rt: q.rtype,
         dead: q.dead ? 1 : 0, x: r1(q.x), z: r1(q.z), via: q.ch.via,
       })),
+      // disconnessi che possono ancora rientrare
+      off: party.assenti && party.assenti.size ? [...party.assenti.values()].map(a => ({ n: a.n, cls: a.cls, lvl: a.lvl })) : undefined,
     };
   }
 
+  // Toglie i disconnessi che non sono rientrati in tempo; un gruppo rimasto con un solo membro (e nessuno da aspettare) si scioglie.
+  controllaAssenti(party) {
+    if (party.assenti) for (const [k, a] of party.assenti) if (NOW() > a.until) { party.assenti.delete(k); party.last = ''; }
+    if (party.members.length > 1 || (party.members.length && party.assenti && party.assenti.size)) return false;
+    for (const id of party.members) { const q = this.ents.get(id); if (q) { q.party = null; this.send(q, { t: 'party', none: 1 }); this.sys(q, 'Il gruppo si è sciolto.'); } }
+    this.parties.delete(party.id);
+    return true;
+  }
+
   netTick() {
-    for (const party of this.parties.values()) {
+    for (const party of [...this.parties.values()]) {
+      if (party.assenti && party.assenti.size && this.controllaAssenti(party)) continue;
       const st = this.partyState(party);
       const key = JSON.stringify(st);
       if (key === party.last) continue;
@@ -500,7 +618,7 @@ export class World {
       for (const id of p.known.keys()) if (!seen.has(id)) { rms.push(id); p.known.delete(id); p.knownVis.delete(id); }
       if (adds.length || ups.length || rms.length) this.send(p, { t: 'v', a: adds, u: ups, r: rms });
       if (p.selfDirty) { p.selfDirty = false; p.resDirty = false; this.send(p, this.meMsg(p)); }
-      else if (p.resDirty) { p.resDirty = false; this.send(p, { t: 'r', hp: Math.round(p.hp), res: Math.floor(p.res), pts: p.pts, sl: p.slancio, su: Math.floor(p.sup) }); }
+      else if (p.resDirty) { p.resDirty = false; this.send(p, { t: 'r', hp: Math.round(p.hp), res: Math.floor(p.res), pts: p.pts, sl: p.slancio, su: this.supPct(p), sums: Math.max(0, Math.round((p.supAt || 0) - NOW())), ...this.serieMsg(p, NOW()) }); }
       if (p.invDirty) { p.invDirty = false; this.send(p, { t: 'inv', inv: p.ch.inv, eq: p.ch.equip }); }
     }
   }
@@ -516,11 +634,16 @@ export class World {
       else if (e.kind === 'drop' && t > e.expire) this.remove(e);
     }
     for (const inst of [...this.instances.values()]) this.updateTrial(inst, t, regen);
+    this.tickMappe(t);
     for (const sp of this.spawners) {
       for (let i = sp.pending.length - 1; i >= 0; i--) {
         if (sp.pending[i] <= t) { sp.pending.splice(i, 1); this.spawnFromSpawner(sp); }
       }
     }
+    this.tickBranchi(t);
+    this.tickMissioni(t);
+    this.tickAltoLivello(t);
+    this.tickSociale(t);
   }
 
   updatePlayer(p, t, regen, dt) {
@@ -528,6 +651,8 @@ export class World {
     const before = p.buffs.length;
     p.buffs = p.buffs.filter(b => b.until > t);
     if (p.buffs.length !== before) this.recalc(p);
+    this.tickAure(p, t);
+    if (!p.supPronta && t >= (p.supAt || 0)) { p.supPronta = true; p.resDirty = true; }      // avvisa il client che la Suprema è pronta
     if (p.debuffs.length) p.debuffs = p.debuffs.filter(d => d.until > t);
     this.tickDots(p, t);
     if (p.dead) return;
@@ -554,17 +679,22 @@ export class World {
       for (const w of due) {
         const sk = SKILLS[w.sid], rad = sk.radius || 0;
         const list = rad ? this.hostilesAround(p, w.x, w.z, rad) : [this.ents.get(w.tid)].filter(e => this.canAttack(p, e));
-        for (const e of list) for (let i = 0; i < (rad ? 1 : (sk.hits || 1)); i++) if (this.canAttack(p, e)) this.hit(p, e, w.dmg * (1 + this.vulnFrom(e, p) / 100), { sk: w.sid, aoe: rad > 0, i, post: w.post });
+        for (const e of list) {
+          for (let i = 0; i < (rad ? 1 : (sk.hits || 1)); i++) if (this.canAttack(p, e)) this.hit(p, e, w.dmg * (1 + this.vulnFrom(e, p) / 100), { sk: w.sid, aoe: rad > 0, i, post: w.post });
+          if (sk.marca && sk.cls === p.cls) this.mettiMarchi(p, e, sk.marca, this.lvlOf(p, w.sid) || 1);
+        }
       }
     }
     // risorsa
     const R = RESOURCES[p.rtype], ooc = t - p.lastCombat > 6000, old = p.res;
+    const inSerie = p.serie > 0 && t <= p.serieUntil;
+    if (p.serie > 0 && !inSerie) { p.serie = 0; this.recalc(p); p.resDirty = true; }
     if (R.regen) p.res = Math.min(p.rmax, p.res + R.regen * dt * (1 + p.haste / 100) * (1 + p.resRegenPct / 100));
-    if (R.decay && ooc) p.res = Math.max(0, p.res - R.decay * dt);
+    if (R.decay && ooc && !inSerie) p.res = Math.max(0, p.res - R.decay * dt);   // in serie l'Ira non cala fra un branco e l'altro
     if (R.regenPct) p.res = Math.min(p.rmax, p.res + p.rmax * (ooc ? R.regenPctOoc : R.regenPct) / 100 * dt);
     if (Math.floor(old) !== Math.floor(p.res)) p.resDirty = true;
     if (ooc && p.pts > 0 && t - p.lastCombat > 20000) { p.pts = 0; p.resDirty = true; }
-    if (p.slancio > 0 && t > p.slancioUntil) { p.slancio--; p.slancioUntil = t + SLANCIO.decayMs; this.recalc(p); p.resDirty = true; }
+    if (p.slancio > 0 && t > p.slancioUntil && !inSerie) { p.slancio--; p.slancioUntil = t + SLANCIO.decayMs; this.recalc(p); p.resDirty = true; }
     if (regen && p.hp < p.maxHp) {
       p.hp = Math.min(p.maxHp, p.hp + p.maxHp * (ooc ? 0.02 : 0.004) + p.maxHp * p.hpRegen / 100);
       p.resDirty = true; this.touch(p);
@@ -629,7 +759,23 @@ export class World {
     }
     if (m.temp && !m.target && t - m.lastActive > 60000) { this.remove(m); return; }
     if (d.explode && m.explodeAt && t >= m.explodeAt) return this.explodeLantern(m);
-    if (m.stunUntil > t) return;
+    if (m.stunUntil > t) {
+      if (m.cast) { m.cast = null; m.nextCast = t + (d.cast ? d.cast.cd * 0.5 : 4000); this.fx(m, { k: 'mcastend', s: m.id, int: 1 }); }   // stordito: il lancio salta
+      return;
+    }
+    if (m.cast) {
+      // sta lanciando: resta fermo; alla fine il colpo parte, a meno che sia stato interrotto
+      if (t < m.cast.until) return;
+      const c = m.cast.def || d.cast, bers = this.ents.get(m.cast.tid);   // def: lancio di un boss (server/altolivello.js)
+      m.cast = null; m.nextCast = t + c.cd;
+      this.fx(m, { k: 'mcastend', s: m.id });
+      if (c.raggio) {
+        this.fx(m, { k: 'slam', s: m.id, x: r1(m.x), z: r1(m.z), r: c.raggio });
+        for (const q of this.players) if (this.validMobTarget(q) && dist(q, m) < c.raggio) this.hit(m, q, m.atk * c.mult, {});
+      } else if (this.validMobTarget(bers) && dist(bers, m) < (d.range || 2.2) + 8) this.hit(m, bers, m.atk * c.mult, { auto: 3 });
+      if (c.pozze) this.pozzeLancio(m, c);
+      return;
+    }
     const spd = d.speed * (m.slowUntil > t ? 0.5 : 1);
     let tgt = m.target ? this.ents.get(m.target) : null;
     if (m.target && !this.validMobTarget(tgt)) { m.aggro.delete(m.target); m.target = null; tgt = null; }
@@ -647,7 +793,23 @@ export class World {
           if (dd < d.aggro && (!best || dd < dist(best, m))) best = p;
         }
       }
-      if (best) { tgt = best; m.target = best.id; }
+      if (best) { tgt = best; m.target = best.id; if (!m.chiamato) { m.chiamato = true; this.chiamaBranco(m, best); } }
+    }
+    if (!tgt && m.chiamato && !m.aggro.size) m.chiamato = false;   // a riposo: potrà chiamare di nuovo il branco
+    // un boss con meccaniche rimasto senza avversari per 6 s (tutti caduti o fuggiti) torna al suo posto e si ricompone:
+    // niente vittorie a forza di rinascere sul posto (server/altolivello.js)
+    if (!tgt && d.mecc && m.hp < m.maxHp && m.state !== 'return' && t - m.lastActive > 6000) { m.state = 'return'; m.aggro.clear(); }
+    // minaccia: ogni mezzo secondo passa a chi ha più del 110% della minaccia del bersaglio attuale (così il
+    // difensore, minaccia ×4, si riprende i mostri anche senza provocarli)
+    if (tgt && m.aggro.size > 1 && t >= (m.minacciaAt || 0)) {
+      m.minacciaAt = t + 500;
+      let bv = (m.aggro.get(tgt.id) || 0) * 1.1;
+      for (const [pid, v] of m.aggro) {
+        if (v <= bv || pid === tgt.id) continue;
+        const q = this.ents.get(pid);
+        if (this.validMobTarget(q) && dist(q, m) <= 45) { tgt = q; bv = v; }
+      }
+      m.target = tgt.id;
     }
     if (tgt) {
       m.lastActive = t;
@@ -661,9 +823,13 @@ export class World {
         else {
           const nr = Math.atan2(tgt.x - m.x, tgt.z - m.z);
           if (Math.abs(nr - m.r) > 0.05) { m.r = nr; this.touch(m); }
-          if (t >= m.nextAttack) { m.nextAttack = t + d.aspd * (m.aspdMul || 1); this.mobAttack(m, tgt); }
+          if (d.cast && t >= (m.nextCast ?? (m.nextCast = t + 2500 + Math.random() * 2500))) {
+            m.cast = { until: t + d.cast.ms, tid: tgt.id };
+            this.fx(m, { k: 'mcast', s: m.id, n: d.cast.name, ms: d.cast.ms, r: d.cast.raggio || 0 });
+          } else if (t >= m.nextAttack) { m.nextAttack = t + d.aspd * (m.aspdMul || 1); this.mobAttack(m, tgt); }
         }
-        if (d.dungeonBoss) this.trialBossLogic(m, t);
+        if (d.mecc) this.bossMecc(m, t);   // boss con meccaniche (server/altolivello.js)
+        else if (d.dungeonBoss) this.trialBossLogic(m, t);
         else if (d.boss) this.bossLogic(m, t);
         return;
       }
@@ -678,7 +844,7 @@ export class World {
       if (this.moveToward(m, m.dest.x, m.dest.z, spd * 0.4 * dt, 0.3)) m.dest = null;
     } else if (t > m.wanderAt) {
       m.wanderAt = t + rand(4000, 11000);
-      const a = Math.random() * Math.PI * 2, r = Math.random() * 7;
+      const a = Math.random() * Math.PI * 2, r = Math.random() * (m.vaga ?? 7);
       const nx = m.spawn.x + Math.cos(a) * r, nz = m.spawn.z + Math.sin(a) * r;
       if (heightAt(nx, nz) > 0.2 && !safeZoneAt(nx, nz)) m.dest = { x: nx, z: nz };
     }
@@ -733,6 +899,8 @@ export class World {
     if (!b || b === a) return false;
     if (b.kind === 'mob') return b.hp > 0;
     if (b.kind === 'player') {
+      const arena = this.pvpArena(a, b);   // nell'arena: tutti contro tutti tranne il gruppo
+      if (arena !== null) return arena;
       if (!this.cfg.pvp || b.dead || a.kingdom === b.kingdom) return false;
       if (a.lvl < this.cfg.pvpMinLevel || b.lvl < this.cfg.pvpMinLevel) return false;
       if (safeZoneAt(a.x, a.z) || safeZoneAt(b.x, b.z)) return false;
@@ -778,7 +946,7 @@ export class World {
 
   // Riduzioni dei danni subiti (effetti difensivi e scudi).
   mitigate(tgt, dmg, src) {
-    if (tgt.kind !== 'player') return { dmg };
+    if (tgt.kind !== 'player') return { dmg: tgt.riduzione ? Math.max(1, Math.round(dmg * (1 - tgt.riduzione))) : dmg };   // corazza di un boss
     if (tgt.dmgTaken) dmg = Math.max(1, Math.round(dmg * (1 + tgt.dmgTaken / 100)));
     if (src && src.kind === 'mob' && tgt.dmgRed) dmg = Math.max(1, Math.round(dmg * (1 - tgt.dmgRed / 100)));
     let ab = 0;
@@ -800,6 +968,7 @@ export class World {
       if (src.kind === 'player') {
         tgt.aggro.set(src.id, (tgt.aggro.get(src.id) || 0) + dmg * threat * (src.threat || 1));
         if (!tgt.target && tgt.state !== 'return') tgt.target = src.id;
+        if (!tgt.chiamato) { tgt.chiamato = true; this.chiamaBranco(tgt, src); }
         src.lastCombat = NOW();
       }
       if (tgt.d.stone && tgt.hp > 0) this.stoneWaves(tgt, src);
@@ -819,6 +988,7 @@ export class World {
   heal(q, amt, quiet) {
     if (q.dead) return;
     const before = q.hp;
+    if (q.antiCuraUntil > NOW()) amt *= 1 - (q.antiCura || 0);   // ferita della furia di un boss
     q.hp = Math.min(q.maxHp, q.hp + amt);
     const v = Math.round(q.hp - before);
     if (q.kind === 'player') { q.resDirty = true; }
@@ -829,6 +999,16 @@ export class World {
   }
 
   stun(e, sec) {
+    if (e.kind === 'player') {
+      // rendimenti decrescenti: entro 15 s il secondo stordimento dura la metà, il terzo un quarto, poi immune
+      // (la finestra dei 15 s riparte solo dagli stordimenti andati a segno: un tentativo respinto non la rinnova,
+      // altrimenti in uno scontro lungo con più storditori l'immunità non finirebbe mai)
+      const t0 = NOW();
+      const n = t0 < (e.drUntil || 0) ? (e.drN || 0) + 1 : 0;
+      sec *= [1, 0.5, 0.25][n] || 0;
+      if (sec <= 0) return;
+      e.drN = n; e.drUntil = t0 + 15000;
+    }
     const until = NOW() + sec * 1000;
     if (e.d && (e.d.boss || e.d.stone || e.d.dummy)) return;
     e.stunUntil = Math.max(e.stunUntil || 0, until);
@@ -875,11 +1055,13 @@ export class World {
 
   slow(e, sec) {
     e.slowUntil = Math.max(e.slowUntil || 0, NOW() + sec * 1000);
+    this.fx(e, { k: 'aff', d: e.id, a: '__lento', ms: Math.round(sec * 1000) });
     if (e.kind === 'player') this.send(e, { t: 'st', slow: Math.round(sec * 1000) });
   }
 
   mobDie(m, killer) {
     if (killer && killer.kind === 'player') this.giveRes(killer, BONUS_RISORSA.kill);
+    this.uccisione(m, killer);
     m.hp = 0; m.removeAt = NOW() + 2500; this.touch(m);
     this.fx(m, { k: 'die', d: m.id });
     const d = m.d;
@@ -920,15 +1102,20 @@ export class World {
       const each = Math.max(1, Math.round(amt / Math.max(1, members.length)));
       for (const q of members) { q.ch.tael += each; q.selfDirty = true; this.send(q, { t: 'gain', tael: each }); }
     }
+    this.missioniMorte(m, killer);   // server/missioni.js
+    if (d.mondo) this.bossMondoMorto(m, top);   // boss del mondo: premi personali a chi ha partecipato (server/altolivello.js)
     if (m.inst) { this.trialMobDied(m); m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = []; return; }
     const source = d.boss ? 'boss' : d.stone ? 'stone' : 'mob';
-    const dmul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100);
+    const dmul = this.cfg.rates.drop * (1 + ((top && top.dropPct) || 0) / 100) * (d.bott ?? 1);
     for (const [id, ch, mn = 1, mx = 1] of d.drops || []) {
       if (Math.random() < ch * dmul) this.spawnDrop(id, randi(mn, mx), m.x, m.z, top ? top.id : 0, source);
     }
-    this.extraDrops(m, top);
-    if (m.spawner) m.spawner.pending.push(NOW() + d.respawn * 1000 * rand(0.9, 1.15));
-    if (d.boss) this.broadcast({ t: 'notice', m: `${top ? top.name : 'Un eroe'} ha sconfitto ${d.name}!` });
+    // in gruppo i pezzi della classe vanno a turno ai compagni vicini (non sempre a chi fa più danni)
+    const vicini = groupOf(top), party = top && top.party ? this.parties.get(top.party) : null;
+    const perChi = party && vicini.length > 1 ? vicini[(party.turnoBottino = (party.turnoBottino || 0) + 1) % vicini.length] : top;
+    if (!d.mondo) this.extraDrops(m, top, perChi);
+    if (m.spawner) this.programmaRinascita(m);
+    if (d.boss && !d.mondo) this.broadcast({ t: 'notice', m: `${top ? top.name : 'Un eroe'} ha sconfitto ${d.name}!` });
     m.aggro.clear(); m.target = null; m.dots = []; m.debuffs = [];
   }
 
@@ -962,6 +1149,7 @@ export class World {
 
   gainExp(p, amt) {
     if (p.lvl >= MAX_LEVEL) return;
+    const prima = p.lvl;
     p.ch.exp += amt;
     this.send(p, { t: 'gain', exp: amt });
     let up = false;
@@ -978,23 +1166,24 @@ export class World {
       this.touch(p);
       this.fx(p, { k: 'lvl', s: p.id });
       this.send(p, { t: 'notice', m: `Sei salito al livello ${p.lvl}!` });
-      if (p.lvl >= VIA_LEVEL && !p.ch.via) this.sys(p, 'Hai raggiunto il livello 5: scegli la tua Via nella finestra Abilità (tasto K).');
       this.autoQuickbar(p, true);
+      this.missioniLivello(p, prima);   // avviso con ciò che si sblocca, missioni del nuovo livello
     }
     p.selfDirty = true;
   }
 
   playerDie(p, killer) {
     p.dead = true; p.hp = 0; p.deadAt = NOW();
-    p.buffs = []; p.hots = []; p.dots = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0;
+    p.buffs = []; p.hots = []; p.dots = []; p.waves = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0; p.serie = 0;
+    if (p.aura) { p.aura = null; this.fx(p, { k: 'aura', s: p.id, a: '' }); }
     p.mounted = false; p.mountUntil = 0; p.vis++;
     this.recalc(p);
     this.touch(p); p.selfDirty = true;
     let lost = 0;
-    if (killer.kind === 'mob') {
+    if (killer.kind === 'mob' && !this.inArena(p)) {
       lost = Math.min(p.ch.exp, Math.floor(expToNext(p.lvl) * 0.03));
       p.ch.exp -= lost;
-    } else if (killer.kind === 'player') {
+    } else if (killer.kind === 'player' && !this.uccisioneArena(killer, p)) {
       this.broadcast({ t: 'sys', m: `${killer.name} (${KINGDOMS[killer.kingdom].short}) ha sconfitto ${p.name} (${KINGDOMS[p.kingdom].short}).` });
     }
     this.fx(p, { k: 'die', d: p.id });
@@ -1005,14 +1194,17 @@ export class World {
   respawn(p, mode) {
     if (!p.dead) return;
     const el = NOW() - p.deadAt;
-    if (mode === 'here') {
+    if (this.inArena(p)) {
+      if (el < 3000) return;
+      this.rinasciInArena(p);   // nell'arena si rinasce sempre a una porta
+    } else if (mode === 'here') {
       if (el < 8000) return;
       p.hp = Math.round(p.maxHp * 0.5);
       if (p.rtype === 'mana') p.res = Math.round(p.rmax * 0.5);
     } else {
       if (el < 3000) return;
       const inst = p.inst ? this.instances.get(p.inst) : null;
-      const sp = inst ? { x: inst.ox + DUNGEON.spawn[0], z: inst.oz + DUNGEON.spawn[1] } : villageSpawn(p.kingdom);
+      const sp = inst ? { x: inst.ox + inst.dg.spawn[0], z: inst.oz + inst.dg.spawn[1] } : villageSpawn(p.kingdom);
       p.x = sp.x; p.z = sp.z; p.hp = p.maxHp;
       if (p.rtype === 'mana') p.res = p.rmax;
     }
@@ -1023,7 +1215,9 @@ export class World {
 
   clampPos(p, x, z) {
     const inst = p.inst ? this.instances.get(p.inst) : null;
-    if (inst) return [clamp(x, inst.ox + DUNGEON.boundsMin[0], inst.ox + DUNGEON.boundsMax[0]), clamp(z, inst.oz + DUNGEON.boundsMin[1], inst.oz + DUNGEON.boundsMax[1])];
+    if (inst) return [clamp(x, inst.ox + inst.dg.boundsMin[0], inst.ox + inst.dg.boundsMax[0]), clamp(z, inst.oz + inst.dg.boundsMin[1], inst.oz + inst.dg.boundsMax[1])];
+    const inMappa = this.limitaPosMappa(x, z);
+    if (inMappa) return inMappa;
     return [clamp(x, -PLAY_LIMIT, PLAY_LIMIT), clamp(z, -PLAY_LIMIT, PLAY_LIMIT)];
   }
 
@@ -1038,7 +1232,9 @@ export class World {
     switch (msg.t) {
       case 'move': return this.onMove(p, msg);
       case 'atk': return this.onAttack(p, msg.id);
-      case 'skill': return this.onSkill(p, msg.s, msg.id);
+      case 'skill':
+        if (Number.isFinite(+msg.r) && msg.r !== null && !p.dead) p.r = +msg.r;   // direzione del Passo di Luce
+        return this.onSkill(p, msg.s, msg.id);
       case 'chat': return this.onChat(p, msg.m);
       case 'pick': return this.onPickup(p, msg.id);
       case 'use': return this.onUse(p, msg.i | 0);
@@ -1049,6 +1245,7 @@ export class World {
       case 'via': return this.onVia(p, msg.v);
       case 'qb': return this.onQuickbar(p, msg.i | 0, msg.v);
       case 'npc': return this.onNpc(p, msg.id);
+      case 'mis': return this.onMissione(p, msg);
       case 'buy': return this.onBuy(p, msg.npc, msg.it, msg.n | 0);
       case 'sell': return this.onSell(p, msg.npc, msg.i | 0);
       case 'up': return this.onUpgrade(p, msg.npc, msg.i | 0, !!msg.seal);
@@ -1058,13 +1255,16 @@ export class World {
       case 'respawn': return this.respawn(p, msg.mode);
       case 'cancel': if (p.casting) this.cancelCast(p); if (p.mountUntil) { p.mountUntil = 0; this.send(p, { t: 'castend', ok: 0 }); } return;
       case 'mount': return this.onMount(p);
-      case 'trial': return this.onTrial(p, msg.npc, msg.a);
+      case 'trial': return this.onTrial(p, msg.npc, msg.a, msg.p);
       case 'tleave': return this.leaveTrial(p);
       case 'stable': return this.onStable(p, msg.npc, msg.a);
+      case 'viaggio': return this.onViaggio(p, msg);
+      case 'alto': return this.onAltoLivello(p, msg);   // titoli, negozio dell'onore, imprese (server/altolivello.js)
       case 'pinv': return this.onPartyInvite(p, msg.id ? this.ents.get(msg.id) : this.playerByName(msg.n));
       case 'preply': return this.onPartyReply(p, !!msg.ok);
       case 'pleave': return this.leaveParty(p);
       case 'pkick': return this.onPartyKick(p, msg.id);
+      case 'scambio': case 'dep': case 'amico': case 'amici': case 'ordina': case 'vendi_comuni': return this.sociale(p, msg);   // server/sociale.js
     }
   }
 
@@ -1080,7 +1280,7 @@ export class World {
     if (Math.hypot(x - p.x, z - p.z) > maxD) { this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z) }); return; }
     [p.x, p.z] = this.clampPos(p, x, z);
     if (Number.isFinite(+msg.r)) p.r = +msg.r;
-    if (p.casting && Math.hypot(p.x - p.casting.x, p.z - p.casting.z) > 0.35) this.cancelCast(p);
+    if (p.casting && !SKILLS[p.casting.sid].mobile && Math.hypot(p.x - p.casting.x, p.z - p.casting.z) > 0.35) this.cancelCast(p);
     if (p.mountUntil && Math.hypot(p.x - p.mountX, p.z - p.mountZ) > 0.35) { p.mountUntil = 0; this.send(p, { t: 'castend', ok: 0 }); }
     this.touch(p);
   }
@@ -1130,6 +1330,8 @@ export class World {
   costOf(p, sk) {
     if (!sk.cost) return 0;
     if (this.hasBuffWith(p, 'free', sk.id)) return 0;
+    if (sk.finale && p.buffs.some(b => BUFFS[b.id].finaleGratis)) return 0;   // Occasione
+    if (sk.ruolo === 'accumulo' && p.buffs.some(b => BUFFS[b.id].risveglio && BUFFS[b.id].risveglio.gratis)) return 0;   // Risveglio
     let c = sk.cost;
     for (const b of p.buffs) { const cm = BUFFS[b.id].costMod; if (cm && cm[sk.id]) c += cm[sk.id]; }
     c = Math.max(0, c);
@@ -1158,7 +1360,18 @@ export class World {
   }
 
   friendly(p, target, range) {
-    return (target && target.kind === 'player' && target.kingdom === p.kingdom && !target.dead && dist(target, p) <= range + 2) ? target : p;
+    return (target && target.kind === 'player' && this.alleato(p, target) && !target.dead && dist(target, p) <= range + 2) ? target : p;
+  }
+
+  // L'alleato del regno con meno vita (in %) entro il raggio, sé compreso: bersaglio delle cure quando si ha un nemico selezionato.
+  piuFerito(p, raggio) {
+    let best = p, bv = p.hp / p.maxHp;
+    for (const q of this.players) {
+      if (q === p || !this.alleato(p, q) || q.dead || dist(q, p) > raggio) continue;
+      const v = q.hp / q.maxHp;
+      if (v < bv) { bv = v; best = q; }
+    }
+    return best;
   }
 
   // Controlla se l'abilità può partire ora; restituisce { target } oppure { err }.
@@ -1169,7 +1382,8 @@ export class World {
       if (!w || ITEMS[w.id].wt !== sk.req) return { err: sk.req === 'bow' ? 'Serve un arco equipaggiato' : 'Servono dei pugnali equipaggiati' };
     }
     if (this.costOf(p, sk) > p.res + 0.001) return { err: `${RESOURCES[p.rtype].name} insufficiente` };
-    if (sk.sup && p.sup < SUPREMA.max) return { err: 'La Tecnica Suprema non è ancora carica' };
+    if (sk.sup && NOW() < (p.supAt || 0)) return { err: 'La Tecnica Suprema non è ancora pronta' };
+    if (sk.ptsCost && p.pts < sk.ptsCost && !p.buffs.some(b => b.id === 'occasione')) return { err: `Servono ${sk.ptsCost} ${(CLASSES[p.cls].pts || {}).name || 'punti'}` };
     if (sk.spend && sk.type !== 'heal_aoe' && p.pts < (sk.minPts || 1)) return { err: `Servono almeno ${sk.minPts || 1} ${(CLASSES[p.cls].pts || {}).name || 'punti'}` };
     const range = sk.range === 'weapon' ? p.range : (sk.range || 0);
     const target = tid ? this.ents.get(tid) : null;
@@ -1181,8 +1395,10 @@ export class World {
         if (sk.type === 'taunt' && target.kind !== 'mob') return { err: 'Puoi sfidare solo i mostri' };
         return { target };
       }
-      case 'heal_target': case 'hot_target': case 'shield': case 'heal_aoe':
-        return { target: this.friendly(p, target, range || 20) };
+      case 'heal_target': case 'hot_target': case 'shield': case 'heal_aoe': {
+        const amico = target && target.kind === 'player' && this.alleato(p, target) && !target.dead && dist(target, p) <= (range || 20) + 2;
+        return { target: amico ? target : (sk.finale ? this.piuFerito(p, range || 20) : p) };
+      }
       default:
         return { target: null };
     }
@@ -1202,7 +1418,8 @@ export class World {
     if (chk.err) return this.skfail(p, sid, chk.err);
     const gcd = sk.offgcd ? 0 : this.gcdMs(p);
     if (gcd) p.gcdUntil = t + gcd;
-    const castMs = sk.cast && !this.hasBuffWith(p, 'instant', sid) ? Math.round(sk.cast * 1000 / (1 + p.haste / 100)) : 0;
+    const svegliaIst = (sk.ruolo === 'accumulo' || sk.base) && p.buffs.some(b => BUFFS[b.id].risveglio && BUFFS[b.id].risveglio.istantanei);
+    const castMs = sk.cast && !svegliaIst && !this.hasBuffWith(p, 'instant', sid) ? Math.round(sk.cast * 1000 / (1 + p.haste / 100)) : 0;
     if (castMs > 0) {
       p.casting = { sid, tid, until: t + castMs, x: p.x, z: p.z };
       this.send(p, { t: 'cast', s: sid, ms: castMs, gcd });
@@ -1229,10 +1446,37 @@ export class World {
       const carry = Math.min(Math.max(0, ex.until - t), dur * 0.3);
       ex.dmg = tick; ex.until = t + dur + carry;
       this.send(p, { t: 'dot', d: target.id, s: sk.id, ms: ex.until - t });
+      this.fx(target, { k: 'aff', d: target.id, a: sk.id, ms: ex.until - t });
     } else {
       target.dots.push({ src: p.id, sid: sk.id, dmg: tick, every, next: t + every, until: t + dur });
       this.send(p, { t: 'dot', d: target.id, s: sk.id, ms: dur });
+      this.fx(target, { k: 'aff', d: target.id, a: sk.id, ms: dur });   // a tutti i vicini: l'effetto si vede sul nemico
     }
+  }
+
+  // ---- Marchi dell'Ombra: stanno sul nemico, per chi li ha incisi (shared/data.js, CLASSES.ombra.marchi)
+  marchiDi(e, p) {
+    const m = e && e.marchi && e.marchi[p.id];
+    return m && m.until > NOW() ? m.n : 0;
+  }
+
+  mettiMarchi(p, e, k, lvl = 1) {
+    const M = CLASSES[p.cls].marchi;
+    if (!M || !k || !this.canAttack(p, e)) return;
+    const n = Math.min(M.max, this.marchiDi(e, p) + k);
+    (e.marchi || (e.marchi = {}))[p.id] = { n, until: NOW() + M.dur * 1000 };
+    this.fx(e, { k: 'marchi', d: e.id, s: p.id, n, ms: M.dur * 1000 });
+    // Via dei Pugnali: ogni Marchio avvelena
+    const mae = p.ch.via && VIE[p.ch.via].maestria;
+    if (mae && mae.veleno) this.applyDot(p, e, { id: 'veleno', dot: mae.veleno }, lvl, 0, p.atk, p.dmgPct);
+  }
+
+  // l'Esecuzione consuma i Marchi: ritorna quanti erano; `boom` = effetto dell'esplosione nel client
+  togliMarchi(p, e) {
+    const n = this.marchiDi(e, p), cera = !!(e.marchi && e.marchi[p.id]);
+    if (e.marchi) delete e.marchi[p.id];
+    if (n || cera) this.fx(e, { k: 'marchi', d: e.id, s: p.id, n: 0, boom: n });
+    return n;
   }
 
   // lanciata: la tecnica arriva dalla fine di un tempo di lancio vero (non resa istantanea da un effetto)
@@ -1248,10 +1492,33 @@ export class World {
     const speso = this.costOf(p, sk);
     p.res = Math.max(0, p.res - speso);
     let n = 0;
-    if (sk.spend && sk.type !== 'heal_aoe') { n = p.pts; p.pts = 0; }
+    if ((sk.spend && sk.type !== 'heal_aoe') || sk.finale) { n = p.pts; p.pts = 0; }
+    // Occasione: il finale è gratuito (vedi costOf) e vale come se la Concentrazione fosse piena
+    if (sk.finale && p.buffs.some(b => b.id === 'occasione')) { n = Math.max(n, PTS_MAX); p.buffs = p.buffs.filter(b => b.id !== 'occasione'); }
+    // scarichi a Punti (kit dell'Ombra): costo fisso; con l'Occasione non consumano nulla
+    if (sk.ptsCost) {
+      if (p.buffs.some(b => b.id === 'occasione')) p.buffs = p.buffs.filter(b => b.id !== 'occasione');
+      else p.pts = Math.max(0, p.pts - sk.ptsCost);
+      if ((p.supAt || 0) > NOW()) p.supAt -= sk.ptsCost * (SUPREMA.puntoS || 0) * 1000;
+    }
+    // Risveglio (cooldown offensivo): i colpi base cambiano finché dura
+    const rb = p.buffs.find(b => BUFFS[b.id].risveglio);
+    const risv = rb && (sk.ruolo === 'accumulo' || sk.base) ? BUFFS[rb.id].risveglio : null;
+    let scalaColpo = 1;
+    // Flusso: una tecnica di rotazione diversa dalla precedente fa più danni; ripeterla lo spezza
+    const cls = CLASSES[p.cls];
+    const rotazione = !!(cls.flusso && sk.ruolo);
+    const inFlusso = rotazione && !!p.ultimaTecnica && p.ultimaTecnica !== sid;
+    // Ferita (o Veleno con la Via dei Pugnali): il segno lasciato dalle tecniche `affligge`
+    const affl = sk.affligge ? ((p.ch.via && VIE[p.ch.via].maestria && VIE[p.ch.via].maestria.veleno) ? { id: 'veleno', dot: VIE[p.ch.via].maestria.veleno } : (cls.ferita ? { id: 'ferita', dot: cls.ferita } : null)) : null;
+    const afflitto = (e) => e.dots.some(d => d.src === p.id && (d.sid === 'veleno' || d.sid === 'ferita'));
+    // Risonanza: il finale diventa ad area (e la consuma)
+    const ris = !!sk.finale && p.buffs.some(b => b.id === 'risonanza');
+    if (ris) p.buffs = p.buffs.filter(b => b.id !== 'risonanza');
+    const mae = (p.ch.via && VIE[p.ch.via].maestria) || {};
     // la barra Suprema si riempie spendendo risorsa e punti; la Suprema stessa la svuota
-    if (sk.sup) p.sup = 0;
-    else if (p.lvl >= SUPREMA.lvl) p.sup = Math.min(SUPREMA.max, p.sup + (p.rtype === 'mana' ? speso / Math.max(1, p.rmax) * 100 * SUPREMA.perManaPct : speso * SUPREMA.perRes) + n * SUPREMA.perPt);
+    if (sk.sup) { p.supAt = NOW() + SUPREMA.cd * 1000; p.supPronta = false; }
+    else if (sk.finale && (p.supAt || 0) > NOW()) p.supAt -= SUPREMA.finaleS * 1000;      // ogni finale avvicina la prossima Suprema
     let bonus = 0;
     for (const b of p.buffs) {
       const d = BUFFS[b.id];
@@ -1265,16 +1532,32 @@ export class World {
       if (lanciata && d.instant && d.instant.includes(sid)) return true;
       return !((d.consume && d.consume.includes(sid)) || (sk.spend && d.consumeSpender));
     });
-    const base = sk.dmg === 'magic' ? p.matk : sk.dmg === 'hybrid' ? (p.atk + p.matk) * 0.55 : sk.dmg === 'best' ? Math.max(p.atk, p.matk) : p.atk;
+    const base = (sk.dmg === 'magic' ? p.matk : sk.dmg === 'hybrid' ? (p.atk + p.matk) * 0.55 : sk.dmg === 'best' ? Math.max(p.atk, p.matk) : p.atk) * (sk.mount ? 1 : COMBAT.scalaTecniche || 1);
+    let areaAfflitti = 0;   // Ventaglio: +% per ogni nemico già afflitto dentro l'area
+    if (sk.perAfflitto && target) {
+      let k = 0;
+      for (const e of this.hostilesAround(p, target.x, target.z, sk.radius)) if (afflitto(e)) k++;
+      areaAfflitti = Math.min(sk.perAfflitto.max, k) * sk.perAfflitto.pct;
+    }
     const pctFor = (tgt) => {
       let pct = p.dmgPct + bonus + (behind ? sk.behind.dmg : 0) + this.vulnFrom(tgt, p);
+      if (inFlusso) pct += cls.flusso;
+      if (sk.bonusAfflitto && afflitto(tgt)) pct += sk.bonusAfflitto;
+      pct += areaAfflitti;
       if (sk.bonusVs && tgt.dots.some(d => d.src === p.id && d.sid === sk.bonusVs.dot)) pct += sk.bonusVs.dmg;
+      // Maestrie delle Vie
+      if (sk.finale && mae.slancio) pct += mae.slancio * p.slancio;
+      if (mae.distanza && dist(p, tgt) > mae.distanza.m) pct += mae.distanza.pct;
+      if (mae.ritmo && sk.ruolo === 'accumulo' && p.ultimoBase && p.ultimoBase !== sid) pct += mae.ritmo;
       return pct;
     };
-    const dmgFor = (tgt) => base * (sk.mult ? skillVal(sk.mult, lvl) : 0) * (sk.spend ? n : 1) * (1 + pctFor(tgt) / 100);
+    // finale: su un bersaglio vale di più per ogni punto di Concentrazione; con la Risonanza colpisce tutti ma meno forte
+    const fin = sk.finale ? (ris ? COMBAT.risPct / 100 : 1 + n * COMBAT.concPct / 100) : 1;
+    const dmgFor = (tgt) => base * (sk.mult ? skillVal(sk.mult, lvl) : 0) * (sk.spend ? n : 1) * fin * scalaColpo * (sk.esplode ? 1 + this.marchiDi(tgt, p) * sk.esplode.pct / 100 : 1) * (1 + pctFor(tgt) / 100);
+    let inflitti = 0;
     const opts = { sk: sid, ignoreDef: sk.ignoreDef, threat: sk.threat };
     // Postura: la riducono solo le tecniche che spendono risorsa o punti (costo nominale in % del massimo) e le Supreme
-    const costoPct = sk.cost > 0 ? (p.rtype === 'mana' ? sk.cost : sk.cost / Math.max(1, p.rmax) * 100) : 0;
+    const costoPct = sk.ptsCost ? sk.ptsCost * 14 : sk.cost > 0 ? (p.rtype === 'mana' ? sk.cost : sk.cost / Math.max(1, p.rmax) * 100) : 0;
     const postDi = (colpi) => posturaColpo(sk, costoPct, n, colpi);
     let crit = false, offensive = false;
     const colpiti = new Set();
@@ -1282,39 +1565,66 @@ export class World {
       if (!sk.mult || !this.canAttack(p, tgt)) return;
       const r = this.hit(p, tgt, dmgFor(tgt), { ...opts, i, aoe: sk.type === 'aoe_self' || sk.type === 'aoe_target', post: postDi(colpi) });
       if (r.crit) crit = true;
-      if (!r.miss) colpiti.add(tgt.id);
+      if (!r.miss) { colpiti.add(tgt.id); inflitti += r.dmg || 0; }
     };
     const control = (tgt) => {
       if (!this.canAttack(p, tgt)) return;
       if (sk.stun) this.stun(tgt, skillVal(sk.stun, lvl));
       if (sk.slow) this.slow(tgt, sk.slow.dur);
     };
-    const fxd = { k: 'sk', s: p.id, sk: sid };
+    const fxd = { k: 'sk', s: p.id, sk: sid, l: lvl };   // l: livello dell'abilità, per l'aspetto dell'effetto nel client
+    if (risv) fxd.pot = 1;                                // colpo base risvegliato: altri colori ed effetti nel client
+    if (ris) fxd.ris = 1;                                 // finale ad area: il client lo mostra su tutta la zona
     switch (sk.type) {
       case 'strike': {
         if (sk.dash) {
           const ang = Math.atan2(target.x - p.x, target.z - p.z);
-          const off = this.radiusOf(target) + 1.1, sgn = sk.behindDash ? 1 : -1;
+          const off = this.radiusOf(target) + 1.1;
           const from = { x: r1(p.x), z: r1(p.z) };
-          p.x = clamp(target.x + Math.sin(ang) * off * sgn, -PLAY_LIMIT, PLAY_LIMIT);
-          p.z = clamp(target.z + Math.cos(ang) * off * sgn, -PLAY_LIMIT, PLAY_LIMIT);
+          // carica: ci si ferma davanti al bersaglio, sulla linea da cui si arriva;
+          // teletrasporto (behindDash): si riappare alle sue spalle, cioè dalla parte opposta a dove guarda
+          let dx = -Math.sin(ang) * off, dz = -Math.cos(ang) * off;
+          if (sk.behindDash) { dx = -Math.sin(target.r || 0) * off; dz = -Math.cos(target.r || 0) * off; fxd.tp = 1; }
+          // riposizionamento (Ala di Vento): si arriva a dashDist metri dal bersaglio, sulla linea fra lui e te
+          if (sk.dashDist) { const l = Math.hypot(p.x - target.x, p.z - target.z) || 1; dx = (p.x - target.x) / l * sk.dashDist; dz = (p.z - target.z) / l * sk.dashDist; }
+          // arrivo dello scatto: dentro i limiti della zona in cui si è (mondo o istanza della cripta) e, nella cripta,
+          // su un punto calpestabile — altrimenti si arretra lungo la traiettoria finché lo è
+          const [ax, az] = this.arrivoScatto(p, target.x + dx, target.z + dz);
+          p.x = ax; p.z = az;
           p.r = Math.atan2(target.x - p.x, target.z - p.z);
           if (p.casting) p.casting = null;
           this.touch(p);
           this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z), r: r2(p.r) });
-          fxd.fx = from.x; fxd.fz = from.z;
+          fxd.fx = from.x; fxd.fz = from.z; fxd.tx = r1(p.x); fxd.tz = r1(p.z);
         }
         for (let i = 0; i < (sk.hits || 1); i++) strikeOne(target, i, sk.hits || 1);
         if (sk.splash) for (const e of this.hostilesAround(p, target.x, target.z, sk.splash)) if (e !== target) { strikeOne(e); control(e); }
+        if (ris) { for (const e of this.hostilesAround(p, target.x, target.z, COMBAT.risRaggio)) if (e !== target) { strikeOne(e); control(e); } fxd.x = r1(target.x); fxd.z = r1(target.z); }
+        if (sk.interrupt) this.interrompi(p, target);
         control(target);
         if (sk.dot && this.canAttack(p, target)) this.applyDot(p, target, sk, lvl, n, base, pctFor(target));
         fxd.d = target.id; offensive = true;
         break;
       }
       case 'aoe_self':
-        for (const e of this.hostilesAround(p, p.x, p.z, sk.radius)) { strikeOne(e); control(e); if (sk.dot && this.canAttack(p, e)) this.applyDot(p, e, sk, lvl, n, base, pctFor(e)); }
+        for (const e of this.hostilesAround(p, p.x, p.z, sk.radius)) {
+          strikeOne(e); control(e);
+          if (sk.dot && this.canAttack(p, e)) this.applyDot(p, e, sk, lvl, n, base, pctFor(e));
+          if (sk.provoca && e.kind === 'mob') this.provoca(p, e);
+        }
         fxd.x = r1(p.x); fxd.z = r1(p.z); offensive = true;
         break;
+      case 'blink': {
+        // Passo di Luce: dist metri avanti nella direzione in cui si guarda (arretrando se si finisce fuori dalla zona)
+        const from = { x: r1(p.x), z: r1(p.z) };
+        const [ax, az] = this.arrivoScatto(p, p.x + Math.sin(p.r || 0) * sk.dist, p.z + Math.cos(p.r || 0) * sk.dist);
+        p.x = ax; p.z = az;
+        if (p.casting) { p.casting.x = p.x; p.casting.z = p.z; }
+        this.touch(p);
+        this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z), r: r2(p.r || 0) });
+        fxd.fx = from.x; fxd.fz = from.z; fxd.tx = r1(p.x); fxd.tz = r1(p.z); fxd.tp = 1;
+        break;
+      }
       case 'aoe_target': {
         const cx = target.x, cz = target.z;
         for (const e of this.hostilesAround(p, cx, cz, sk.radius)) { strikeOne(e); control(e); if (sk.dot && this.canAttack(p, e)) this.applyDot(p, e, sk, lvl, n, base, pctFor(e)); }
@@ -1326,39 +1636,56 @@ export class World {
         target.debuffs = (target.debuffs || []).filter(x => !(x.id === sk.debuff && x.src === p.id));
         target.debuffs.push({ id: sk.debuff, src: p.id, until: t + d.dur * 1000, vuln: skillVal(d.vuln || 0, lvl) });
         this.send(p, { t: 'dot', d: target.id, s: sk.debuff, ms: d.dur * 1000 });
+        this.fx(target, { k: 'aff', d: target.id, a: sk.debuff, ms: d.dur * 1000 });
         fxd.d = target.id; offensive = true;
         break;
       }
       case 'taunt': {
-        if (!target.d.dummy && !target.d.stone) {
-          let max = 0;
-          for (const v of target.aggro.values()) max = Math.max(max, v);
-          target.aggro.set(p.id, max * 1.1 + 100);
-          target.target = p.id;
-          if (target.state === 'return') target.state = 'idle';
-        }
+        this.provoca(p, target);
         fxd.d = target.id; offensive = true;
         break;
       }
-      case 'buff': this.addBuff(p, sk.buff, lvl); break;
+      case 'buff': {
+        this.addBuff(p, sk.buff, lvl);
+        if (sk.risveglio) this.fx(p, { k: 'risveglio', s: p.id, a: sk.buff, ms: BUFFS[sk.buff].dur * 1000 });   // a tutti: il corpo arde finché dura
+        if (sk.gruppo && p.party) {
+          // potenziamenti di gruppo: anche i compagni vivi entro il raggio
+          const party = this.parties.get(p.party);
+          for (const id of (party ? party.members : [])) {
+            const q = this.ents.get(id);
+            if (q && q !== p && !q.dead && this.alleato(p, q) && dist(p, q) <= sk.gruppo) { this.addBuff(q, sk.buff, lvl, true); this.recalc(q); }
+          }
+        }
+        if (sk.manaPct && p.rtype === 'mana') { p.res = Math.min(p.rmax, p.res + p.rmax * sk.manaPct / 100); p.resDirty = true; }
+        break;
+      }
+      case 'aura':
+        // aura di classe: si accende e resta finché non la si spegne (stesso tasto) o si cade
+        if (p.aura === sk.buff) { this.mettiAura(p, null); fxd.off = 1; } else this.mettiAura(p, sk.buff, lvl, sk.gruppo || 0);
+        break;
       case 'buff_allies':
         for (const q of this.players) {
-          if (q.kingdom === p.kingdom && !q.dead && dist(q, p) <= sk.radius) {
+          if (this.alleato(p, q) && !q.dead && dist(q, p) <= sk.radius) {
             this.addBuff(q, sk.buff, lvl);
             if (q !== p) this.fx(q, { k: 'sk', s: q.id, sk: sid, ally: 1 });
           }
         }
         break;
       case 'heal_self': this.heal(p, p.maxHp * skillVal(sk.heal, lvl)); break;
-      case 'heal_target':
-        this.heal(target, (p.matk * skillVal(sk.heal, lvl) + 40) * (1 + p.healPct / 100));
+      case 'heal_target': {
+        const cura = (p.matk * skillVal(sk.heal, lvl) + 40) * (1 + p.healPct / 100) * fin;
+        if (ris) {
+          for (const q of this.players) if (this.alleato(p, q) && !q.dead && dist(q, target) <= 10) this.heal(q, cura);
+          fxd.x = r1(target.x); fxd.z = r1(target.z);
+        } else this.heal(target, cura);
         fxd.d = target.id;
         break;
+      }
       case 'heal_aoe': {
         let extra = 0;
         if (sk.spendBonus && p.pts > 0) { extra = p.pts * sk.spendBonus; this.supDaPunti(p, p.pts); p.pts = 0; }
         for (const q of this.players) {
-          if (q.kingdom !== p.kingdom || q.dead || dist(q, target) > sk.radius) continue;
+          if (!this.alleato(p, q) || q.dead || dist(q, target) > sk.radius) continue;
           const amt = sk.healPct ? q.maxHp * skillVal(sk.heal, lvl) : p.matk * skillVal(sk.heal, lvl) + 40;
           this.heal(q, amt * (1 + (p.healPct + extra) / 100));
         }
@@ -1380,21 +1707,83 @@ export class World {
         break;
       }
     }
+    if (sk.esplode && target) {
+      // Esecuzione: i Marchi del bersaglio esplodono; se ce n'erano, saltano a catena quelli dei nemici marchiati vicini
+      const era = this.togliMarchi(p, target);
+      fxd.mk = era;
+      if (era) {
+        scalaColpo = sk.esplode.catena / 100;
+        for (const e of this.hostilesAround(p, target.x, target.z, sk.esplode.raggio)) {
+          if (e === target || !this.marchiDi(e, p)) continue;
+          strikeOne(e, 1);
+          this.togliMarchi(p, e);
+        }
+        scalaColpo = 1;
+      }
+      // assassinio riuscito: Energia resa e scatti di nuovo pronti
+      if ((target.kind === 'mob' && target.hp <= 0) || target.dead) {
+        this.giveRes(p, sk.esplode.energia || 0);
+        for (const id of Object.keys(p.cds)) {
+          if (!SKILLS[id] || !SKILLS[id].scatto || p.cds[id] <= t) continue;
+          p.cds[id] = t;
+          this.send(p, { t: 'cd', s: id, ms: 0, tot: SKILLS[id].cd * 1000, rid: 1 });
+        }
+      }
+    }
+    if (sk.marca && offensive) {
+      const k = sk.marca + (behind && sk.behind.marchi ? sk.behind.marchi : 0) + (risv && risv.marchiExtra ? risv.marchiExtra : 0);
+      for (const id of colpiti) this.mettiMarchi(p, this.ents.get(id), k, lvl);
+    }
+    if (risv && offensive && sk.mult) {
+      const presi = [...colpiti].map(id => this.ents.get(id)).filter(Boolean);
+      if (risv.scoppio && sk.type === 'strike' && target) {
+        // il colpo singolo esplode attorno al bersaglio
+        scalaColpo = risv.scoppio.pct / 100;
+        for (const e of this.hostilesAround(p, target.x, target.z, risv.scoppio.raggio)) if (e !== target) strikeOne(e, 1);
+      } else if (risv.eco) {
+        // eco: un secondo colpo su chi è stato preso
+        scalaColpo = risv.eco / 100;
+        for (const e of presi) strikeOne(e, 1);
+      }
+      scalaColpo = 1;
+    }
     if (sk.waves > 1 && offensive) {
       const cx = sk.type === 'aoe_self' ? p.x : target.x, cz = sk.type === 'aoe_self' ? p.z : target.z;
-      const dmg = base * skillVal(sk.mult, lvl) * (1 + (p.dmgPct + bonus) / 100);
+      const dmg = base * skillVal(sk.mult, lvl) * (1 + (p.dmgPct + bonus + (inFlusso ? cls.flusso : 0) + areaAfflitti) / 100);
       for (let i = 1; i < sk.waves; i++) p.waves.push({ at: t + i * sk.waveGap * 1000, sid, x: cx, z: cz, tid: target ? target.id : 0, dmg, post: postDi(sk.radius ? 1 : (sk.hits || 1)) });
     }
     // generazione di risorsa e punti, effetti su di sé
-    if (sk.gen) this.giveRes(p, sk.gen);
+    if (sk.gen) this.giveRes(p, sk.gen * (risv && risv.genPct ? 1 + risv.genPct / 100 : 1));
     if (colpiti.size) {
       // più bersagli insieme e colpi critici rendono risorsa; ogni tecnica a segno alimenta lo Slancio
       if (colpiti.size > 1) this.giveRes(p, Math.min(BONUS_RISORSA.multiMax, (colpiti.size - 1) * BONUS_RISORSA.multi));
       if (crit) this.giveRes(p, BONUS_RISORSA.crit);
       this.gainSlancio(p);
     }
-    if (sk.pts) p.pts = Math.min(PTS_MAX, p.pts + sk.pts + (behind ? sk.behind.pts : 0));
-    if (sk.buff && sk.type === 'strike') this.addBuff(p, sk.buff, lvl);
+    if (sk.pts) p.pts = Math.min(PTS_MAX, p.pts + sk.pts + (behind ? sk.behind.pts : 0) + (risv && risv.ptsExtra ? risv.ptsExtra : 0));
+    if (sk.risonanza && colpiti.size >= COMBAT.risMin) this.addBuff(p, 'risonanza', 1);
+    if (affl) for (const id of colpiti) { const e = this.ents.get(id); if (e && this.canAttack(p, e)) this.applyDot(p, e, affl, lvl, 0, base, p.dmgPct); }
+    if (rotazione) {
+      if (inFlusso || !p.ultimaTecnica) this.addBuff(p, 'flusso', 1);
+      else if (p.buffs.some(b => b.id === 'flusso')) { p.buffs = p.buffs.filter(b => b.id !== 'flusso'); this.fx(p, { k: 'flusso', s: p.id, rotto: 1 }); }
+      p.ultimaTecnica = sid;
+    }
+    if (sk.riduceCd) {
+      for (const id of sk.riduceCd.ids) {
+        if ((p.cds[id] || 0) <= t) continue;
+        p.cds[id] -= sk.riduceCd.s * 1000;
+        this.send(p, { t: 'cd', s: id, ms: Math.max(0, p.cds[id] - t), tot: SKILLS[id].cd * 1000, rid: 1 });
+      }
+    }
+    if (sk.ruolo === 'accumulo') {
+      if (mae.critPts && crit) p.pts = Math.min(PTS_MAX, p.pts + mae.critPts);
+      if (mae.grazia && inflitti > 0) this.heal(this.piuFerito(p, 25), inflitti * mae.grazia / 100 * (1 + p.healPct / 100));
+      p.ultimoBase = sid;
+      // a volte un colpo base apre un'Occasione: il prossimo finale è gratuito e a Concentrazione piena
+      if (colpiti.size && Math.random() * 100 < (cls.occasionePct || COMBAT.occasionePct)) this.addBuff(p, 'occasione', 1);
+    }
+    if (sk.finale && mae.cura) this.heal(p, p.maxHp * mae.cura / 100);
+    if (sk.buff && (sk.type === 'strike' || sk.type === 'aoe_self')) this.addBuff(p, sk.buff, lvl);
     const viaOk = (o) => !o.via || o.via === p.ch.via;
     if (crit && sk.onCrit && viaOk(sk.onCrit)) this.addBuff(p, sk.onCrit.buff, 1);
     if (sk.proc && viaOk(sk.proc) && Math.random() < sk.proc.chance) this.addBuff(p, sk.proc.buff, 1);
@@ -1406,9 +1795,82 @@ export class World {
     this.fx(p, fxd);
   }
 
+  // Provocazione: il mostro mette p in cima alla sua minaccia (fantocci e pietre non hanno minaccia).
+  provoca(p, m) {
+    if (!m || m.kind !== 'mob' || m.d.dummy || m.d.stone || m.hp <= 0) return;
+    let max = 0;
+    for (const v of m.aggro.values()) max = Math.max(max, v);
+    m.aggro.set(p.id, max * 1.1 + 100);
+    m.target = p.id;
+    if (m.state === 'return') m.state = 'idle';
+  }
+
+  // Serie di uccisioni (SERIE in shared/data.js): la allungano tutti i giocatori che hanno combattuto il mostro, vicini.
+  uccisione(m, killer) {
+    const t = NOW(), chi = new Set();
+    if (killer && killer.kind === 'player') chi.add(killer);
+    for (const pid of m.aggro.keys()) { const q = this.ents.get(pid); if (q && q.kind === 'player') chi.add(q); }
+    // anche i compagni di gruppo vicini (il guaritore che cura e non colpisce): in serie si corre più veloci e il
+    // gruppo deve restare insieme
+    for (const q of [...chi]) {
+      const party = q.party ? this.parties.get(q.party) : null;
+      if (party) for (const id of party.members) { const c = this.ents.get(id); if (c && c.kind === 'player') chi.add(c); }
+    }
+    for (const q of chi) {
+      if (q.dead || !q.online || dist(q, m) > 40) continue;
+      q.serie = t <= q.serieUntil ? q.serie + 1 : 1;
+      q.serieUntil = t + SERIE.finestraMs;
+      if (q.slancio > 0) q.slancioUntil = Math.max(q.slancioUntil, t + SLANCIO.windowMs);
+      // le uccisioni accorciano le ricariche di scatti e potenziamento (il client riceve la ricarica nuova, `rid`)
+      for (const sid of Object.keys(q.cds)) {
+        const sk = SKILLS[sid], meno = sk && (sk.scatto ? SERIE.scattoS : sk.potenziamento ? SERIE.potS : 0);
+        if (!meno || q.cds[sid] <= t) continue;
+        q.cds[sid] -= meno * 1000;
+        this.send(q, { t: 'cd', s: sid, ms: Math.max(0, q.cds[sid] - t), tot: sk.cd * 1000, rid: 1 });
+      }
+      if (q.serie % SERIE.occasioneOgni === 0) this.addBuff(q, 'occasione', 1);
+      this.recalc(q);
+      q.resDirty = true;
+    }
+  }
+
+  // Punto d'arrivo valido per uno scatto verso (x, z): rispetta i confini della zona e i muri della cripta.
+  arrivoScatto(p, x, z) {
+    [x, z] = this.clampPos(p, x, z);
+    const inst = p.inst ? this.instances.get(p.inst) : null;
+    if (!inst) return [x, z];
+    const ok = (qx, qz) => dungeonWalkable(qx - inst.ox, qz - inst.oz, 0.5, inst.dg);
+    if (ok(x, z)) return [x, z];
+    for (let k = 1; k <= 20; k++) {
+      const t = k / 20, qx = x + (p.x - x) * t, qz = z + (p.z - z) * t;
+      if (ok(qx, qz)) return [qx, qz];
+    }
+    return [p.x, p.z];
+  }
+
+  // Interruzione: spezza il lancio del bersaglio (mostro o giocatore) e rende un po' di risorsa.
+  interrompi(p, target) {
+    if (!target || !this.canAttack(p, target)) return;
+    if (target.kind === 'mob' && target.cast) {
+      const def = target.cast.def;
+      target.cast = null;
+      if (def && def.post && target.postMax) this.colpisciPostura(target, target.postMax * def.post);   // lancio di un boss interrotto: barcolla
+      target.nextCast = NOW() + (target.d.cast ? target.d.cast.cd : 8000);
+      this.fx(target, { k: 'mcastend', s: target.id, int: 1 });
+      this.giveRes(p, COMBAT.genInterr);
+      this.addBuff(p, 'occasione', 1);       // interruzione riuscita: finestra per un finale gratuito e pieno
+      p.resDirty = true;
+    } else if (target.kind === 'player' && target.casting) {
+      this.cancelCast(target);
+      this.fx(target, { k: 'mcastend', s: target.id, int: 1 });
+      this.giveRes(p, COMBAT.genInterr);
+      this.addBuff(p, 'occasione', 1);
+    }
+  }
+
   // Punti consumati da cure e scudi (`spendBonus`): riempiono la barra Suprema come quelli degli scarichi.
   supDaPunti(p, n) {
-    if (p.lvl >= SUPREMA.lvl) p.sup = Math.min(SUPREMA.max, p.sup + n * SUPREMA.perPt);
+    // (la Suprema ora ha una ricarica: i punti non la riempiono più)
   }
 
   // Monaco: Pugno → Calcio → Palmo in ordine attiva la Forma Perfetta.
@@ -1439,6 +1901,10 @@ export class World {
   // Mette nella barra rapida le abilità appena sbloccate.
   autoQuickbar(p, announce) {
     const c = CLASSES[p.cls];
+    if (p.ch.via) {
+      const nuovo = Object.values(SKILLS).find(s => s.via === p.ch.via && s.finale);
+      p.ch.qb = p.ch.qb.map(q => (q && q.k === 's' && SKILLS[q.id] && SKILLS[q.id].finoVia) ? (nuovo ? { k: 's', id: nuovo.id } : null) : q);
+    }
     const known = new Set(p.ch.qb.filter(Boolean).filter(q => q.k === 's').map(q => q.id));
     const list = [...c.baseSkills, ...(p.ch.via ? Object.values(SKILLS).filter(s => s.via === p.ch.via).map(s => s.id) : [])];
     for (const sid of list) {
@@ -1448,6 +1914,46 @@ export class World {
       if (announce) this.sys(p, `Nuova abilità: ${SKILLS[sid].name}`);
     }
     p.selfDirty = true;
+  }
+
+  /** Aura di classe: effetto senza scadenza (BUFFS[..].aura); id nullo la spegne. Chi è in vista lo sa da `au` nelle info
+   *  e dall'effetto `aura`; con `raggio` i compagni di gruppo vicini la ricevono finché restano nel raggio (tickAure). */
+  mettiAura(p, id, lvl = 1, raggio = 0) {
+    // via la propria aura e la copia della stessa aura ricevuta da un compagno (non si sommano)
+    p.buffs = p.buffs.filter(b => !b.aura && !(id && b.id === id));
+    p.aura = id || null;
+    p.auraLvl = lvl; p.auraRaggio = raggio;
+    if (id) {
+      const def = BUFFS[id], stats = {};
+      for (const k in def.stats) stats[k] = Math.round(skillVal(def.stats[k], lvl) * 10) / 10;
+      p.buffs.push({ id, stats, until: NOW() + 1e11, aura: true });
+    }
+    this.recalc(p);
+    p.selfDirty = true;
+    this.fx(p, { k: 'aura', s: p.id, a: id || '' });
+  }
+
+  /** Una volta al secondo: le auree di gruppo arrivano ai compagni vivi entro il raggio (effetto breve, rinnovato). */
+  tickAure(p, t) {
+    if (!p.aura || !p.auraRaggio || !p.party || p.dead || t < (p.auraTick || 0)) return;
+    p.auraTick = t + 1000;
+    const party = this.parties.get(p.party), def = BUFFS[p.aura];
+    for (const id of (party ? party.members : [])) {
+      const q = this.ents.get(id);
+      if (!q || q === p || q.dead || q.aura === p.aura || !this.alleato(p, q) || dist(p, q) > p.auraRaggio) continue;
+      const stats = {};
+      for (const k in def.stats) stats[k] = Math.round(skillVal(def.stats[k], p.auraLvl) * 10) / 10;
+      const nuovo = !q.buffs.some(b => b.id === p.aura);
+      q.buffs = q.buffs.filter(b => b.id !== p.aura);
+      q.buffs.push({ id: p.aura, stats, until: t + 2500, compagno: p.id });   // rinnovata ogni secondo finché si resta nel raggio
+      if (nuovo) { this.recalc(q); q.selfDirty = true; }
+    }
+  }
+
+  /** Ricarica della Suprema in percentuale (100 = pronta), per la barra del client e per i bot. */
+  supPct(p) {
+    const manca = (p.supAt || 0) - NOW();
+    return manca <= 0 ? SUPREMA.max : Math.max(0, Math.floor(SUPREMA.max * (1 - manca / (SUPREMA.cd * 1000))));
   }
 
   addBuff(p, id, lvl = 1, notify = false) {
@@ -1487,13 +1993,16 @@ export class World {
   sendTrialInfo(p, npcId) {
     const key = p.ch.inv.find(s => s && s.id === 'sigillo_prova');
     const party = this.partyOf(p);
+    const migliori = p.ch.prove || {};
     this.send(p, {
       t: 'trial', npc: npcId, key: key ? key.kl : null, best: p.ch.trialBest || 0, week: weeklyAffixes(),
       leader: !party || party.leader === p.id, party: party ? party.members.length : 1, minLevel: DUNGEON.minLevel,
+      // le Prove fra cui scegliere (Cripta e Forgia): stesso sigillo, livelli e premi diversi
+      prove: Object.values(PROVE).map(dg => ({ id: dg.id, n: dg.name, tr: dg.trial, min: dg.minLevel, tl: dg.timeLimit, desc: dg.desc || '', best: dg.id === 'cripta' ? Math.max(p.ch.trialBest || 0, migliori.cripta || 0) : (migliori[dg.id] || 0) })),
     });
   }
 
-  onTrial(p, npcId, action) {
+  onTrial(p, npcId, action, prova) {
     const npc = this.nearNpc(p, npcId, ['custode']);
     if (!npc) return;
     if (action === 'key') {
@@ -1503,11 +2012,12 @@ export class World {
       this.sys(p, `Hai ricevuto un Sigillo della Prova +${DUNGEON.startKey}.`);
       return this.sendTrialInfo(p, npcId);
     }
-    if (action === 'open') return this.openTrial(p, npc);
+    if (action === 'open') return this.openTrial(p, npc, prova);
   }
 
-  openTrial(p, npc) {
+  openTrial(p, npc, prova) {
     if (p.inst) return;
+    const dg = Object.hasOwn(PROVE, String(prova || '')) ? PROVE[prova] : DUNGEON;
     const key = p.ch.inv.find(s => s && s.id === 'sigillo_prova');
     if (!key) return this.err(p, 'Ti serve un Sigillo della Prova');
     const party = this.partyOf(p);
@@ -1515,36 +2025,36 @@ export class World {
     const members = (party ? party.members.map(id => this.ents.get(id)) : [p])
       .filter(q => q && q.kind === 'player' && q.online && !q.dead && !q.inst && dist(q, npc) < 40);
     if (!members.includes(p)) return;
-    const low = members.find(q => q.lvl < DUNGEON.minLevel);
-    if (low) return this.err(p, `${low.name} non ha ancora il livello ${DUNGEON.minLevel}`);
+    const low = members.find(q => q.lvl < dg.minLevel);
+    if (low) return this.err(p, `${low.name} non ha ancora il livello ${dg.minLevel} per la ${dg.name}`);
     let slot = 0;
     while (this.instSlots[slot]) slot++;
-    const ox = DUNGEON.originX + slot * DUNGEON.slotSpacing, oz = 0;
-    const kl = key.kl || DUNGEON.startKey;
+    const ox = dg.originX + slot * dg.slotSpacing, oz = 0;
+    const kl = key.kl || dg.startKey;
     const inst = {
-      id: this.nextInst++, slot, ox, oz, kl, affixes: activeAffixes(kl), members: new Set(members.map(q => q.id)), owner: p.id, key,
+      id: this.nextInst++, slot, ox, oz, kl, dg, affixes: activeAffixes(kl), members: new Set(members.map(q => q.id)), owner: p.id, ownerName: p.name, key,
       players: members.length, start: NOW(), deaths: 0, forces: 0, bossDead: false, bossId: 0, done: false, result: null,
       mobs: new Set(), hazards: [], timers: [], closeAt: 0, lastSend: 0, overtime: false,
     };
     this.instSlots[slot] = inst;
     this.instances.set(inst.id, inst);
     const sc = trialScale(kl, members.length);
-    for (const pack of DUNGEON.packs) {
+    for (const pack of dg.packs) {
       pack.mobs.forEach((type, i) => {
         const a = i / pack.mobs.length * Math.PI * 2;
         this.spawnTrialMob(inst, type, ox + pack.x + Math.cos(a) * 2.4, oz + pack.z + Math.sin(a) * 2.4, sc);
       });
     }
-    const boss = this.spawnTrialMob(inst, DUNGEON.boss.type, ox + DUNGEON.boss.x, oz + DUNGEON.boss.z, sc);
+    const boss = this.spawnTrialMob(inst, dg.boss.type, ox + dg.boss.x, oz + dg.boss.z, sc);
     boss.r = Math.PI;
     inst.bossId = boss.id;
     for (const q of members) {
       q.inst = inst.id;
       if (q.mounted) { q.mounted = false; this.recalc(q); q.vis++; }
       q.known.clear(); q.knownVis.clear();
-      this.teleport(q, ox + DUNGEON.spawn[0] + rand(-2, 2), oz + DUNGEON.spawn[1] + rand(-1, 1));
-      this.send(q, { t: 'dg_start', ox, oz, kl, affixes: inst.affixes });
-      this.send(q, { t: 'notice', m: `${DUNGEON.trial} +${kl}: ${Math.round(DUNGEON.timeLimit / 60)} minuti. Buona fortuna!` });
+      this.teleport(q, ox + dg.spawn[0] + rand(-2, 2), oz + dg.spawn[1] + rand(-1, 1));
+      this.send(q, { t: 'dg_start', ox, oz, kl, affixes: inst.affixes, dg: dg.id });
+      this.send(q, { t: 'notice', m: `${dg.trial} +${kl}: ${Math.round(dg.timeLimit / 60)} minuti. Buona fortuna!` });
     }
     this.sendTrialState(inst);
   }
@@ -1615,10 +2125,11 @@ export class World {
     inst.mobs.delete(m.id);
     if (inst.done) return;
     const d = m.d;
-    inst.forces += DUNGEON.forces[m.type] || 0;
+    const dg = inst.dg;
+    inst.forces += dg.forces[m.type] || 0;
     if (d.dungeonBoss) {
       inst.bossDead = true;
-      if (inst.forces < DUNGEON.forcesNeeded) this.instBroadcast(inst, { t: 'notice', m: `Shen è caduto! Mancano ancora forze nemiche (${Math.round(inst.forces)}%/${DUNGEON.forcesNeeded}%).` });
+      if (inst.forces < dg.forcesNeeded) this.instBroadcast(inst, { t: 'notice', m: `${d.name.split(',')[0]} è caduto! Mancano ancora forze nemiche (${Math.round(inst.forces)}%/${dg.forcesNeeded}%).` });
     }
     if (inst.affixes.includes('brace') && !d.boss && !d.explode) {
       inst.hazards.push({ x: m.x, z: m.z, r: 3, until: NOW() + 6000, dmg: Math.max(1, Math.round(m.atk * 0.35)) });
@@ -1627,66 +2138,71 @@ export class World {
     if (inst.affixes.includes('eco') && !d.boss && !d.explode && m.type !== 'eco_spirito' && Math.random() < 0.25) {
       this.spawnTrialMob(inst, 'eco_spirito', m.x, m.z, trialScale(inst.kl, inst.players));
     }
-    if (inst.bossDead && inst.forces >= DUNGEON.forcesNeeded) this.completeTrial(inst);
+    if (inst.bossDead && inst.forces >= dg.forcesNeeded) this.completeTrial(inst);
   }
 
   completeTrial(inst) {
     inst.done = true;
-    const elapsed = (NOW() - inst.start) / 1000 + inst.deaths * DUNGEON.deathPenalty;
-    const change = keyChange(elapsed, DUNGEON.timeLimit);
-    const oldKl = inst.kl, newKl = clamp(oldKl + change, DUNGEON.startKey, DUNGEON.maxKey);
+    const dg = inst.dg;
+    const elapsed = (NOW() - inst.start) / 1000 + inst.deaths * dg.deathPenalty;
+    const change = keyChange(elapsed, dg.timeLimit);
+    const oldKl = inst.kl, newKl = clamp(oldKl + change, dg.startKey, dg.maxKey);
     if (inst.key) inst.key.kl = newKl;
     const owner = this.ents.get(inst.owner);
     if (owner) owner.invDirty = true;
     inst.result = { elapsed: Math.round(elapsed), change, oldKl, newKl, inTime: change > 0 };
     inst.closeAt = NOW() + 120000;
     for (const q of this.instMembers(inst)) {
-      if (change > 0) q.ch.trialBest = Math.max(q.ch.trialBest || 0, oldKl);
-      this.trialRewards(q, oldKl, change > 0);
+      if (change > 0 && dg.id === 'cripta') q.ch.trialBest = Math.max(q.ch.trialBest || 0, oldKl);
+      if (change > 0) { q.ch.prove = q.ch.prove || {}; q.ch.prove[dg.id] = Math.max(q.ch.prove[dg.id] || 0, oldKl); }
+      this.trialRewards(q, oldKl, change > 0, dg);
+      this.missioniEvento(q, 'prova');
+      this.impresaProva(q, dg.id, oldKl, change > 0);   // imprese e titoli (server/altolivello.js)
     }
     const mm = Math.floor(elapsed / 60), ss = String(Math.round(elapsed % 60)).padStart(2, '0');
     this.instBroadcast(inst, { t: 'notice', m: change > 0 ? `Prova completata in ${mm}:${ss}! Sigillo +${oldKl} → +${newKl}` : `Prova completata fuori tempo (${mm}:${ss}). Sigillo +${oldKl} → +${newKl}` });
     const names = this.instMembers(inst).map(q => q.name);
-    if (change >= 2) this.broadcast({ t: 'sys', m: `${names.join(', ')} ${names.length > 1 ? 'hanno' : 'ha'} completato la ${DUNGEON.trial} +${oldKl} in ${mm}:${ss}!` });
+    if (change >= 2) this.broadcast({ t: 'sys', m: `${names.join(', ')} ${names.length > 1 ? 'hanno' : 'ha'} completato la ${dg.trial} +${oldKl} in ${mm}:${ss}!` });
     this.sendTrialState(inst);
   }
 
-  trialRewards(q, kl, inTime) {
+  trialRewards(q, kl, inTime, dg = DUNGEON) {
     const got = [];
     const give = (id, n = 1, inst = null) => {
       const left = this.addItem(q, id, n, 0, inst);
       if (left) { if (inst) this.dropInstance(inst, q.x, q.z, q.id); else this.spawnDrop(id, left, q.x, q.z, q.id); }
     };
     const rolls = Math.min(6, 1 + Math.floor(kl / 2) + (inTime ? 1 : 0));
-    const pool = GEAR_BY_TIER[4];
     for (let i = 0; i < rolls; i++) {
       let r = rollRarity('boss');
       if (kl >= 6) r = Math.max(r, 2);
       if (kl >= 10) r = Math.max(r, 3);
-      const it = makeEquip(pool[randi(0, pool.length - 1)], r);
+      // pezzi della classe, qualche livello sopra il personaggio (dal 30 in su, il sigillo alto alza il livello)
+      const it = this.premioEquip(q, Math.min(45, Math.max(dg.livPremi || 30, q.lvl + 2) + Math.floor(kl / 4) * 5), null, r);
+      if (!it) continue;
       give(it.id, 1, it);
       got.push(`${ITEMS[it.id].name} (${RARITIES[r].name})`);
     }
-    const ess = Math.ceil(kl / 2);
+    const ess = Math.ceil(kl / 2) + (dg.livPremi ? 1 : 0);   // la Forgia rende un'essenza in più
     give('essenza_celeste', ess); got.push(`Essenza Celeste x${ess}`);
     const gems = Object.keys(GEM_TYPES);
     const gem = `gemma_${gems[randi(0, gems.length - 1)]}_${kl >= 8 ? 2 : 1}`;
     give(gem); got.push(ITEMS[gem].name);
     const stones = 1 + Math.floor(kl / 4);
     give('pietra_affinamento', stones); got.push(`Pietra dell'Affinamento x${stones}`);
-    const tael = 1500 * kl * (inTime ? 1 : 0.5);
+    const tael = Math.round(1500 * kl * (inTime ? 1 : 0.5) * (dg.livPremi ? 1.4 : 1));
     q.ch.tael += tael; got.push(`${tael.toLocaleString('it-IT')} tael`);
-    this.gainExp(q, Math.round(expToNext(q.lvl) * 0.05 * (1 + kl * 0.1) * (inTime ? 1 : 0.5)));
+    this.gainExp(q, Math.round(expToNext(q.lvl) * (dg.livPremi ? 0.06 : 0.05) * (1 + kl * 0.1) * (inTime ? 1 : 0.5)));
     q.selfDirty = true;
     this.send(q, { t: 'dg_reward', got });
   }
 
   sendTrialState(inst) {
-    const boss = this.ents.get(inst.bossId);
+    const boss = this.ents.get(inst.bossId), dg = inst.dg;
     const elapsed = NOW() - inst.start;
     this.instBroadcast(inst, {
-      t: 'dg', kl: inst.kl, affixes: inst.affixes, elapsed, limit: DUNGEON.timeLimit * 1000, penalty: inst.deaths * DUNGEON.deathPenalty * 1000,
-      forces: Math.round(inst.forces * 10) / 10, need: DUNGEON.forcesNeeded, deaths: inst.deaths,
+      t: 'dg', dg: dg.id, name: dg.name, kl: inst.kl, affixes: inst.affixes, elapsed, limit: dg.timeLimit * 1000, penalty: inst.deaths * dg.deathPenalty * 1000,
+      forces: Math.round(inst.forces * 10) / 10, need: dg.forcesNeeded, deaths: inst.deaths, bossName: dg.id === 'cripta' ? 'Custode' : boss ? boss.name.split(',')[0] : 'Boss',
       boss: inst.bossDead ? 0 : boss ? Math.round(boss.hp / boss.maxHp * 1000) / 10 : 100, bossDead: inst.bossDead ? 1 : 0,
       done: inst.done ? 1 : 0, result: inst.result, closeIn: inst.closeAt ? Math.max(0, inst.closeAt - NOW()) : 0,
     });
@@ -1703,7 +2219,7 @@ export class World {
         this.applyDamage(q, h.dmg, env);
       }
     }
-    if (!inst.done && !inst.overtime && (t - inst.start) / 1000 + inst.deaths * DUNGEON.deathPenalty > DUNGEON.timeLimit) {
+    if (!inst.done && !inst.overtime && (t - inst.start) / 1000 + inst.deaths * inst.dg.deathPenalty > inst.dg.timeLimit) {
       inst.overtime = true;
       this.instBroadcast(inst, { t: 'notice', m: 'Tempo scaduto! Potete completare la prova, ma il sigillo scenderà.' });
     }
@@ -1711,17 +2227,19 @@ export class World {
     if (inst.closeAt && t >= inst.closeAt) this.closeTrial(inst);
   }
 
-  leaveTrial(p, silent) {
+  // disconnesso: chi cade dalla rete non abbassa il sigillo (può rientrare, vedi rientra); se la prova si chiude
+  // incompiuta senza più nessuno dentro, il sigillo scende in closeTrial
+  leaveTrial(p, silent, disconnesso = false) {
     if (!p.inst) return;
     const inst = this.instances.get(p.inst);
     p.inst = null;
     if (inst) {
       inst.members.delete(p.id);
-      if (!inst.done && p.id === inst.owner && inst.key) {
-        inst.key.kl = Math.max(DUNGEON.startKey, inst.kl - 1);
+      if (!inst.done && p.id === inst.owner && inst.key && !disconnesso) {
+        inst.key.kl = Math.max(inst.dg.startKey, inst.kl - 1);
         p.invDirty = true;
         inst.key = null;
-        if (!silent) this.sys(p, `Hai abbandonato la prova: il sigillo scende a +${Math.max(DUNGEON.startKey, inst.kl - 1)}.`);
+        if (!silent) this.sys(p, `Hai abbandonato la prova: il sigillo scende a +${Math.max(inst.dg.startKey, inst.kl - 1)}.`);
       }
       if (!inst.members.size) this.closeTrial(inst);
     }
@@ -1736,10 +2254,17 @@ export class World {
 
   closeTrial(inst) {
     for (const q of this.instMembers(inst)) this.leaveTrial(q);
+    if (!inst.done && inst.key) {   // chiusa incompiuta (il capo si era disconnesso): il sigillo scende come per un abbandono
+      inst.key.kl = Math.max(inst.dg.startKey, inst.kl - 1);
+      inst.key = null;
+      const capo = this.ents.get(inst.owner);
+      if (capo) capo.invDirty = true;
+    }
     for (const id of inst.mobs) { const m = this.ents.get(id); if (m) this.remove(m); }
+    this.pozze = this.pozze.filter(z => z.inst !== inst.id);   // pozze ardenti dei boss della Prova
     for (const e of [...this.ents.values()]) {
       if (e.kind === 'mob' && e.inst === inst.id) this.remove(e);
-      if (e.kind === 'drop' && e.x > inst.ox - 30 && e.x < inst.ox + 100) this.remove(e);
+      if (e.kind === 'drop' && e.x > inst.ox - 40 && e.x < inst.ox + 100) this.remove(e);
     }
     this.instSlots[inst.slot] = null;
     this.instances.delete(inst.id);
@@ -1788,21 +2313,22 @@ export class World {
     this.partySys(party, `${q.name} si è unito al gruppo.`);
   }
 
-  leaveParty(p, silent) {
+  // disconnesso: il posto resta tenuto per RIENTRO_MS (party.assenti) e il gruppo non si scioglie nel frattempo
+  leaveParty(p, silent, disconnesso = false) {
     const party = this.partyOf(p);
     if (!party) return;
     party.members = party.members.filter(id => id !== p.id);
     p.party = null;
     this.send(p, { t: 'party', none: 1 });
     if (!silent) this.sys(p, 'Hai lasciato il gruppo.');
-    if (party.members.length <= 1) {
-      for (const id of party.members) { const q = this.ents.get(id); if (q) { q.party = null; this.send(q, { t: 'party', none: 1 }); this.sys(q, 'Il gruppo si è sciolto.'); } }
-      this.parties.delete(party.id);
-      return;
+    if (disconnesso) {
+      party.assenti = party.assenti || new Map();
+      party.assenti.set(p.name.toLowerCase(), { n: p.name, cls: p.cls, lvl: p.lvl, until: NOW() + RIENTRO_MS });
     }
+    if (this.controllaAssenti(party)) return;
     if (party.leader === p.id) party.leader = party.members[0];
     party.last = '';
-    this.partySys(party, `${p.name} ha lasciato il gruppo.`);
+    this.partySys(party, disconnesso ? `${p.name} si è disconnesso: se rientra entro 5 minuti torna nel gruppo.` : `${p.name} ha lasciato il gruppo.`);
   }
 
   onPartyKick(p, id) {
@@ -1816,9 +2342,11 @@ export class World {
 
   // ------------------------------------------------------------ chat e comandi
   onChat(p, raw) {
-    const msg = String(raw || '').replace(/[\u0000-\u001f]/g, '').slice(0, 200).trim();
+    let msg = String(raw || '').replace(/[\u0000-\u001f]/g, '').slice(0, 200).trim();
     if (!msg) return;
     if (msg[0] === '/') return this.command(p, msg);
+    msg = this.collegaOggetti(p, msg);   // «[[3]]» = oggetto della casella 3 mostrato in chat (server/sociale.js)
+    if (!msg) return;
     if (msg[0] === '!') {
       const m = msg.slice(1).trim();
       if (!m) return;
@@ -1851,8 +2379,8 @@ export class World {
     const sys = m => this.sys(p, m);
     switch (c) {
       case 'aiuto': case 'help':
-        sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo = sussurro.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago, /spawn mostro [n] [raggio], /heal, /risorsa, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo');
+        sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /titolo [id], /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo o /s nome testo = sussurro, /r = rispondi, [[3]] = mostra l\'oggetto della casella 3. Amici e scambi: /amico nome, /amici, /scambia nome.');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /vita %, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo, /boss [id qui|via|tra min], /onore n, /stagione [chiudi|punti n], /impresa id');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -1860,6 +2388,8 @@ export class World {
       case 'online': return sys(`In linea (${this.players.size}): ${[...this.players].map(q => `${q.name} [${q.lvl}]`).join(', ')}`);
       case 'pos': return sys(`Posizione: ${Math.round(p.x)}, ${Math.round(p.z)}`);
     }
+    if (this.comandoAltoLivello(p, c, a)) return;   // /titolo, e per i GM /boss, /onore, /stagione, /impresa
+    if (this.comandoSociale(p, c, a)) return;   // /s /r /amico /amici /scambia (server/sociale.js)
     if (!p.gm) return sys('Comando sconosciuto. Scrivi /aiuto');
     switch (c) {
       case 'item': {
@@ -1878,13 +2408,16 @@ export class World {
         if (diff > 0) { p.ch.statPts += diff * 3; p.ch.skillPts += diff; }
         this.recalc(p); p.hp = p.maxHp; if (p.rtype === 'mana') p.res = p.rmax; this.touch(p);
         this.autoQuickbar(p, false);
-        return sys(`Livello impostato a ${L}.`);
+        sys(`Livello impostato a ${L}.`);
+        if (p.ch.mis) { if (diff > 0) this.missioniLivello(p, L - diff); else { this.giornoMissioni(p, true); this.mandaMissioni(p); } }
+        return;
       }
       case 'exp': return this.gainExp(p, Math.max(0, parseInt(a[0], 10) || 0));
       case 'tael': p.ch.tael = Math.max(0, p.ch.tael + (parseInt(a[0], 10) || 0)); p.selfDirty = true; return;
       case 'tp': {
         if (a.length >= 2 && !isNaN(+a[0]) && !isNaN(+a[1])) return this.teleport(p, +a[0], +a[1]);
-        if (KINGDOMS[a[0]]) { const s = villageSpawn(a[0]); return this.teleport(p, s.x, s.z); }
+        if (Object.hasOwn(KINGDOMS, a[0])) { const s = villageSpawn(a[0]); return this.teleport(p, s.x, s.z); }
+        if (Object.hasOwn(MAPPE, a[0] || '')) { const s = arrivoMappa(a[0]); return this.teleport(p, s.x, s.z); }   // /tp selva | distesa | arena
         const q = [...this.players].find(x => x.name.toLowerCase() === String(a[0]).toLowerCase());
         if (!q) return sys('Destinazione non trovata.');
         return this.teleport(p, q.x + 1.5, q.z);
@@ -1899,6 +2432,22 @@ export class World {
       }
       case 'heal': p.hp = p.maxHp; if (p.rtype !== 'ira') p.res = p.rmax; p.selfDirty = true; this.touch(p); return;
       case 'risorsa': p.res = p.rmax; p.selfDirty = true; return;
+      case 'vita': {                                                             // per le prove: /vita % (0 = cadi)
+        const v = clamp(parseFloat(a[0]), 0, 100);
+        if (!Number.isFinite(v) || p.dead) return;
+        if (v <= 0) return this.playerDie(p, { kind: 'env', id: 0, name: 'GM' });
+        p.hp = Math.max(1, Math.round(p.maxHp * v / 100)); p.resDirty = true; this.touch(p);
+        return;
+      }
+      case 'abilita': {                                                          // per le prove: /abilita id livello
+        const sk = SKILLS[a[0]];
+        if (!sk || sk.cls !== p.cls) return sys('Abilità inesistente o di un\'altra classe.');
+        p.ch.skills[a[0]] = clamp(parseInt(a[1], 10) || 1, 1, SKILL_MAX);
+        p.selfDirty = true;
+        return sys(`${sk.name} portata al livello ${p.ch.skills[a[0]]}.`);
+      }
+      case 'punti': p.pts = PTS_MAX; p.lastCombat = NOW(); p.selfDirty = true; return;                 // per le prove: punti combo/sfere/cariche al massimo
+      case 'suprema': p.supAt = 0; p.selfDirty = true; return;           // per le prove: barra Suprema piena
       case 'uccidi': {
         let best = null, bd = 20;
         for (const e of this.ents.values()) {
@@ -1925,7 +2474,7 @@ export class World {
       }
       case 'via': {
         if (!CLASSES[p.cls].vie.includes(a[0])) return sys(`Vie disponibili: ${CLASSES[p.cls].vie.join(', ')}`);
-        p.ch.via = a[0]; p.buffs = [];
+        p.ch.via = a[0]; p.buffs = []; if (p.aura) { p.aura = null; this.fx(p, { k: 'aura', s: p.id, a: '' }); }
         p.ch.qb = p.ch.qb.map(q => (q && q.k === 's' && SKILLS[q.id] && SKILLS[q.id].via && SKILLS[q.id].via !== a[0]) ? null : q);
         this.recalc(p); this.autoQuickbar(p, false);
         return sys(`Via impostata: ${VIE[a[0]].name}`);
@@ -1939,6 +2488,7 @@ export class World {
       case 'items': return sys(Object.keys(ITEMS).join(', '));
       case 'mobs': return sys(Object.keys(MOBS).join(', '));
       case 'save': this.saveAll(); this.db.save(); return sys('Salvataggio completato.');
+      case 'missione': return this.comandoMissione(p, a);   // /missione c05 | fatta | giorno
       case 'annuncio': return this.broadcast({ t: 'notice', m: a.join(' ').slice(0, 120) });
     }
     sys('Comando sconosciuto. Scrivi /aiuto');
@@ -2061,6 +2611,7 @@ export class World {
     this.remove(d);
     const r = d.item.r || 0;
     this.send(p, { t: 'gain', item: it.name, n: d.item.n, up: d.item.up, r });
+    this.missioniRaccolta(p, d.item.id, d.item.n);
     if (r >= 4) this.broadcast({ t: 'sys', m: `${p.name} ha trovato un oggetto Leggendario: ${it.name}!` });
   }
 
@@ -2150,10 +2701,18 @@ export class World {
   onNpc(p, id) {
     const n = this.nearNpc(p, id);
     if (!n) return;
+    // missioni da dare o da consegnare (server/missioni.js): il loro dialogo si apre accanto alla finestra del PNG;
+    // per maestro e guardie prende il posto delle solite frasi
+    const mis = this.missioniPng(p, n);
+    if (n.role === 'scrivano') { if (!mis) this.missioniPng(p, n, true); return; }
+    if (mis && (n.role === 'maestro' || n.role === 'guardia')) return;
     if (n.role === 'armi' || n.role === 'erbe') return this.send(p, { t: 'shop', npc: n.id, role: n.role, items: SHOPS[n.role] });
+    if (n.role === 'magazziniere') return this.apriDeposito(p, n);
     if (n.role === 'fabbro') return this.send(p, { t: 'smith', npc: n.id });
     if (n.role === 'stalliere') return this.send(p, { t: 'stable', npc: n.id });
     if (n.role === 'custode') return this.sendTrialInfo(p, n.id);
+    if (n.role === 'araldo') this.mandaOnori(p, n);   // stagione dell'arena e negozio dell'onore (server/altolivello.js)
+    if (n.role === 'guida' || n.role === 'araldo') return this.sendViaggio(p, n);
     let m;
     if (n.role === 'maestro') {
       const c = CLASSES[p.cls];
@@ -2309,3 +2868,9 @@ export class World {
     this.send(p, { t: 'applied', m: `Fusione riuscita: ${ITEMS[next].name}.` });
   }
 }
+
+installaMappe(World);
+installaBottino(World);
+installaMissioni(World);
+installaAltoLivello(World);
+installaSociale(World);

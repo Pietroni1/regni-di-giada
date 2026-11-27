@@ -73,19 +73,32 @@ I dati (account e personaggi) stanno in `data/db.json`. Le password sono salvate
 
 Le abilità condividono un **tempo di ricarica globale** (GCD) di 1 secondo, ridotto dalla Rapidità; alcune sono "fuori dal GCD". Gli incantesimi con **tempo di lancio** si interrompono se ti muovi. Puoi premere il tasto successivo poco prima che finisca il GCD: l'abilità parte appena possibile (coda).
 
-Ogni Via segue lo stesso schema, riconoscibile dalla tacca colorata sotto i tasti della barra rapida:
+Ogni Via ha **pochi tasti** (4 la Lama, 5 le altre, più la Suprema), riconoscibili dalla tacca colorata sotto la barra rapida:
 
-- **2 accumuli** (verde): non costano nulla, generano risorsa e punti. Uno a bersaglio singolo, uno ad area.
-- **2 scarichi medi** (oro): costo contenuto (30-40), uno singolo e uno ad area.
-- **2 scarichi potenti** (rosso): costo alto (45-60) e, per chi ha i punti, li consumano tutti; uno singolo e uno ad area.
-- 2 tecniche di supporto con ricarica e la **Tecnica Suprema** (tasto V), che si carica spendendo risorsa.
+- **2 colpi base** (verde): gratuiti, senza ricarica, sempre premibili. Uno a bersaglio singolo, uno ad area.
+- **1 colpo finale** (rosso): spende la risorsa. Cambia da solo in base a come stai combattendo (vedi sotto).
+- **1 interruzione** (azzurro): spezza il lancio di un nemico e lo stordisce; ricarica breve.
+- **1 mossa di Via**: scatto, difesa, cura o potenziamento (la Lama non ne ha).
+- la **Tecnica Suprema** (tasto V), che si carica spendendo risorsa.
 
-| Classe | Risorsa | Punti | Meccanica |
+Niente sequenze di tasti da ricordare:
+
+- il colpo base singolo dà punti di **Concentrazione** (Impeto, Punti combo, Sfere, Cariche): il finale fa il 9% in più per punto, su un bersaglio;
+- il colpo base ad area, se prende 3 o più nemici, accende la **Risonanza**: il prossimo finale colpisce tutti i nemici attorno al bersaglio;
+- ogni Via ha una **Maestria** passiva.
+
+| Via | Ruolo | Colpo finale | Maestria |
 |---|---|---|---|
-| Lama | Ira (sale colpendo, cala fuori dal combattimento) | — | Fulmine: Squarcio critico → Scintilla (Lama del Tuono a metà costo, +30%); l'Affondo dell'Ira apre una ferita che potenzia la Lama del Tuono. Montagna: difensore con minaccia ×4, Sfida e stordimenti |
-| Ombra | Energia (si rigenera piano: servono gli accumuli) | Punti combo (5) | Agguato più forte alle spalle. Pugnali: la Danza delle Lame avvelena e potenzia gli scarichi potenti. Arco: il Colpo Rapido può rendere gratuita la Pioggia di Frecce |
-| Monaco | Chi | Sfere (5) | Sequenza Pugno → Calcio → Palmo = Forma Perfetta: +2 Sfere e prossimo scarico potente +40% (Loto: ti cura anche dell'8%) |
-| Mistico | Mana | Cariche celesti (5) | Gli accumuli hanno tempo di lancio, gli scarichi sono istantanei. Tempesta: il Marchio del Tuono può rendere istantaneo il prossimo accumulo. Benedizione: guaritore, le Cariche potenziano Scudo di Giada e Pioggia di Petali |
+| Fulmine (Lama) | Danni | Lama del Tuono | +6% al finale per tacca di Slancio |
+| Montagna (Lama) | Difensore | Martello della Montagna (stordisce, attira) | dopo il finale, −25% danni subiti per 6 s |
+| Pugnali (Ombra) | Danni | Taglio Finale (+20% alle spalle) | i colpi base avvelenano; finale +20% sugli avvelenati |
+| Arco (Ombra) | Danni a distanza | Freccia Perforante | +12% oltre gli 8 metri |
+| Pugno di Ferro (Monaco) | Danni | Raffica dei Cento Pugni | +15% a un colpo base diverso dal precedente |
+| Loto Interiore (Monaco) | Danni magici | Vortice Interiore | il finale ti cura del 6% |
+| Tempesta (Mistico) | Danni a distanza | Giudizio del Cielo | un colpo base critico dà una Carica in più |
+| Benedizione (Mistico) | Guaritore | Benedizione di Giada (cura) | i danni dei colpi base curano l'alleato più ferito |
+
+Alcuni nemici **lanciano** colpi pesanti con una barra visibile (arcieri banditi, spiriti delle lanterne, il Generale, le lanterne e il custode della cripta): l'interruzione, uno stordimento o lo Squilibrio li spezzano. In PvP gli stordimenti ripetuti in pochi secondi durano sempre meno.
 
 **Slancio**: ogni colpo a segno aggiunge una tacca (fino a 5) che aumenta risorsa generata, rapidità e rigenerazione; cala se smetti di colpire.
 **Postura**: élite e boss hanno una barra sotto la vita che cala con gli scarichi; a zero restano **Squilibrati** (storditi e vulnerabili) per qualche secondo.
