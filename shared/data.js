@@ -3,6 +3,7 @@
 import { MOBS_MAPPE, NPC_MAPPE } from './mappe.js';
 import { NPC_MISSIONI } from './missioni.js';
 import { MOBS_ALTO, OGGETTI_ALTO, FORGIA } from './altolivello.js';
+import { MOBS_PROVE, componiPianta, calpestabile } from './prove.js';
 export { BOSS_MONDO, BOSS_IDS, PREMI_BOSS, FURIA, ARENA, NEGOZIO_ONORE, TITOLI, IMPRESE, FORGIA } from './altolivello.js';
 import { NPC_SOCIALE } from './sociale.js';
 export { CATENA, INCARICHI, MISSIONI, PNG_INCARICHI, ZONE_MISSIONI, SBLOCCHI } from './missioni.js';
@@ -590,37 +591,15 @@ export const GUARD_LINES = [
 ];
 
 // ------------------------------------------------------------------ Prove del Sigillo
-// Coordinate locali rispetto all'origine dell'istanza. rooms: rettangoli calpestabili [x1, z1, x2, z2].
+// La pianta (stanze, ali a scelta, porte, varianti settimanali, branchi, pericoli) è in shared/prove.js: qui i dati
+// generali della Prova più la pianta «tutta aperta» (rooms, walls, packs, boss, spawn, forces, bounds), che serve a chi
+// non conosce le varianti. Il server compone la pianta di ogni istanza con la variante della settimana (server/prove.js).
 export const DUNGEON = {
   id: 'cripta', name: 'Cripta delle Mille Lanterne', trial: 'Prova del Sigillo',
-  desc: "Un labirinto di sale funebri dove le lanterne non si spengono mai. In fondo veglia Shen, il Custode Insonne.",
+  desc: "Una tomba antica dove le lanterne non si spengono mai. Dalla Rotonda tre strade portano alla Sala dei Sigilli: sceglietene una, radunate le forze nemiche e affrontate Shen, il Custode Insonne.",
   minLevel: 20, startKey: 2, timeLimit: 900, deathPenalty: 5, forcesNeeded: 100, maxKey: 30,
-  originX: 1200, slotSpacing: 400, boundsMin: [-15, -15], boundsMax: [82, 125],
-  spawn: [0, -5],
-  rooms: [
-    [-10, -10, 10, 10], [-4, 9, 4, 31], [-15, 30, 15, 60], [14, 41, 41, 49], [40, 30, 70, 60], [51, 59, 59, 81], [33, 80, 77, 120],
-  ],
-  // muri: [x1, z1, x2, z2] (segmenti orizzontali o verticali)
-  walls: [
-    [-10, -10, 10, -10], [-10, -10, -10, 10], [10, -10, 10, 10], [-10, 10, -4, 10], [4, 10, 10, 10],
-    [-4, 10, -4, 30], [4, 10, 4, 30],
-    [-15, 30, -4, 30], [4, 30, 15, 30], [-15, 60, 15, 60], [-15, 30, -15, 60], [15, 30, 15, 41], [15, 49, 15, 60],
-    [15, 41, 40, 41], [15, 49, 40, 49],
-    [40, 30, 40, 41], [40, 49, 40, 60], [40, 30, 70, 30], [70, 30, 70, 60], [40, 60, 51, 60], [59, 60, 70, 60],
-    [51, 60, 51, 80], [59, 60, 59, 80],
-    [33, 80, 51, 80], [59, 80, 77, 80], [33, 80, 33, 120], [77, 80, 77, 120], [33, 120, 77, 120],
-  ],
-  packs: [
-    { x: 0, z: 22, mobs: ['sentinella_cripta', 'sentinella_cripta', 'ombra_cripta'] },
-    { x: -7, z: 44, mobs: ['ombra_cripta', 'ombra_cripta', 'ombra_cripta', 'lanterna_cripta'] },
-    { x: 8, z: 53, mobs: ['sentinella_cripta', 'sentinella_cripta', 'lanterna_cripta', 'lanterna_cripta'] },
-    { x: 28, z: 45, mobs: ['ombra_cripta', 'ombra_cripta', 'ombra_cripta'] },
-    { x: 54, z: 39, mobs: ['sentinella_cripta', 'sentinella_cripta', 'lanterna_cripta', 'lanterna_cripta'] },
-    { x: 62, z: 53, mobs: ['ombra_cripta', 'ombra_cripta', 'ombra_cripta', 'ombra_cripta'] },
-    { x: 55, z: 70, mobs: ['sentinella_cripta', 'sentinella_cripta'] },
-  ],
-  boss: { type: 'custode_insonne', x: 55, z: 106 },
-  forces: { sentinella_cripta: 5, ombra_cripta: 4, lanterna_cripta: 5, eco_spirito: 1 },
+  originX: 1200, slotSpacing: 400,
+  ...componiPianta('cripta'),
 };
 
 // Modificatori settimanali (a rotazione). Dal livello 3 ne è attivo uno, dal livello 6 due.
@@ -652,12 +631,9 @@ export function keyChange(elapsed, limit) {
   return 1;
 }
 
-// Il punto (coordinate locali della cripta) è calpestabile? margin = raggio del personaggio.
+// Il punto (coordinate locali della Prova) è calpestabile? margin = raggio del personaggio. Stanze e ostacoli di `dg`.
 export function dungeonWalkable(lx, lz, margin = 0.5, dg = DUNGEON) {
-  for (const [x1, z1, x2, z2] of dg.rooms) {
-    if (lx >= x1 + margin && lx <= x2 - margin && lz >= z1 + margin && lz <= z2 - margin) return true;
-  }
-  return false;
+  return calpestabile(lx, lz, margin, dg);
 }
 
 // Mostri e PNG delle mappe da esperienza e dell'Arena (definiti in shared/mappe.js).
@@ -667,6 +643,7 @@ Object.assign(NPC_ROLES, NPC_MISSIONI);
 
 // Contenuto per il livello alto (shared/altolivello.js): boss del mondo, Forgia, pezzi unici e trofei.
 Object.assign(MOBS, MOBS_ALTO);
+Object.assign(MOBS, MOBS_PROVE);   // guardiani e custodi dei tesori delle Prove (shared/prove.js)
 Object.assign(ITEMS, OGGETTI_ALTO);
 // Prove del Sigillo disponibili dal Custode (la Cripta e la Forgia): id → definizione con stanze, muri, branchi e boss.
 export const PROVE = { cripta: DUNGEON, forgia: FORGIA };

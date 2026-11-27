@@ -712,6 +712,13 @@ func _su_prove(m: Dictionary) -> void:
 			var dd := _etichetta(_scelta_prove, String(pr.desc))
 			dd.custom_minimum_size = Vector2(450, 0)
 			dd.add_theme_font_size_override("font_size", 12)
+		if pr.get("pianta") is Dictionary and String(pr.pianta.get("nota", "")) != "":
+			# la strada che cambia ogni settimana
+			var vv := _etichetta(_scelta_prove, "Questa settimana — %s. %s" % [String(pr.pianta.nome), String(pr.pianta.nota)])
+			vv.custom_minimum_size = Vector2(450, 0)
+			vv.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			vv.add_theme_font_size_override("font_size", 12)
+			vv.add_theme_color_override("font_color", Color(1.0, 0.68, 0.5))
 		var riga := HBoxContainer.new()
 		_scelta_prove.add_child(riga)
 		var best := _etichetta(riga, "Migliore superata: %s" % ("+%d" % int(pr.best) if int(pr.get("best", 0)) > 0 else "—"))

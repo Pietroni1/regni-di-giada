@@ -40,6 +40,7 @@ const { DB } = await import(path.join(RADICE, 'server/db.js'));
 const { newCharacter, makeEquip } = await import(path.join(RADICE, 'server/world.js'));
 const { CLASSES, ITEMS, MOBS, DUNGEON } = await import(path.join(RADICE, 'shared/data.js'));
 const { villageSpawn, safeZoneAt } = await import(path.join(RADICE, 'shared/world.js'));
+const { componiPianta } = await import(path.join(RADICE, 'shared/prove.js'));
 
 // ---------------------------------------------------------------- personaggi
 const DBF = path.join(os.tmpdir(), `regni-prova-gruppo-${PORTA}.json`);
@@ -569,8 +570,10 @@ async function provaProva() {
   await attesa(500);
   const dentro = (b) => b.x > ox - 20 && b.x < ox + 90;
   verifica([T, H, D].every(dentro), `posizioni nella cripta: ${[T, H, D].map(b => Math.round(b.x)).join(', ')}`);
+  // la pianta di questa istanza: la variante della settimana, che il server manda con dg_start
+  const pianta = componiPianta('cripta', st[0].pianta.v);
   // primo branco
-  const pk = DUNGEON.packs[0];
+  const pk = pianta.packs[0];
   await tuttiA(ox + pk.x, oz + pk.z - 2);
   await pulisci(T, 12);
   // il guaritore cade e rinasce all'ingresso della cripta
@@ -595,9 +598,9 @@ async function provaProva() {
   let fine = null;
   const premi = [T, H, D].map(b => b.aspetta(m => m.t === 'dg_reward', 150000).catch(() => null));
   for (let giro = 0; giro < 40 && !fine; giro++) {
-    for (const p of DUNGEON.packs.slice(1)) { await T.tp(ox + p.x, oz + p.z - 1); await pulisci(T, 14); }
-    await T.tp(ox + 55, oz + 90); await pulisci(T, 30);
-    await T.tp(ox + DUNGEON.boss.x, oz + DUNGEON.boss.z - 2); await pulisci(T, 25);
+    for (const p of pianta.packs.slice(1)) { await T.tp(ox + p.x, oz + p.z - 1); await pulisci(T, 14); }
+    await T.tp(ox + pianta.boss.x, oz + pianta.boss.z - 14); await pulisci(T, 30);
+    await T.tp(ox + pianta.boss.x, oz + pianta.boss.z - 2); await pulisci(T, 25);
     fine = T.log.find(m => m.t === 'dg' && m.done);
     const ult = T.log.filter(m => m.t === 'dg').pop();
     console.log(`  giro ${giro}: forze ${ult && ult.forces}%, custode ${ult && ult.boss}%, ${Math.round((Date.now() - t0) / 1000)} s`);

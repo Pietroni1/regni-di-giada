@@ -170,6 +170,13 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.45))
 	var foglio := _foglio()
 	draw_style_box(Hud.stile(CARTA, Hud.ORO.darkened(0.3), 10, 2), foglio)
+	if gioco.cripta != null and gioco._dentro:
+		# dentro una Prova: la sua pianta con le strade, la variante della settimana e le forze di ogni ala
+		_scritta(foglio.position + Vector2(foglio.size.x * 0.5, 32), "Mappa della Prova", 22, Hud.ORO)
+		_scritta(foglio.position + Vector2(foglio.size.x - 150, 30), "M o Esc per chiudere", 12, INCHIOSTRO.darkened(0.3), false)
+		gioco.cripta.disegna_pianta(self, Rect2(foglio.position + Vector2(20, 56), Vector2(foglio.size.x - 400, foglio.size.y - 76)),
+				Vector3(gioco.me.x, 0, gioco.me.z), gioco.me.r, true, float(gioco.prova.get("forces", -1.0)))
+		return
 	var lato := foglio.size.y - 74.0
 	_rett = Rect2(foglio.position + Vector2(14, 52), Vector2(lato, lato))
 	_scritta(foglio.position + Vector2(foglio.size.x * 0.5, 32), "Mappa dei Regni di Giada", 22, Hud.ORO)

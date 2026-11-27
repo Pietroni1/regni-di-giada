@@ -16,6 +16,7 @@ import { installaBottino } from './bottino.js';
 import { installaMissioni } from './missioni.js';
 import { installaAltoLivello, radureBoss } from './altolivello.js';
 import { installaSociale } from './sociale.js';
+import { installaProve } from './prove.js';
 
 const VIEW = 105;
 const SEP_BRANCHI = 22;          // metri minimi fra due branchi
@@ -313,6 +314,7 @@ export class World {
 
   // Aggro di branco: chi colpisce (o viene notato da) un mostro chiama i compagni del suo branco vicini a lui.
   chiamaBranco(m, p) {
+    if (m.inst) return this.chiamaBrancoProva(m, p);   // branchi delle Prove (server/prove.js)
     const sp = m.spawner;
     if (!sp || !sp.branco || !p || p.kind !== 'player') return;
     for (const q of sp.membri) {
@@ -426,8 +428,9 @@ export class World {
       if (inst.ownerName === p.name) inst.owner = p.id;
       if (p.mounted) { p.mounted = false; this.recalc(p); p.vis++; }
       p.known.clear(); p.knownVis.clear();
-      this.teleport(p, inst.ox + inst.dg.spawn[0], inst.oz + inst.dg.spawn[1]);
-      this.send(p, { t: 'dg_start', ox: inst.ox, oz: inst.oz, kl: inst.kl, affixes: inst.affixes, dg: inst.dg.id });
+      const rit = this.puntoRinascita(inst);
+      this.teleport(p, rit.x, rit.z);
+      this.send(p, { t: 'dg_start', ox: inst.ox, oz: inst.oz, kl: inst.kl, affixes: inst.affixes, dg: inst.dg.id, pianta: this.statoPianta(inst) });
       this.sendTrialState(inst);
     }
   }
@@ -734,10 +737,18 @@ export class World {
   }
 
   moveToward(m, tx, tz, step, stopDist) {
+    if (m.inst) {
+      // dentro una Prova i mostri girano attorno ai muri: si va al varco verso la stanza successiva (server/prove.js)
+      const w = this.passoMostroProva(m, tx, tz);
+      if (!w) return false;
+      if (w[0] !== tx || w[1] !== tz) { tx = w[0]; tz = w[1]; stopDist = 0; }
+    }
     const dx = tx - m.x, dz = tz - m.z, d = Math.hypot(dx, dz);
     if (d <= stopDist) return true;
+    if (d < 1e-6) return false;
     const s = Math.min(step, d - stopDist);
     m.x += dx / d * s; m.z += dz / d * s; m.r = Math.atan2(dx, dz);
+    if (m.inst) this.fuoriDagliOstacoli(m);
     this.touch(m);
     return false;
   }
@@ -790,7 +801,7 @@ export class World {
         for (const p of this.players) {
           if (!this.validMobTarget(p)) continue;
           const dd = dist(p, m);
-          if (dd < d.aggro && (!best || dd < dist(best, m))) best = p;
+          if (dd < d.aggro && (!best || dd < dist(best, m)) && (!m.inst || this.vedeProva(m, p))) best = p;
         }
       }
       if (best) { tgt = best; m.target = best.id; if (!m.chiamato) { m.chiamato = true; this.chiamaBranco(m, best); } }
@@ -819,7 +830,7 @@ export class World {
       } else {
         const dd = dist(m, tgt);
         const reach = (d.range || 2.2) + this.radiusOf(m) * 0.5 + 0.4;
-        if (dd > reach) this.moveToward(m, tgt.x, tgt.z, spd * dt, reach * 0.85);
+        if (dd > reach || (m.inst && dd > 1.2 && !this.vedeProva(m, tgt))) this.moveToward(m, tgt.x, tgt.z, spd * dt, reach * 0.85);
         else {
           const nr = Math.atan2(tgt.x - m.x, tgt.z - m.z);
           if (Math.abs(nr - m.r) > 0.05) { m.r = nr; this.touch(m); }
@@ -1204,7 +1215,7 @@ export class World {
     } else {
       if (el < 3000) return;
       const inst = p.inst ? this.instances.get(p.inst) : null;
-      const sp = inst ? { x: inst.ox + inst.dg.spawn[0], z: inst.oz + inst.dg.spawn[1] } : villageSpawn(p.kingdom);
+      const sp = inst ? this.puntoRinascita(inst) : villageSpawn(p.kingdom);
       p.x = sp.x; p.z = sp.z; p.hp = p.maxHp;
       if (p.rtype === 'mana') p.res = p.rmax;
     }
@@ -1223,6 +1234,8 @@ export class World {
 
   teleport(p, x, z) {
     [p.x, p.z] = this.clampPos(p, x, z);
+    const inst = p.inst ? this.instances.get(p.inst) : null;
+    if (inst) [p.x, p.z] = this.liberoProva(inst, p.x, p.z);   // dentro una Prova: mai dentro un muro
     this.touch(p);
     this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z) });
   }
@@ -1278,6 +1291,8 @@ export class World {
     if (p.stunUntil > t) { this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z) }); return; }
     const maxD = p.speed * Math.max(dt, 0.12) * 1.6 + 1.2;
     if (Math.hypot(x - p.x, z - p.z) > maxD) { this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z) }); return; }
+    // dentro una Prova i muri valgono anche per il server (server/prove.js)
+    if (p.inst && !this.passoLecitoProva(p, x, z)) { this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z) }); return; }
     [p.x, p.z] = this.clampPos(p, x, z);
     if (Number.isFinite(+msg.r)) p.r = +msg.r;
     if (p.casting && !SKILLS[p.casting.sid].mobile && Math.hypot(p.x - p.casting.x, p.z - p.casting.z) > 0.35) this.cancelCast(p);
@@ -1839,13 +1854,7 @@ export class World {
     [x, z] = this.clampPos(p, x, z);
     const inst = p.inst ? this.instances.get(p.inst) : null;
     if (!inst) return [x, z];
-    const ok = (qx, qz) => dungeonWalkable(qx - inst.ox, qz - inst.oz, 0.5, inst.dg);
-    if (ok(x, z)) return [x, z];
-    for (let k = 1; k <= 20; k++) {
-      const t = k / 20, qx = x + (p.x - x) * t, qz = z + (p.z - z) * t;
-      if (ok(qx, qz)) return [qx, qz];
-    }
-    return [p.x, p.z];
+    return this.scattoProva(p, inst, x, z);   // ci si ferma davanti al primo muro, vuoto od ostacolo
   }
 
   // Interruzione: spezza il lancio del bersaglio (mostro o giocatore) e rende un po' di risorsa.
@@ -1998,7 +2007,8 @@ export class World {
       t: 'trial', npc: npcId, key: key ? key.kl : null, best: p.ch.trialBest || 0, week: weeklyAffixes(),
       leader: !party || party.leader === p.id, party: party ? party.members.length : 1, minLevel: DUNGEON.minLevel,
       // le Prove fra cui scegliere (Cripta e Forgia): stesso sigillo, livelli e premi diversi
-      prove: Object.values(PROVE).map(dg => ({ id: dg.id, n: dg.name, tr: dg.trial, min: dg.minLevel, tl: dg.timeLimit, desc: dg.desc || '', best: dg.id === 'cripta' ? Math.max(p.ch.trialBest || 0, migliori.cripta || 0) : (migliori[dg.id] || 0) })),
+      prove: Object.values(PROVE).map(dg => ({ id: dg.id, n: dg.name, tr: dg.trial, min: dg.minLevel, tl: dg.timeLimit, desc: dg.desc || '', best: dg.id === 'cripta' ? Math.max(p.ch.trialBest || 0, migliori.cripta || 0) : (migliori[dg.id] || 0),
+        pianta: this.infoPianta(p, dg.id) })),   // la variante della settimana e le strade (server/prove.js)
     });
   }
 
@@ -2017,7 +2027,9 @@ export class World {
 
   openTrial(p, npc, prova) {
     if (p.inst) return;
-    const dg = Object.hasOwn(PROVE, String(prova || '')) ? PROVE[prova] : DUNGEON;
+    const base = Object.hasOwn(PROVE, String(prova || '')) ? PROVE[prova] : DUNGEON;
+    // la pianta dell'istanza: la Prova con la variante della settimana e le porte ancora chiuse (server/prove.js)
+    const dg = this.piantaProva(base, this.varianteProva(p, base.id));
     const key = p.ch.inv.find(s => s && s.id === 'sigillo_prova');
     if (!key) return this.err(p, 'Ti serve un Sigillo della Prova');
     const party = this.partyOf(p);
@@ -2038,11 +2050,15 @@ export class World {
     };
     this.instSlots[slot] = inst;
     this.instances.set(inst.id, inst);
+    this.preparaProva(inst);
     const sc = trialScale(kl, members.length);
     for (const pack of dg.packs) {
+      inst.vivi.set(pack.id, pack.mobs.length);
       pack.mobs.forEach((type, i) => {
-        const a = i / pack.mobs.length * Math.PI * 2;
-        this.spawnTrialMob(inst, type, ox + pack.x + Math.cos(a) * 2.4, oz + pack.z + Math.sin(a) * 2.4, sc);
+        const a = i / pack.mobs.length * Math.PI * 2, rg = pack.mobs.length > 1 ? 2.4 : 0;
+        const m = this.spawnTrialMob(inst, type, ox + pack.x + Math.cos(a) * rg, oz + pack.z + Math.sin(a) * rg, sc);
+        m.pk = pack.id;
+        m.r = Math.PI;   // rivolti verso chi arriva dall'ingresso
       });
     }
     const boss = this.spawnTrialMob(inst, dg.boss.type, ox + dg.boss.x, oz + dg.boss.z, sc);
@@ -2053,13 +2069,15 @@ export class World {
       if (q.mounted) { q.mounted = false; this.recalc(q); q.vis++; }
       q.known.clear(); q.knownVis.clear();
       this.teleport(q, ox + dg.spawn[0] + rand(-2, 2), oz + dg.spawn[1] + rand(-1, 1));
-      this.send(q, { t: 'dg_start', ox, oz, kl, affixes: inst.affixes, dg: dg.id });
+      this.send(q, { t: 'dg_start', ox, oz, kl, affixes: inst.affixes, dg: dg.id, pianta: this.statoPianta(inst) });
       this.send(q, { t: 'notice', m: `${dg.trial} +${kl}: ${Math.round(dg.timeLimit / 60)} minuti. Buona fortuna!` });
+      if (dg.variante.nota) this.sys(q, `Questa settimana: ${dg.variante.nota}`);
     }
     this.sendTrialState(inst);
   }
 
   spawnTrialMob(inst, type, x, z, sc) {
+    [x, z] = this.liberoProva(inst, x, z, 0.7);   // mai dentro un muro o un ostacolo
     const m = this.spawnMob(type, x, z, null, false);
     const d = m.d;
     let hpMul = sc.hp, dmgMul = sc.dmg;
@@ -2099,7 +2117,7 @@ export class World {
       const sc = trialScale(inst.kl, inst.players);
       for (let i = 0; i < 3; i++) {
         const a = Math.random() * Math.PI * 2;
-        this.spawnTrialMob(inst, 'lanterna_instabile', inst.ox + 55 + Math.cos(a) * 15, inst.oz + 100 + Math.sin(a) * 12, sc);
+        this.spawnTrialMob(inst, 'lanterna_instabile', inst.ox + inst.dg.boss.x + Math.cos(a) * 15, inst.oz + inst.dg.boss.z - 6 + Math.sin(a) * 12, sc);
       }
     }
     if (!m.enraged && m.hp / m.maxHp < 0.3) {
@@ -2125,6 +2143,7 @@ export class World {
     inst.mobs.delete(m.id);
     if (inst.done) return;
     const d = m.d;
+    this.provaMostroCaduto(inst, m);   // l'ultimo del branco apre la porta o lo scrigno legati a lui (server/prove.js)
     const dg = inst.dg;
     inst.forces += dg.forces[m.type] || 0;
     if (d.dungeonBoss) {
@@ -2172,7 +2191,7 @@ export class World {
       const left = this.addItem(q, id, n, 0, inst);
       if (left) { if (inst) this.dropInstance(inst, q.x, q.z, q.id); else this.spawnDrop(id, left, q.x, q.z, q.id); }
     };
-    const rolls = Math.min(6, 1 + Math.floor(kl / 2) + (inTime ? 1 : 0));
+    const rolls = Math.min(6, 1 + Math.floor(kl / 2) + (inTime ? 1 : 0)) + (dg.scrigno ? 1 : 0);   // scrigno del tesoro aperto: un pezzo in più
     for (let i = 0; i < rolls; i++) {
       let r = rollRarity('boss');
       if (kl >= 6) r = Math.max(r, 2);
@@ -2183,14 +2202,14 @@ export class World {
       give(it.id, 1, it);
       got.push(`${ITEMS[it.id].name} (${RARITIES[r].name})`);
     }
-    const ess = Math.ceil(kl / 2) + (dg.livPremi ? 1 : 0);   // la Forgia rende un'essenza in più
+    const ess = Math.ceil(kl / 2) + (dg.livPremi ? 1 : 0) + (dg.scrigno ? 1 : 0);   // la Forgia rende un'essenza in più, lo scrigno un'altra
     give('essenza_celeste', ess); got.push(`Essenza Celeste x${ess}`);
     const gems = Object.keys(GEM_TYPES);
     const gem = `gemma_${gems[randi(0, gems.length - 1)]}_${kl >= 8 ? 2 : 1}`;
     give(gem); got.push(ITEMS[gem].name);
     const stones = 1 + Math.floor(kl / 4);
     give('pietra_affinamento', stones); got.push(`Pietra dell'Affinamento x${stones}`);
-    const tael = Math.round(1500 * kl * (inTime ? 1 : 0.5) * (dg.livPremi ? 1.4 : 1));
+    const tael = Math.round(1500 * kl * (inTime ? 1 : 0.5) * (dg.livPremi ? 1.4 : 1) * (dg.scrigno ? 1.3 : 1));
     q.ch.tael += tael; got.push(`${tael.toLocaleString('it-IT')} tael`);
     this.gainExp(q, Math.round(expToNext(q.lvl) * (dg.livPremi ? 0.06 : 0.05) * (1 + kl * 0.1) * (inTime ? 1 : 0.5)));
     q.selfDirty = true;
@@ -2205,6 +2224,8 @@ export class World {
       forces: Math.round(inst.forces * 10) / 10, need: dg.forcesNeeded, deaths: inst.deaths, bossName: dg.id === 'cripta' ? 'Custode' : boss ? boss.name.split(',')[0] : 'Boss',
       boss: inst.bossDead ? 0 : boss ? Math.round(boss.hp / boss.maxHp * 1000) / 10 : 100, bossDead: inst.bossDead ? 1 : 0,
       done: inst.done ? 1 : 0, result: inst.result, closeIn: inst.closeAt ? Math.max(0, inst.closeAt - NOW()) : 0,
+      po: dg.porte, rit: inst.ritorno ? inst.ritorno.id : '', tes: inst.scrigno ? 1 : 0,
+      chi: this.instMembers(inst).map(q => [q.id, r1(q.x - inst.ox), r1(q.z - inst.oz), q.dead ? 1 : 0]),
     });
   }
 
@@ -2223,6 +2244,7 @@ export class World {
       inst.overtime = true;
       this.instBroadcast(inst, { t: 'notice', m: 'Tempo scaduto! Potete completare la prova, ma il sigillo scenderà.' });
     }
+    this.tickProva(inst, t);   // leve, Braciere del Ritorno, trappole (server/prove.js)
     if (t - inst.lastSend >= 1000) { inst.lastSend = t; this.sendTrialState(inst); }
     if (inst.closeAt && t >= inst.closeAt) this.closeTrial(inst);
   }
@@ -2264,7 +2286,7 @@ export class World {
     this.pozze = this.pozze.filter(z => z.inst !== inst.id);   // pozze ardenti dei boss della Prova
     for (const e of [...this.ents.values()]) {
       if (e.kind === 'mob' && e.inst === inst.id) this.remove(e);
-      if (e.kind === 'drop' && e.x > inst.ox - 40 && e.x < inst.ox + 100) this.remove(e);
+      if (e.kind === 'drop' && e.x > inst.ox + inst.dg.boundsMin[0] - 20 && e.x < inst.ox + inst.dg.boundsMax[0] + 20) this.remove(e);
     }
     this.instSlots[inst.slot] = null;
     this.instances.delete(inst.id);
@@ -2380,7 +2402,7 @@ export class World {
     switch (c) {
       case 'aiuto': case 'help':
         sys('Comandi: /online, /pos, /invita nome, /lascia, /espelli nome, /titolo [id], /aiuto. Chat: !testo = grido al regno, #testo = gruppo, @nome testo o /s nome testo = sussurro, /r = rispondi, [[3]] = mostra l\'oggetto della casella 3. Amici e scambi: /amico nome, /amici, /scambia nome.');
-        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /vita %, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo, /boss [id qui|via|tra min], /onore n, /stagione [chiudi|punti n], /impresa id');
+        if (p.gm) sys('GM: /item id [n] [+liv] [rarità 0-4], /level n, /exp n, /tael n, /tp x z | /tp nome | /tp fenice|tigre|drago|selva|distesa|arena, /missione c01..c34|fatta|giorno, /spawn mostro [n] [raggio], /heal, /vita %, /risorsa, /punti, /suprema, /abilita id livello, /uccidi, /via nome, /destriero livello, /sigillo livello, /pianta [n], /invisibile, /rate exp|drop|tael valore, /items, /mobs, /save, /annuncio testo, /boss [id qui|via|tra min], /onore n, /stagione [chiudi|punti n], /impresa id');
         return;
       case 'invita': return this.onPartyInvite(p, this.playerByName(a[0]));
       case 'lascia': return this.leaveParty(p);
@@ -2459,6 +2481,12 @@ export class World {
         best.aggro.set(p.id, (best.aggro.get(p.id) || 0) + best.hp);
         this.applyDamage(best, best.hp, p);
         return;
+      }
+      case 'invisibile': p.hidden = !p.hidden; return sys(p.hidden ? 'I mostri non ti vedono più (per le prove e le foto).' : 'I mostri ti vedono di nuovo.');
+      case 'pianta': {                                                           // per le prove: /pianta n forza la variante delle Prove che apri (senza numero: quella della settimana)
+        const v = parseInt(a[0], 10);
+        p.piantaForzata = Number.isInteger(v) ? v : undefined;
+        return sys(Number.isInteger(v) ? `Le Prove che apri useranno la variante ${v}.` : 'Le Prove che apri useranno la variante della settimana.');
       }
       case 'sigillo': {
         const L = clamp(parseInt(a[0], 10) || DUNGEON.startKey, DUNGEON.startKey, DUNGEON.maxKey);
@@ -2874,3 +2902,4 @@ installaBottino(World);
 installaMissioni(World);
 installaAltoLivello(World);
 installaSociale(World);
+installaProve(World);

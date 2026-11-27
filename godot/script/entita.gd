@@ -139,7 +139,9 @@ func _costruisci() -> void:
 			var colore := Dati.colore(d.get("color", 0x777777))
 			var modello := String(d.get("model", ""))
 			# figure dei mostri (mostri.gd): bestie, spiriti, banditi, statue, capi; sotto i ripieghi di prima
-			if not d.get("dummy", false) and modello != "obelisk":
+			if String(info.get("ty", "")) == "mantice_forgia":
+				corpo = Cripta.mantice_ardente(scala)      # il mantice di cuoio e ferro della Forgia (cripta.gd)
+			elif not d.get("dummy", false) and modello != "obelisk":
 				corpo = Mostri.crea(String(info.get("ty", "")), d)
 			if corpo != null:
 				pass

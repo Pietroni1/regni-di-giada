@@ -464,12 +464,18 @@ func _aggiorna_prova() -> void:
 	if p.is_empty():
 		return
 	var righe: Array = ["%s +%d" % [Dati.gioco.DUNGEON.trial, int(p.get("kl", 2))]]
+	if gioco.cripta != null and String(gioco.cripta.composta.variante.get("nome", "")) != "":
+		righe.append("Questa settimana: %s" % String(gioco.cripta.composta.variante.nome))   # la strada chiusa o cambiata (M: mappa della Prova)
 	if p.has("elapsed"):
 		var fatto := int(p.get("done", 0)) == 1
 		var trascorso: float = float(p.elapsed) + float(p.get("penalty", 0)) + (0.0 if fatto else gioco.ora() - float(p.get("ricevuto", gioco.ora())))
 		righe.append("Tempo  %s / %s" % [_tempo(trascorso), _tempo(float(p.limit))])
 		righe.append("Forze nemiche  %d%%" % int(minf(100.0, float(p.forces) / maxf(1.0, float(p.need)) * 100.0)))
 		righe.append("%s  %s" % [String(p.get("bossName", "Custode")), "sconfitto" if int(p.get("bossDead", 0)) == 1 else "%d%%" % int(float(p.boss))])
+		if int(p.get("tes", 0)) == 1:
+			righe.append("Scrigno aperto: un premio in più")
+		if String(p.get("rit", "")) != "":
+			righe.append("Braciere del Ritorno acceso")
 		if int(p.get("deaths", 0)) > 0:
 			righe.append("Cadute  %d  (+%d s l'una)" % [int(p.deaths), int(Dati.gioco.DUNGEON.deathPenalty)])
 		if fatto and p.get("result") is Dictionary:
@@ -764,6 +770,11 @@ func _disegna_minimappa() -> void:
 	var scala := lato * 0.5 / 60.0
 	minimappa.draw_circle(c, lato * 0.5, Color(0.08, 0.1, 0.07, 0.78))
 	var io: Entita = gioco.me
+	if gioco.cripta != null and gioco._dentro:
+		# dentro una Prova la minimappa è la pianta intera: stanze, strade, porte, compagni (cripta.gd)
+		gioco.cripta.disegna_pianta(minimappa, Rect2(Vector2(18, 6), Vector2(lato - 36, lato - 12)), Vector3(io.x, 0, io.z), io.r)
+		minimappa.draw_arc(c, lato * 0.5 - 1.0, 0.0, TAU, 48, ORO.darkened(0.3), 2.0)
+		return
 	Mappe.disegna_minimappa(minimappa, io.x, io.z, c, scala, lato)   # confini e zone sicure delle mappe lontane
 	var su := func(x: float, z: float) -> Vector2: return c + Vector2(x - io.x, z - io.z) * scala
 	for s in Dati.gioco.strade:

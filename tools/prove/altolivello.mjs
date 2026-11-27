@@ -18,6 +18,7 @@ const { DB } = await import(path.join(RADICE, 'server/db.js'));
 const { newCharacter } = await import(path.join(RADICE, 'server/world.js'));
 const { MOBS, ITEMS, BOSS_MONDO, FORGIA, TITOLI } = await import(path.join(RADICE, 'shared/data.js'));
 
+const { componiPianta } = await import(path.join(RADICE, 'shared/prove.js'));
 const DBF = path.join(os.tmpdir(), `regni-prova-altolivello-${PORTA}.json`);
 try { fs.unlinkSync(DBF); } catch {}
 const db = new DB(DBF);
@@ -237,7 +238,8 @@ async function main() {
   verifica(ds.dg === 'forgia' && dg.name === FORGIA.name && dg.limit === FORGIA.timeLimit * 1000 && tipi.has('fabbro_cenere'), `Forgia aperta (sigillo +${ds.kl}): ${dg.name}, ${dg.limit / 60000} min, mostri ${[...tipi].join(', ')}`);
   const ox = ds.ox, oz = ds.oz;
   // fino al boss
-  await A.cmd(`/tp ${ox + 33} ${oz + 118}`);
+  const pianta = componiPianta('forgia', ds.pianta.v);   // la variante della settimana, mandata con dg_start
+  await A.cmd(`/tp ${ox + pianta.boss.x} ${oz + pianta.boss.z - 10}`);
   await attesa(800);
   const yan = A.vicino(e => e.k === 'm' && e.ty === 'yan_fornace');
   verifica(yan && yan.mhp > 50000, `Yan nel Cuore della Forgia: vita ${yan && yan.mhp}`);
@@ -261,13 +263,15 @@ async function main() {
   // pulizia della Prova: tutti i mostri abbattuti, poi il boss
   const tFine = A.aspetta(m => m.t === 'dg_reward', 60000);
   const tImp2 = A.aspetta(m => m.t === 'impresa' && m.id === 'forgia_spenta', 60000);
-  const tappe = [[0, 30], [-9, 40], [-20, 75], [-9, 83], [33, 70], [33, 86], [33, 100], [33, 125]];
+  // un branco alla volta (la leva del ponte sulla Terrazza si tira passandoci accanto), per ultimo il boss
+  const leva = pianta.leve[0];
+  const tappe = [...(leva ? [[leva.x, leva.z + 1.5]] : []), ...pianta.packs.map(b => [b.x, b.z - 1]), [pianta.boss.x, pianta.boss.z - 3]];
   for (let giro = 0; giro < 3; giro++) {
     for (const [lx, lz] of tappe) {
       await A.cmd(`/tp ${ox + lx} ${oz + lz}`);
       await attesa(400);
       for (let k = 0; k < 8; k++) {
-        const m = A.vicino(e => e.k === 'm' && e.hp > 0 && !e.dead && Math.hypot(e.x - A.x, e.z - A.z) < 30);
+        const m = A.vicino(e => e.k === 'm' && e.hp > 0 && !e.dead && Math.hypot(e.x - A.x, e.z - A.z) < 16);
         if (!m) break;
         await A.cmd(`/tp ${m.x} ${m.z + 1.2}`);
         await A.cmd('/uccidi');

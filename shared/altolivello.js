@@ -1,7 +1,8 @@
 // Contenuto per il livello alto (30-50): boss del mondo a tempo, seconda Prova del Sigillo (la Forgia del Drago
 // Addormentato), stagioni dell'Arena con punti d'onore, imprese e titoli.
 // Solo dati e regole pure: la logica è in server/altolivello.js (boss, arena, imprese) e in server/world.js (Prove).
-// Questo file non importa nulla (lo importa data.js, che aggiunge MOBS_ALTO a MOBS e OGGETTI_ALTO a ITEMS).
+// Importa solo shared/prove.js (la pianta della Forgia); lo importa data.js, che aggiunge MOBS_ALTO a MOBS e OGGETTI_ALTO a ITEMS.
+import { componiPianta, muriDaStanze } from './prove.js';
 
 // ------------------------------------------------------------------ meccaniche dei boss (campo `mecc` dei mostri)
 // Le legge server/altolivello.js (bossMecc) per i boss del mondo e per il boss della Forgia.
@@ -153,69 +154,15 @@ export const OGGETTI_ALTO = {
 };
 
 // ------------------------------------------------------------------ Forgia del Drago Addormentato
-// Coordinate locali rispetto all'origine dell'istanza (come DUNGEON). Le stanze si toccano con almeno 1 m di sovrapposizione;
-// i muri si ricavano dai bordi delle stanze togliendo i tratti che stanno dentro un'altra stanza (murIDaStanze).
-const STANZE_FORGIA = [
-  [-8, -8, 8, 8],          // ingresso
-  [-3, 7, 3, 24],          // discesa
-  [-18, 23, 18, 47],       // Sala delle Incudini
-  [-16, 46, -10, 64],      // corridoio ovest
-  [-30, 63, 0, 89],        // Fonderia
-  [-1, 72, 22, 78],        // passaggio dei canali
-  [21, 60, 45, 92],        // Galleria dei Mantici
-  [29, 91, 37, 106],       // scala del drago
-  [12, 105, 54, 141],      // Cuore della Forgia (boss)
-];
-
-export function muriDaStanze(stanze) {
-  const muri = [];
-  const togli = (a, b, buchi) => {
-    let pezzi = [[a, b]];
-    for (const [h1, h2] of buchi) {
-      const nuovi = [];
-      for (const [p1, p2] of pezzi) {
-        if (h2 <= p1 || h1 >= p2) { nuovi.push([p1, p2]); continue; }
-        if (h1 > p1) nuovi.push([p1, h1]);
-        if (h2 < p2) nuovi.push([h2, p2]);
-      }
-      pezzi = nuovi;
-    }
-    return pezzi.filter(([p1, p2]) => p2 - p1 > 0.2);
-  };
-  stanze.forEach((r, i) => {
-    const [x1, z1, x2, z2] = r;
-    const altre = stanze.filter((_, j) => j !== i);
-    for (const z of [z1, z2]) {   // bordi orizzontali
-      const buchi = altre.filter(o => o[1] < z && z < o[3]).map(o => [o[0], o[2]]);
-      for (const [a, b] of togli(x1, x2, buchi)) muri.push([a, z, b, z]);
-    }
-    for (const x of [x1, x2]) {   // bordi verticali
-      const buchi = altre.filter(o => o[0] < x && x < o[2]).map(o => [o[1], o[3]]);
-      for (const [a, b] of togli(z1, z2, buchi)) muri.push([x, a, x, b]);
-    }
-  });
-  return muri;
-}
-
+// La pianta (l'anello attorno al Lago del Crogiolo, il ponte con la leva, le colate settimanali) è in shared/prove.js;
+// qui i dati generali più la pianta «tutta aperta», come DUNGEON in data.js.
+export { muriDaStanze };
 export const FORGIA = {
   id: 'forgia', name: 'Forgia del Drago Addormentato', trial: 'Prova della Forgia',
-  desc: 'Sotto le montagne i fabbri di cenere battono ancora il metallo per un drago che dorme. Yan, il Cuore della Fornace, non permette a nessuno di svegliarlo.',
+  desc: 'Sotto le montagne i fabbri di cenere battono ancora il metallo per un drago che dorme. Due archi girano attorno al Lago del Crogiolo, un ponte lo attraversa: scegliete la strada e spegnete Yan, il Cuore della Fornace.',
   minLevel: 35, startKey: 2, timeLimit: 1080, deathPenalty: 5, forcesNeeded: 100, maxKey: 30,
-  originX: 1200, slotSpacing: 400, boundsMin: [-31, -9], boundsMax: [55, 142],
-  spawn: [0, -4],
-  rooms: STANZE_FORGIA,
-  walls: muriDaStanze(STANZE_FORGIA),
-  packs: [
-    { x: -9, z: 31, mobs: ['fabbro_cenere', 'fabbro_cenere', 'cane_brace'] },
-    { x: 9, z: 40, mobs: ['cane_brace', 'cane_brace', 'cane_brace', 'spirito_fornace'] },
-    { x: -20, z: 70, mobs: ['fabbro_cenere', 'fabbro_cenere', 'spirito_fornace', 'spirito_fornace'] },
-    { x: -9, z: 83, mobs: ['cane_brace', 'cane_brace', 'cane_brace', 'cane_brace'] },
-    { x: 33, z: 68, mobs: ['martellatore_bronzo', 'cane_brace', 'cane_brace'] },
-    { x: 33, z: 85, mobs: ['fabbro_cenere', 'fabbro_cenere', 'spirito_fornace', 'spirito_fornace'] },
-    { x: 33, z: 100, mobs: ['martellatore_bronzo'] },
-  ],
-  boss: { type: 'yan_fornace', x: 33, z: 128 },
-  forces: { fabbro_cenere: 5, cane_brace: 3, spirito_fornace: 5, martellatore_bronzo: 10, eco_spirito: 1 },
+  originX: 1200, slotSpacing: 400,
+  ...componiPianta('forgia'),
   // premi: pezzi di livello più alto della Cripta (dal 40), essenze e un pezzo unico della Forgia dal sigillo +6
   livPremi: 40,
   tema: { muro: '#5a4038', lume: '#ff7a30', lumeBoss: '#ff3a10', lava: '#ff5a10', nebbia: '#1a0a06', pavimento: '#7a6a62' },

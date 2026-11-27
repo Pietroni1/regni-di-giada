@@ -11,6 +11,7 @@ import * as D from '../../shared/data.js';
 import * as W from '../../shared/world.js';
 import * as M from '../../shared/mappe.js';
 import { POSTURA } from '../../shared/postura.js';
+import { PIANTE, componiPianta } from '../../shared/prove.js';
 import { togliDraco } from './togli_draco.mjs';
 
 const radice = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -116,6 +117,17 @@ function mappe() {
   return out;
 }
 
+// Piante delle Prove del Sigillo (shared/prove.js): i dati interi più, per ogni variante, la pianta composta con le
+// porte chiuse (stanze, muri col tipo, vuoti, ostacoli, frane, branchi): il client disegna quella che il server
+// gli nomina in `dg_start` e apre le porte quando lo stato cambia.
+function piante() {
+  const out = {};
+  for (const [id, P] of Object.entries(PIANTE)) {
+    out[id] = { ...P, composte: P.varianti.map((_, v) => componiPianta(id, v)) };
+  }
+  return out;
+}
+
 const gioco = {
   versione: D.DATA_VERSION,
   costanti: {
@@ -128,6 +140,7 @@ const gioco = {
   SKILLS: D.SKILLS, ITEMS: D.ITEMS, RARITIES: D.RARITIES, MOBS: D.MOBS, NPC_ROLES: D.NPC_ROLES,
   EQUIP_NAMES: D.EQUIP_NAMES, STAT_NAMES: D.STAT_NAMES, STAT_DESC: D.STAT_DESC, BONUS_STATS: D.BONUS_STATS, SHOPS: D.SHOPS, UPGRADE: D.UPGRADE,
   DUNGEON: D.DUNGEON, AFFIXES: D.AFFIXES, MOUNT_SKILLS: D.MOUNT_SKILLS,
+  PIANTE: piante(),
   PROVE: D.PROVE, BOSS_MONDO: D.BOSS_MONDO, TITOLI: D.TITOLI, IMPRESE: D.IMPRESE,   // livello alto (shared/altolivello.js)
   HORSE: { minLevel: D.HORSE.minLevel, price: D.HORSE.price, maxLevel: D.HORSE.maxLevel, names: D.HORSE.names, trainPct: D.HORSE.trainPct,
     need: Array.from({ length: D.HORSE.maxLevel + 1 }, (_, l) => D.HORSE.need(l)), trainCost: Array.from({ length: D.HORSE.maxLevel + 1 }, (_, l) => D.HORSE.trainCost(l)) },

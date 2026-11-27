@@ -53,6 +53,7 @@ var _alberi_t := 0.0
 var _passo_t := 0.0
 var _amb_fuori: Environment = null
 var _amb_cripta: Environment = null
+var _amb_prove: Dictionary = {}     # id della Prova → Environment
 var _dentro := false
 var mappa: MappaGrande = null      # mappa grande delle zone (tasto M)
 var viaggi: Viaggi = null           # finestra dei viaggi e classifica dell'arena (viaggi.gd)
@@ -537,23 +538,41 @@ func _suono_tecnica(sk: Dictionary, mia: bool) -> void:
 		_: Suoni.suona("aura", vol)
 
 
+## Entrando o uscendo da una Prova il server dimentica ciò che ci aveva mostrato (e non manda le rimozioni): le
+## entità viste fin lì si tolgono qui, quelle ancora in vista tornano con il prossimo aggiornamento.
+func _svuota_entita() -> void:
+	for id in ents:
+		var e: Entita = ents[id]
+		if is_instance_valid(e):
+			e.queue_free()
+	ents.clear()
+	lanci_nemici.clear()
+	bersaglio = null
+
+
 func _su_dg_start(m: Dictionary) -> void:
 	if cripta != null:
 		cripta.queue_free()
-	cripta = Cripta.crea(float(m.ox), float(m.oz), String(m.get("dg", "cripta")))
+	_svuota_entita()
+	# la pianta (variante della settimana, porte, braciere, scrigno) la decide il server: qui si disegna quella
+	cripta = Cripta.crea(float(m.ox), float(m.oz), String(m.get("dg", "cripta")), m.get("pianta", {}))
 	add_child(cripta)
 	prova = {"kl": m.get("kl", 2), "affixes": m.get("affixes", [])}
-	bersaglio = null
 	intento = {}
+	_zona_amb = "-"                 # l'ambiente è quello di questa Prova
 
 
 func _su_dg(m: Dictionary) -> void:
 	prova = m
 	prova["ricevuto"] = ora()
+	if cripta != null:
+		cripta.aggiorna_stato(m.get("po", {}), String(m.get("rit", "")), int(m.get("tes", 0)) == 1)
+		cripta.compagni = m.get("chi", [])
 
 
 func _su_dg_end(_m: Dictionary) -> void:
 	prova = {}
+	_svuota_entita()
 	if cripta != null:
 		cripta.queue_free()
 		cripta = null
@@ -629,7 +648,11 @@ func _ambiente(zona: String) -> void:
 	if sole != null and _sole_base.is_empty():
 		_sole_base = {"colore": sole.light_color, "energia": sole.light_energy}
 	if dentro:
-		we.environment = _amb_cripta
+		# ogni Prova ha la sua aria (Cripta.ambiente): buio violaceo la tomba, rosso di brace la fucina
+		var idp := cripta.id_prova if cripta != null else "cripta"
+		if not _amb_prove.has(idp):
+			_amb_prove[idp] = Cripta.ambiente(idp)
+		we.environment = _amb_prove[idp]
 	elif zona != "":
 		we.environment = _ambiente_mappa(zona)
 	else:
@@ -1057,20 +1080,11 @@ func _process(dt: float) -> void:
 			nx = lim.x
 			nz = lim.y
 		elif me.x > float(Dati.costanti.DUNGEON_X):
-			# nella cripta si cammina solo in stanze e corridoi, scivolando lungo i muri
-			if cripta != null and not cripta.calpestabile(me.x, me.z):
-				# finito dentro un muro (scatto, spinta, ritardo di rete): si esce verso il punto libero più vicino
-				var libero := cripta.piu_vicino(me.x, me.z)
-				nx = libero.x
-				nz = libero.y
-			elif cripta != null and not cripta.calpestabile(nx, nz):
-				if cripta.calpestabile(nx, me.z):
-					nz = me.z
-				elif cripta.calpestabile(me.x, nz):
-					nx = me.x
-				else:
-					nx = me.x
-					nz = me.z
+			# nelle Prove si cammina solo in stanze e corridoi aperti, scivolando lungo i muri e attorno agli ostacoli
+			if cripta != null:
+				var q := cripta.passo(Vector2(me.x, me.z), Vector2(nx, nz))
+				nx = q.x
+				nz = q.y
 		else:
 			var u := Dati.risolvi_urti(nx, nz, 0.5)
 			var lim := float(Dati.costanti.PLAY_LIMIT)
@@ -1152,7 +1166,7 @@ func _visuale(_dt: float) -> void:
 		var t := 1.0
 		while t < distanza and cripta != null:
 			var q := centro + d * t
-			if not cripta.calpestabile(q.x, q.z, -0.2):
+			if not cripta.visuale_libera(q.x, q.z):
 				libera = maxf(3.5, t - 0.3)
 				break
 			t += 0.5
