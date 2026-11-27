@@ -38,7 +38,7 @@ export const CATENA = [
     fine: "«Le pecore dormiranno tranquille, stanotte. Tieni, per le ferite.»",
     ob: [{ tipo: 'uccidi', mob: ['lupo', 'lupo_branco'], n: 6, testo: 'Lupi abbattuti' }],
     premio: { exp: 0.7, oggetti: [['ginseng_p', 5]] } },
-  { id: 'c03', titolo: 'Zanne per Nonna Lin', liv: 2, da: 'guardia', a: 'erbe',
+  { id: 'c03', titolo: 'Zanne per Dama Lin', liv: 2, da: 'guardia', a: 'erbe',
     testo: "«L'erborista macina le zanne di lupo per i suoi unguenti. Portagliene qualcuna: le trovi nel bottino dei lupi.»",
     fine: "«Bianche e dure come si deve. Un cappello per il sole della piana: non ringraziarmi.»",
     ob: [{ tipo: 'raccogli', item: 'zanna_lupo', mob: LUPI, prob: 0.45, n: 5, testo: 'Zanne di lupo raccolte' }],
@@ -85,7 +85,7 @@ export const CATENA = [
     ob: [{ tipo: 'uccidi', mob: ['arciere_bandito'], n: 6, testo: 'Arcieri banditi' }],
     premio: { exp: 0.6, equip: [{ slot: 'body', liv: 10, r: 1 }] } },
   { id: 'c12', titolo: "L'Orso della Gola", liv: 13, da: 'armi', a: 'erbe',
-    testo: "«Nella gola vive un orso nero grosso come una capanna. Nonna Lin dice che il suo grasso cura le ossa: lei ti ricompenserà.»",
+    testo: "«Nella gola vive un orso nero grosso come una capanna. Dama Lin, la speziale, dice che il suo grasso cura le ossa: lei ti ricompenserà.»",
     fine: "«Che bestia! Questi stivali sono di cuoio d'orso: camminerai più svelto.»",
     ob: [{ tipo: 'uccidi', mob: ['orso_nero'], n: 1, testo: 'Orso Nero della Gola' }],
     premio: { exp: 0.6, oggetti: [['ginseng_m', 10]], equip: [{ slot: 'feet', liv: 10, r: 1 }] } },
@@ -147,7 +147,7 @@ export const CATENA = [
     premio: { exp: 0.8, tael: 3000, equip: [{ slot: 'body', liv: 25, r: 2 }] } },
   // ---------------------------------------------------------------- Sentieri Lontani: la Selva (28-37)
   { id: 'c24', titolo: 'Sentieri Lontani', liv: 28, da: 'maestro', a: 'guida',
-    testo: "«Oltre i monti c'è la Selva dei Mille Steli. Il Viandante Lu, alla porta est del villaggio, conosce la strada.»",
+    testo: "«Oltre i monti c'è la Selva dei Mille Steli. La Viandante Lu, alla porta est del villaggio, conosce la strada.»",
     fine: "«Benvenuto fra le canne. Ascolta: quando il vento si ferma, qualcosa sta cacciando.»",
     ob: [{ tipo: 'luogo', zona: 'selva', testo: 'Raggiungi la Selva dei Mille Steli' }],
     premio: { exp: 0.4, tael: 1000 } },
@@ -204,7 +204,7 @@ export const CATENA = [
     premio: { exp: 0.8, equip: [{ slot: 'body', liv: 40, r: 2 }] } },
 ];
 
-// Incarichi giornalieri: ogni giorno lo Scrivano (o la Guida nelle mappe lontane) ne propone 3 (4 dal livello 20) fra
+// Incarichi giornalieri: ogni giorno la Scrivana (o la Guida nelle mappe lontane) ne propone 3 (4 dal livello 20) fra
 // quelli adatti al livello; si possono completare una volta al giorno. liv: [minimo, massimo] del personaggio.
 // Premio: exp = frazione dell'esperienza che serve per il livello del personaggio; `scrigno` = un oggetto in più
 // scelto per il livello (materiali del fabbro o, a volte, un pezzo di equipaggiamento adatto alla classe).
@@ -312,7 +312,7 @@ export const ZONE_MISSIONI = {
 
 // PNG degli incarichi (aggiunto a NPC_ROLES in data.js).
 export const NPC_MISSIONI = {
-  scrivano: { name: 'Scrivano Ming', title: 'Ufficio degli Incarichi' },
+  scrivano: { name: 'Scrivana Mei', title: 'Ufficio degli Incarichi' },
 };
 
 // Cosa si sblocca a ogni livello (avviso al passaggio di livello; quelli delle tecniche e degli oggetti li aggiunge il server).
@@ -321,11 +321,11 @@ export const SBLOCCHI = {
   3: "Interruzione: spezza i lanci dei nemici e li stordisce.",
   5: "Puoi scegliere la Via dall'Eremita Shou (finestra Abilità, K).",
   8: 'Potenziamento di classe e primi obelischi corrotti nelle Terre di Confine.',
-  10: "Cavalcature dallo Stalliere, PvP fuori dalle mura, Arena del Loto Cremisi (dal Viandante Lu).",
+  10: "Cavalcature dallo Stalliere, PvP fuori dalle mura, Arena del Loto Cremisi (dalla Viandante Lu).",
   15: 'Tecnica Suprema (tasto V) e Razziatori delle Gole nelle Terre di Confine.',
   17: "L'Altopiano delle Spade Spezzate ti aspetta.",
   20: 'Prove del Sigillo dal Custode Yun: la cripta, da soli o in gruppo. Un incarico giornaliero in più.',
   25: 'Il Generale Senza Volto, al centro dell\'Altopiano: meglio in gruppo.',
-  28: 'Selva dei Mille Steli (livelli 30-40), dal Viandante Lu.',
-  38: 'Distesa dei Venti Rossi (livelli 40-50), dal Viandante Lu.',
+  28: 'Selva dei Mille Steli (livelli 30-40), dalla Viandante Lu.',
+  38: 'Distesa dei Venti Rossi (livelli 40-50), dalla Viandante Lu.',
 };

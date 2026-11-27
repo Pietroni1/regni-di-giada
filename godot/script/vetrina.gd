@@ -28,12 +28,16 @@ func _ready() -> void:
 	var regno := Color(0.16, 0.42, 0.82)
 	var colori := {"stoffa": Dati.colore(look.get("robe", 0x555555)), "stoffa2": Dati.colore(look.get("pants", 0x333333)),
 			"fascia": Dati.colore(look.get("trim", 0x8a7a5a)), "regno": regno}
-	var modello := "base_donna" if donna else "base_uomo"
+	var modello := String(_arg.get("modello", "base_donna" if donna else "base_uomo"))
 	var passo := float(_arg.get("passo", "1.5"))
 	var yaw := float(_arg.get("yaw", "0"))
 	for i in range(gradi.size()):
 		var g: int = gradi[i]
 		var wear := Entita.completo(classe, g, colori)
+		if classe == "dama":
+			# --classe=dama: gli abiti delle PNG donne (gradi 0-2), con le tinte di prova
+			wear = {"dama_%d" % g: {"stoffa": [Color(0.55, 0.08, 0.12), Color(0.1, 0.35, 0.45), Color(0.5, 0.06, 0.05)][clampi(g, 0, 2)],
+					"stoffa2": Color(0.12, 0.08, 0.1), "fascia": Color(0.1, 0.08, 0.1), "regno": regno}}
 		wear[String(_arg.get("piedi", "sandali"))] = true
 		if _arg.has("elmo"):
 			# --elmo=1: ogni figura porta il copricapo della classe del suo grado (1-4); --elmo=vecchio: gli elmi di prima
@@ -47,6 +51,8 @@ func _ready() -> void:
 			stile = "long"
 		if _arg.has("elmo"):
 			stile = "short" if stile != "bald" else "bald"
+		if _arg.has("capelli"):
+			stile = String(_arg.capelli)          # --capelli=long|short|topknot|hood|bald
 		p.metti_testa(stile, Dati.colore(look.get("hair", 0x1a1210)) if look.get("hair") != null else Color(0.1, 0.08, 0.07), colori.stoffa)
 		if _arg.has("up"):
 			# --up=7,9,12,15: un potenziamento per figura (arma e armatura), per provare gli effetti

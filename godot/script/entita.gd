@@ -225,8 +225,25 @@ func _costruisci() -> void:
 					"erbe": veste = completo("mistico", 0, {"stoffa": Color(0.45, 0.55, 0.35), "stoffa2": Color(0.3, 0.28, 0.22), "fascia": Color(0.6, 0.5, 0.3), "regno": regno})
 					_: veste = completo("lama", 0, tinte)
 				veste.merge(extra)
-			corpo = Personaggio.umano("base_donna" if ruolo == "erbe" else "base_uomo", veste, arma, 1)
-			corpo.metti_testa("long" if ruolo == "erbe" else ("short" if veste.has("elmo_bronzo") or veste.has("cappello_paglia") else "topknot"), Color(0.75, 0.75, 0.72) if ruolo in ["maestro", "erbe"] else Color(0.1, 0.08, 0.07))
+			# PNG donne (richiesta dell'autore: più provocanti): speziale, scrivana, cassiera, viandante e una guardia su due.
+			# Abiti `dama_0|1|2` di tools/blender/completi.py (abito a spacco, danzatrice, guerriera), solo sul corpo femminile.
+			var donna := ruolo in ["erbe", "scrivano", "magazziniere", "guida"] or (ruolo == "guardia" and id % 2 == 0)
+			if donna and (Dati.indice.get("modelli", {}).get("base_donna", {}).get("capi", []) as Array).has("dama_0"):
+				var oro_scuro := Color(0.1, 0.08, 0.1)
+				match ruolo:
+					"erbe": veste = {"dama_1": {"stoffa": Color(0.1, 0.42, 0.3), "stoffa2": Color(0.05, 0.14, 0.11), "fascia": oro_scuro, "regno": regno}}
+					"guida": veste = {"dama_1": {"stoffa": Color(0.6, 0.38, 0.12), "stoffa2": Color(0.2, 0.12, 0.06), "fascia": oro_scuro, "regno": regno}}
+					"scrivano": veste = {"dama_0": {"stoffa": regno.darkened(0.25), "fascia": oro_scuro, "regno": Color(0.85, 0.8, 0.7)}}
+					"magazziniere": veste = {"dama_0": {"stoffa": Color(0.3, 0.1, 0.4), "fascia": oro_scuro, "regno": regno}}
+					_: veste = {"dama_2": {"lamelle": regno.darkened(0.3), "regno": regno}, "elmo_bronzo": false}
+				veste["sandali"] = true
+				veste.erase("elmo_bronzo")
+			corpo = Personaggio.umano("base_donna" if donna else "base_uomo", veste, arma, 2 if (donna and ruolo == "guardia") else 1)
+			var chioma := Color(0.75, 0.75, 0.72) if ruolo == "maestro" else Color(0.1, 0.08, 0.07)
+			if donna:
+				chioma = [Color(0.1, 0.07, 0.06), Color(0.32, 0.14, 0.08), Color(0.06, 0.05, 0.08), Color(0.45, 0.25, 0.1)][id % 4]
+			# le PNG donne alternano chioma lunga e caschetto
+			corpo.metti_testa(("chioma" if (id / 2) % 2 == 0 else "long") if donna else ("short" if veste.has("elmo_bronzo") or veste.has("cappello_paglia") else "topknot"), chioma)
 		"d":
 			# oggetto caduto: modellino riconoscibile, alone e colonna di luce della rarità (oggetto_terra.gd)
 			corpo = Personaggio.new()

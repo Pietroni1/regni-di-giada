@@ -190,7 +190,7 @@ async function main() {
   }
   const c03 = A.attiva('c03');
   verifica(c03 && c03.ok === 1, `zanne raccolte ${c03 && c03.ob[0].p}/5 (zanne in borsa: ${A.contaInv('zanna_lupo')})`);
-  // --- consegna a Nonna Lin: un copricapo del livello 1
+  // --- consegna a Dama Lin: un copricapo del livello 1
   await A.cmd('/tp fenice');
   await attesa(500);
   await A.parla('erbe');
@@ -208,7 +208,7 @@ async function main() {
     await A.parla('erbe');
   }
   const dl4 = await A.trova((m) => m.t === 'mis_png' && m.offerte.some((x) => x.id === 'c04'), da4);
-  verifica(dl4.offerte.some((x) => x.id === 'c04'), `Nonna Lin offre «Il campo devastato»: premio «${dl4.offerte.find((x) => x.id === 'c04').pr}»`);
+  verifica(dl4.offerte.some((x) => x.id === 'c04'), `Dama Lin offre «Il campo devastato»: premio «${dl4.offerte.find((x) => x.id === 'c04').pr}»`);
   A.manda({ t: 'mis', a: 'accetta', id: 'c04', npc: A.npc.id });
   await A.aspetta((m) => m.t === 'mis_ev' && m.id === 'c04');
   await attesa(200);

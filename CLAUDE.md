@@ -198,6 +198,28 @@ Obiettivo dell'autore: aspetto alla WoW, cioè corpo base + capi separati che ca
   dalla classe e dal grado (i vecchi elmi restano per PNG, mostri e browser). Vetrina: `--elmo=1` (o `vecchio`),
   `--passo=0.72`. Visti in vetrina: tutte le classi, uomo e donna, davanti e dietro. Non visti: in gioco, con le
   capigliature lunghe (sotto il copricapo si mettono i capelli corti), in corsa.
+- **PNG donne, chioma lunga e busto** (l'autore: «fammi i personaggi PNG donne più provocanti», poi «la fronte è troppo
+  alta e il taglio di capelli fa cagare, falla con i capelli lunghi e con seno più pronunciato», poi «il caschetto comunque
+  mi piaceva»). Prima c'era una sola donna (Nonna Lin). Ora sono donne: **Dama Lin** (speziale, ruolo `erbe`), **Scrivana
+  Mei** (`scrivano`), **Cassiera Zhou** (`magazziniere`), la **Viandante Lu** (`guida`) e una guardia su due (id pari); i
+  testi che li nominano sono stati volti al femminile. Abiti solo sul corpo femminile, `dama(S, g)` in
+  `tools/blender/completi.py` → `capo_dama_0|1|2`: 0 abito a spacco (tubino senza spalline, schiena nuda, apertura a goccia
+  sul ventre, due teli lunghi davanti e dietro con le gambe scoperte ai lati, fusciacca del regno), 1 danzatrice (fascia
+  al petto, ventre nudo, cinta d'oro bassa con due veli, cavigliere, sonagli), 2 guerriera (corpetto di lamelle laccate,
+  ventre nudo, uno spallaccio, gonnellino corto di lamelle, schinieri). Il corpo ha dipinti una fascia grigia al petto e
+  uno slip: gli abiti li coprono (`z_seno`, `z_slip`). Scelta in `entita.gd` (tipo «n»). Vetrina: `--classe=dama
+  --gradi=0,1,2 --sesso=f [--capelli=chioma|long]`.
+  **Capigliature**: `"long"` = il caschetto del pacchetto (**all'autore piace: va tenuto**), `"chioma"` = chioma lunga
+  fino a metà schiena con frangia che abbassa l'attaccatura, costruita da `chioma(S, T)` (`capo_capelli_chioma__ciocche`:
+  calotta, due strati di ciocche sulla schiena, due ciocche davanti fino alla clavicola, frangia; pesi dal corpo, niente
+  fisica). Le PNG donne alternano le due. Il ciuffo corto (`short`) sulle donne non gli piace.
+  **Busto**: `gonfia_seno` in `importa_eroi.py` accentua il seno di `base_donna` (vale per TUTTE le donne, giocatrici
+  comprese); le normali importate si ricalcolano. Per non far bucare le vesti dal corpo, `guscio` dopo la riduzione
+  riporta fuori le facce finite sotto la pelle (dal lato della veste e dal lato dei vertici del corpo): la correzione
+  tocca anche le vesti maschili (stessa forma, `base_uomo.glb` rigenerato). `base_donna.glb` 14,4 MB.
+  Visti in vetrina: i tre abiti davanti e dietro con chioma e con caschetto, Lama donna gradi 0/2/4; in gioco gli abiti
+  su Scrivana e Cassiera da lontano. **Non visti**: da vicino in gioco, la chioma in corsa e con i copricapi (sotto i
+  copricapi si mettono i capelli corti), Mistica e Monaca col busto nuovo, le vesti maschili dopo la correzione.
 - Da fare: capelli e volti, nascondere il corpo sotto i capi. Dopo: l'autore vuole lavorare sul sistema di combattimento.
 - Proporzioni: `"spalle": 1.22` nella voce del modello in `indice.json` allontana le braccia dal busto (`skinned.js`).
 - In corsa `SkinAnim.straightFeet` raddrizza i piedi (la corsa scelta li ruota verso l'esterno).
@@ -468,8 +490,8 @@ li fa un altro lavoro: `icone.gd` e la figura del bottino non sono stati toccati
 - **Missioni** (`shared/missioni.js` dati, `server/missioni.js` logica installata su World come `server/mappe.js`):
   catena di 34 missioni dal livello 1 al 40 (piana → Via al 5 → obelisco → puledro al 10 → confine → gole → fabbro →
   Altopiano → Prova del Sigillo al 20 → Generale al 25 → Selva dal 28 → Distesa al 38-40) e 22 incarichi giornalieri
-  (3 al giorno, 4 dal 20, scelti per livello con un seme personaggio+giorno; dallo **Scrivano Ming**, nuovo PNG
-  `scrivano` nei villaggi vicino all'arrivo, o dal Viandante Lu nelle mappe lontane; si consegnano a entrambi).
+  (3 al giorno, 4 dal 20, scelti per livello con un seme personaggio+giorno; dalla **Scrivana Mei**, PNG
+  `scrivano` nei villaggi vicino all'arrivo, o dalla Viandante Lu nelle mappe lontane; si consegnano a entrambi).
   Obiettivi: `uccidi`, `raccogli` (oggetti del bottino raccolti dopo l'accettazione; con la missione aperta i mostri giusti
   lasciano l'oggetto più spesso), `parla`, `prova`, `obelisco`, `luogo`, `livello`, `via`, `destriero`, `arena`.
   Premi: esperienza in frazione del livello della missione, tael, oggetti, **equipaggiamento della classe** scelto

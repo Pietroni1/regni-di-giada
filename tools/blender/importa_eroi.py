@@ -210,8 +210,39 @@ def prepara(file, capigliature):
     return ob, arm, extra
 
 
+def gonfia_seno(ob, arm, quanto=0.034, raggio=0.115):
+    """Seno più pronunciato sul corpo femminile (richiesta dell'autore): attorno all'apice di ciascun seno la pelle
+    viene spinta in fuori con una campana liscia. quanto e raggio in metri per un corpo alto 1,8 m. Va chiamata prima
+    di costruire vesti e armature, che così seguono la forma nuova."""
+    u = M.H / 1.8
+    B = arm.data.bones
+    xs = B['upper_arm_L'].head_local.x
+    za = B['upper_arm_L'].head_local.z - 0.10 * u
+    me = ob.data
+    apici = []
+    for s in (1, -1):
+        cand = [v for v in me.vertices if 0.03 * u < s * v.co.x < 0.8 * xs and za - 0.15 * u < v.co.z < za + 0.02 * u]
+        apici.append(min(cand, key=lambda v: v.co.y).co.copy())
+    k, R = quanto * u, raggio * u
+    for v in me.vertices:
+        for c in apici:
+            d = (v.co - c).length
+            if d >= R:
+                continue
+            w = (1 - (d / R) ** 2) ** 2
+            dentro = c + Vector((0, 0.10 * u, 0.03 * u))
+            fuori = ((v.co - dentro).normalized() * 0.55 + Vector((0, -1, -0.12)).normalized() * 0.45).normalized()
+            v.co += fuori * k * w
+    # le normali importate valgono per la forma di prima: si ricalcolano
+    if 'custom_normal' in me.attributes:
+        me.attributes.remove(me.attributes['custom_normal'])
+    me.update()
+
+
 def corpo(nome, file, capigliature):
     ob, arm, extra = prepara(file, capigliature)
+    if nome.endswith('donna'):
+        gonfia_seno(ob, arm)
     # capi e armature di prima (li usa ancora il client nel browser) + completi per classe e grado (client Godot)
     capi = (M.crea_capi(ob, arm) + M.crea_armature(ob, arm, M.H) + crea_completi(ob, arm, M.H, donna=nome.endswith('donna'))
             + sorted({o.name[5:].split('__')[0] for o in extra}))

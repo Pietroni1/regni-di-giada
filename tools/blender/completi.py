@@ -424,6 +424,45 @@ class Sarto:
             bpy.data.objects.remove(ob, do_unlink=True)
             bpy.data.meshes.remove(me)
             bm.normal_update()
+        # dopo la riduzione le facce larghe tagliano le curve convesse (il seno): dove il centro di una faccia è finito
+        # sotto la pelle, i suoi vertici si riportano fuori
+        for _ in range(4):
+            spinte = {}
+            for fa in bm.faces:
+                c = fa.calc_center_median()
+                loc, idx = self.vicino(c)
+                prof = (c - loc).dot(self.bm.faces[idx].normal)
+                minimo = st(c) * 0.4
+                if prof < minimo:
+                    for v in fa.verts:
+                        spinte[v] = max(spinte.get(v, 0.0), minimo - prof)
+            if not spinte:
+                break
+            for v, d in spinte.items():
+                loc, idx = self.vicino(v.co)
+                v.co += self.bm.faces[idx].normal * d * 1.15
+        # e dal lato della pelle: un vertice del corpo (maglia rada: l'apice del seno è un cono) può bucare una faccia
+        # larga della veste; si cerca la veste SOTTO ogni vertice coperto e la si riporta sopra
+        self.bm.normal_update()
+        for _ in range(3):
+            bm.faces.ensure_lookup_table()
+            gb = BVHTree.FromBMesh(bm)
+            spinte = {}
+            for pv in self.bm.verts:
+                if campo(pv.co) <= 0:
+                    continue
+                loc, nor, idx, dist = gb.ray_cast(pv.co + pv.normal * 1e-4, -pv.normal, 0.04 * self.u)
+                if loc is None:
+                    continue
+                serve = dist + st(pv.co) * 0.6
+                for gv in bm.faces[idx].verts:
+                    spinte[gv] = max(spinte.get(gv, 0.0), serve)
+            if not spinte:
+                break
+            for gv, d in spinte.items():
+                loc, idx = self.vicino(gv.co)
+                gv.co += self.bm.faces[idx].normal * d
+        bm.normal_update()
         orli = self._orli(bm)
         self._uv_orlo(bm, orli)
         if spessore > 0:
@@ -2399,6 +2438,189 @@ def copricapo(S, T, classe, g):
             S.tubo(C, 'bordo', [T.p(0, zf + 0.008 * u, 0.018 * u), cen + Vector((0, 0, 0.02 * u))], 0.004 * u, ORO, lati=5, pesi=PT)
 
 
+# ====================================================================== abiti delle PNG donne
+# Richiesta dell'autore: PNG donne più provocanti. Tre abiti solo per il corpo femminile (`capo_dama_<n>__<parte>`),
+# aderenti e scoperti dove il corpo lo permette (il corpo ha dipinti una fascia al petto e uno slip: vanno coperti):
+#   0 «abito a spacco»: tubino senza spalline con la schiena nuda e un'apertura a goccia sul ventre, due teli lunghi
+#     davanti e dietro (gambe scoperte ai lati fino al fianco), fusciacca del regno, collarino e gioielli;
+#   1 «danzatrice»: fascia al petto, ventre nudo, cinta d'oro bassa sui fianchi con due veli stretti, cavigliere e sonagli;
+#   2 «guerriera»: corpetto di lamelle laccate, ventre nudo, uno spallaccio, gonnellino corto di lamelle, schinieri e bracciali.
+def dama(S, g):
+    if not S.donna:
+        return
+    u = S.u
+    C = f'dama_{g}'
+    zv, za, zh, zc = S.z_vita, S.z_ascella, S.z_cavallo, S.z_collo
+    xs = S.B['upper_arm_L'].head_local.x
+    cy = S.B['spine'].head_local.y
+    z_seno = za + 0.06 * u                       # sopra la fascia dipinta
+    z_slip = S.z_anca + 0.115 * u                # sopra lo slip dipinto
+    if g == 0:
+        zb = zh - 0.035 * u
+
+        def campo(co):
+            f = min(z_seno - co.z, co.z - zb, 1.02 * xs - abs(co.x))
+            if co.y < cy:
+                # apertura a goccia sul ventre (ombelico in vista)
+                tz = (co.z - (zv + 0.035 * u)) / (0.085 * u)
+                f = min(f, math.hypot(co.x / (0.05 * u), tz) - 1.0)
+            else:
+                # schiena nuda fra la fascia in alto e le reni
+                if z_slip + 0.05 * u < co.z < zv + 0.12 * u:
+                    f = min(f, abs(co.x) - 0.62 * xs)
+            return f
+        S.guscio(C, 'stoffa', campo, 0.011 * u, (1, 1, 1), seme=(0, -0.5, zv + 0.2 * u), liscia=8, bordo=(0.005 * u, 'bordo', ORO))
+        lungo = (S.z_anca + 0.03 * u) - (S.z_caviglia + 0.09 * u)
+        S.falde(C, 'stoffa', [-90, 90], 78, S.z_anca + 0.03 * u, lungo, apri=0.05 * u, cols=7, gioco=0.022 * u, colore=(1, 1, 1),
+                spessore=0.003 * u, coscia=0.55, orlo=(0.03 * u, 'fascia', (1, 1, 1)))
+        cintura(S, C, 'regno', (1, 1, 1), S.z_anca + 0.05 * u, alto=0.05, stacco=0.022, fibbia=('bordo', ORO, 0.026), gemma=(0.9, 0.15, 0.2))
+        c = S.centro(S.z_anca + 0.04 * u)
+        r = S.raggio(c, S.dir(-20), 0.05 * u, 0.4 * u) + 0.03 * u
+        nodo(S, C, c + S.dir(-20) * r, 0.03 * u, S.dir(-20), {'hips': 1.0}, nappa_lunga=0.16 * u)
+        collana(S, C, 'grani', ORO, 0.007 * u, 0.05 * u, centro=(0.014 * u, 'gemma', (0.2, 0.9, 0.6)))
+        bracciale(S, C, 'bordo', ORO, 0.78, 0.9, stacco=0.012, spessore=0.004)
+    elif g == 1:
+        zp = zv + 0.15 * u
+        S.guscio(C, 'stoffa', lambda co: min(co.z - zp, z_seno - co.z, 1.02 * xs - abs(co.x)), 0.014 * u, (1, 1, 1),
+                 seme=(0, -0.5, zp + 0.06 * u), liscia=10, bordo=(0.006 * u, 'bordo', ORO))
+        S.guscio(C, 'stoffa2', lambda co: min(z_slip - co.z, co.z - (zh - 0.03 * u), 1.05 * xs - abs(co.x)), 0.01 * u, (1, 1, 1),
+                 seme=(0, -0.5, S.z_anca), liscia=6)
+        cintura(S, C, 'bordo', ORO, z_slip - 0.015 * u, alto=0.035, stacco=0.016, fibbia=('bordo', ORO, 0.03), gemma=(0.9, 0.15, 0.2))
+        lungo = z_slip - (S.z_caviglia + 0.06 * u)
+        S.falde(C, 'stoffa', [-90, 90], 40, z_slip - 0.02 * u, lungo, apri=0.04 * u, cols=5, gioco=0.02 * u, colore=(1, 1, 1),
+                spessore=0.002 * u, coscia=0.5, orlo=(0.025 * u, 'bordo', ORO))
+        c = S.centro(z_slip - 0.04 * u)
+        for a in (-150, -30, 30, 150):
+            r = S.raggio(c, S.dir(a), 0.05 * u, 0.4 * u) + 0.02 * u
+            sonaglio(S, C, c + S.dir(a) * r, 0.012 * u, {'hips': 1.0})
+        collana(S, C, 'grani', ORO, 0.009 * u, 0.09 * u, centro=(0.016 * u, 'gemma', (0.9, 0.15, 0.2)))
+        bracciale(S, C, 'bordo', ORO, 0.72, 0.9, stacco=0.012, spessore=0.004)
+        schiniere(S, C, 'bordo', ORO, 0.86, 0.95, stacco=0.012, spessore=0.004)
+    else:
+        zp = zv + 0.13 * u
+        S.guscio(C, 'lamelle', lambda co: min(co.z - zp, z_seno + 0.01 * u - co.z, 1.02 * xs - abs(co.x)), 0.022 * u, (0.5, 0.06, 0.05),
+                 seme=(0, -0.5, zp + 0.06 * u), liscia=12, bordo=(0.007 * u, 'bordo', ORO))
+        S.guscio(C, 'cuoio', lambda co: min(z_slip - co.z, co.z - (zh - 0.03 * u), 1.05 * xs - abs(co.x)), 0.01 * u, CUOIO,
+                 seme=(0, -0.5, S.z_anca), liscia=6)
+        cintura(S, C, 'cuoio', CUOIO, z_slip - 0.01 * u, alto=0.05, stacco=0.02, fibbia=('bordo', ORO, 0.03))
+        S.falde(C, 'lamelle', [-90, 90, 0, 180], 46, z_slip - 0.03 * u, 0.2 * u, apri=0.03 * u, cols=5, file=2, dente=0.008 * u,
+                gioco=0.025 * u, colore=(0.5, 0.06, 0.05), spessore=0.004 * u, coscia=0.6, orlo=(0.016 * u, 'bordo', ORO))
+        spallacci(S, C, 'lamelle', (0.5, 0.06, 0.05), file=2, lungo=0.3, stacco=0.028, lati='L', orlo=(0.012 * u, 'bordo', ORO))
+        bracciale(S, C, 'piastre', ACCIAIO, 0.3, 0.9, stacco=0.016, bordo=('bordo', ORO))
+        schiniere(S, C, 'piastre', ACCIAIO, 0.12, 0.95, stacco=0.02, ginocchiera=0.05, bordo=('bordo', ORO))
+
+
+
+# ====================================================================== chioma lunga (corpo femminile)
+# Il «lungo» del pacchetto è un caschetto con la fronte scoperta (bocciato dall'autore: «fronte troppo alta, taglio brutto,
+# falla con i capelli lunghi»). Chioma fatta qui: calotta con l'attaccatura bassa, frangia, ciocche lunghe sulla schiena
+# fino a metà dorso e due ciocche davanti alle spalle. Pesi dal corpo: segue testa, collo e busto (niente fisica).
+def _curva(punti, m):
+    """Curva liscia (Catmull-Rom) per i punti dati, campionata in m punti."""
+    P = [Vector(p) for p in punti]
+    P = [P[0] + (P[0] - P[1])] + P + [P[-1] + (P[-1] - P[-2])]
+    out = []
+    seg = len(P) - 3
+    for i in range(m):
+        s = i / (m - 1) * seg
+        k = min(int(s), seg - 1)
+        t = s - k
+        p0, p1, p2, p3 = P[k], P[k + 1], P[k + 2], P[k + 3]
+        out.append(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t ** 3))
+    return out
+
+
+def chioma(S, T):
+    u = S.u
+    C = 'capelli_chioma'
+    col = (0.85, 0.85, 0.85)
+    alt = T.z_cima_pelle - T.z_collo
+    zt = T.z_cima_pelle + 0.014 * u
+    z_fronte = T.z_collo + alt * 0.675          # attaccatura bassa: poco sopra le sopracciglia
+    z_nuca = T.z_collo + alt * 0.27
+    zc = T.z_collo + alt * 0.62                 # quota del raggio massimo del cranio
+    asse = lambda z: Vector((0, T.cy, z))
+
+    def rp(fa, z):
+        vals = [T._r(min(z, T.z_cima_pelle - 0.004 * u), fa - 90 + da, T.pelle) for da in (-10, 0, 10)]
+        return max(sum(vals) / 3, vals[1])
+
+    def z_orlo(fa):
+        a = abs((fa + 180) % 360 - 180)
+        t = _lim((a - 50) / 55, 0, 1)
+        t = t * t * (3 - 2 * t)
+        return z_fronte + (z_nuca - z_fronte) * t
+
+    def cal(fa, t, extra=0.0):
+        """Punto della calotta: t = 0 in cima, 1 sull'orlo."""
+        z = zt - (zt - z_orlo(fa)) * t
+        r = rp(fa, z) + 0.016 * u
+        if z > zc:
+            r = min(r, (rp(fa, zc) + 0.016 * u) * math.sqrt(max(0.0004, 1 - ((z - zc) / (zt - zc)) ** 2)))
+        return asse(z) + T.n(fa) * (r + extra)
+
+    ns = 30
+    righe = [[cal(360 * i / ns - 180, t) for i in range(ns)] for t in (0.002, 0.05, 0.14, 0.3, 0.46, 0.62, 0.78, 0.9, 1.0)]
+    S.griglia(C, 'ciocche', righe, col, chiusa=True, pesi=PT, fuori=lambda p: p - asse(zc), orli=None)
+
+    def ciocca(punti, larghezze, normale, m=12, spess=0.005, arco=0.007):
+        P = _curva(punti, m)
+        L = []
+        nl = len(larghezze) - 1
+        for i in range(m):
+            s = i / (m - 1) * nl
+            k = min(int(s), nl - 1)
+            L.append((larghezze[k] + (larghezze[k + 1] - larghezze[k]) * (s - k)) * u)
+        N = [normale(p) for p in P]
+        S.striscia(C, 'ciocche', P, L, spessore=spess * u, colore=col, pesi='corpo', proietta=False, normali=N, arco=arco * u)
+
+    def n_testa(p):
+        d = Vector((p.x, p.y - T.cy, 0))
+        return d.normalized() if d.length > 1e-4 else Vector((0, 1, 0))
+
+    def dietro(x, z):
+        hit = S.bvh.ray_cast(Vector((x, 2.0, z)), Vector((0, -1, 0)))[0]
+        return hit.y if hit else T.cy + 0.08 * u
+
+    def davanti(x, z):
+        hit = S.bvh.ray_cast(Vector((x, -2.0, z)), Vector((0, 1, 0)))[0]
+        return hit.y if hit else T.cy - 0.08 * u
+
+    za = S.z_ascella
+    # ciocche lunghe sulla schiena: due strati sfalsati, più lunghe al centro
+    for strato, (n, lato, lungo, fuori) in enumerate(((9, 0.118, 0.20, 0.018), (8, 0.098, 0.13, 0.030))):
+        for k in range(n):
+            f = (k + 0.5) / n * 2 - 1                    # -1 … 1 da sinistra a destra
+            fa = 180 + f * (88 - 8 * strato)
+            x = f * lato * u
+            z_fine = za - (lungo + 0.06 * (1 - f * f) + 0.02 * ((k * 7) % 3)) * u
+            pts = [cal(fa, 0.5, 0.004 * u), cal(fa, 0.8, 0.008 * u + fuori * 0.3 * u), cal(fa, 1.0, 0.016 * u + fuori * 0.5 * u)]
+            zn = T.z_collo - 0.01 * u
+            xn = f * 0.062 * u                      # dietro il collo: stretta, poi si allarga sulle spalle
+            pn = Vector((xn, dietro(xn, zn) + 0.016 * u + fuori * u, zn))
+            pts.append(pn)
+            for zz in (S.z_spalla - 0.01 * u, (S.z_spalla + z_fine) / 2, z_fine):
+                pts.append(Vector((x * (1.0 if zz > z_fine + 0.01 * u else 0.9), dietro(x, zz) + (0.018 * u + fuori * u) * (1.0 if zz > z_fine + 0.01 * u else 0.6), zz)))
+            ciocca(pts, [0.05, 0.062, 0.064, 0.058, 0.05, 0.016],
+                   lambda p: n_testa(p) if p.z > T.z_collo + 0.03 * u else Vector((p.x * 1.5, 1, 0)).normalized())
+    # due ciocche davanti alle spalle, lungo il viso fin sopra il petto
+    for s in (1, -1):
+        fa = s * 78
+        xx = s * 0.105 * u
+        z1, z2 = S.z_spalla + 0.03 * u, za + 0.115 * u        # si fermano alla clavicola, sopra l'orlo delle vesti
+        pts = [cal(fa, 0.5, 0.004 * u), cal(fa, 0.82, 0.014 * u), cal(fa * 0.93, 1.0, 0.024 * u),
+               Vector((xx * 0.86, davanti(xx * 0.86, T.z_collo) - 0.012 * u, T.z_collo)),
+               Vector((xx, davanti(xx, z1) - 0.024 * u, z1)), Vector((xx * 0.95, davanti(xx * 0.95, z2) - 0.026 * u, z2))]
+        ciocca(pts, [0.04, 0.05, 0.046, 0.04, 0.034, 0.01],
+               lambda p: n_testa(p) if p.z > T.z_collo + 0.03 * u else Vector((p.x * 1.2, -1, 0)).normalized())
+    # frangia: ciocche dalla sommità sulla fronte, pettinate di lato, fino a sfiorare le sopracciglia
+    for k, fa in enumerate((-52, -30, -9, 13, 35, 55)):
+        giu = (0.030, 0.034, 0.026, 0.030, 0.034, 0.030)[k] * u
+        pts = [cal(fa - 10, 0.2, 0.006 * u), cal(fa - 6, 0.55, 0.012 * u), cal(fa, 0.88, 0.018 * u),
+               asse(z_orlo(fa) - giu) + T.n(fa + 7) * (rp(fa + 7, z_orlo(fa) - giu) + 0.02 * u)]
+        ciocca(pts, [0.05, 0.06, 0.056, 0.02], n_testa, m=12, spess=0.004, arco=0.008)
+
+
 DISEGNI = {'lama': lama, 'ombra': ombra, 'monaco': monaco, 'mistico': mistico}
 
 
@@ -2410,7 +2632,12 @@ def crea_completi(corpo, arm, H, classi=CLASSI, gradi=('base', 0, 1, 2, 3, 4), d
             continue
         for g in gradi:
             DISEGNI[c](S, g)
+    if donna:
+        for g in (0, 1, 2):
+            dama(S, g)
     T = Testa(S)
+    if donna:
+        chioma(S, T)
     for c in classi:
         if c in DISEGNI and elmi:
             for g in (1, 2, 3, 4):

@@ -11,7 +11,7 @@ const ATTACCHI := {
 const PosaArmaScript := preload("res://script/posa_arma.gd")
 const SPECIE := {"wolf": "lupo", "boar": "cinghiale", "bear": "orso", "tiger": "tigre", "horse": "cavallo"}
 ## motivo ornamentale degli orli dei completi (ornati.gdshaderinc): onde e nuvole, denti, grani, rombi ricamati
-const MOTIVI := {"lama": 0, "ombra": 1, "monaco": 2, "mistico": 3}
+const MOTIVI := {"lama": 0, "ombra": 1, "monaco": 2, "mistico": 3, "dama": 3}
 const RICAMO_ORO := Color(0.85, 0.62, 0.25)
 
 static var _scene: Dictionary = {}
@@ -370,6 +370,10 @@ func metti_testa(stile: String, capelli: Color, cappuccio := Color(0.15, 0.15, 0
 	if capi_modello.has("capelli_corti"):
 		# capigliature vere del modello (capo_capelli_*): si accende quella dello stile e la si tinge
 		var quale: String = {"short": "capelli_corti", "topknot": "capelli_crocchia", "long": "capelli_lunghi", "hood": "capelli_rasati", "bald": ""}.get(stile, "capelli_corti")
+		# "long" = il caschetto del pacchetto (all'autore piace); "chioma" = chioma lunga fino a metà schiena con la
+		# frangia, costruita da tools/blender/completi.py (solo corpo femminile; se manca si ripiega sul caschetto)
+		if stile == "chioma":
+			quale = "capelli_chioma" if capi_modello.has("capelli_chioma") else "capelli_lunghi"
 		if quale in ["capelli_crocchia", "capelli_lunghi"] and modello.ends_with("uomo"):
 			quale = "capelli_corti"       # crocchia e chioma lunga del pacchetto sono da donna (sull'uomo: calvizie in cima)
 		for n in scheletro.get_children():

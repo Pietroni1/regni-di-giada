@@ -2,7 +2,7 @@
 // (che aggiunge il PNG alle NPC_ROLES). La logica è in server/sociale.js, la finestra in godot/script/sociale.gd.
 
 export const NPC_SOCIALE = {
-  magazziniere: { name: 'Cassiere Zhou', title: 'Magazziniere' },
+  magazziniere: { name: 'Cassiera Zhou', title: 'Magazziniere' },
 };
 
 export const DEPOSITO_SIZE = 48;      // caselle del deposito, uno per account (condiviso fra i personaggi)

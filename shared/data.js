@@ -574,7 +574,7 @@ export const SHOPS = {
 
 export const NPC_ROLES = {
   armi: { name: 'Mastro Weng', title: 'Armaiolo' },
-  erbe: { name: 'Nonna Lin', title: 'Erborista' },
+  erbe: { name: 'Dama Lin', title: 'Erborista' },
   fabbro: { name: 'Fabbro Gao', title: 'Fabbro' },
   maestro: { name: 'Eremita Shou', title: 'Maestro delle Vie' },
   guardia: { name: 'Guardia', title: 'Guardia del villaggio' },

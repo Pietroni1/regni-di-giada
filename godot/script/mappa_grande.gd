@@ -226,7 +226,7 @@ func _draw() -> void:
 	# --- Sentieri Lontani (colonna a destra)
 	var cx := _rett.end.x + 135.0
 	_scritta(Vector2(cx, _rett.position.y + 12), "Sentieri Lontani", 16, Hud.ORO)
-	_scritta(Vector2(cx, _rett.position.y + 28), "si parte dal Viandante Lu, nei villaggi", 11, INCHIOSTRO.darkened(0.25))
+	_scritta(Vector2(cx, _rett.position.y + 28), "si parte dalla Viandante Lu, nei villaggi", 11, INCHIOSTRO.darkened(0.25))
 	var defs := Mappe.definizioni()
 	var alto := (_rett.size.y - 40.0) / maxf(1.0, float(defs.size()))
 	var rd := minf(alto * 0.5 - 34.0, 92.0)

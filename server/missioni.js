@@ -230,7 +230,7 @@ const metodi = {
 
   // ------------------------------------------------------------ dialoghi con i PNG
   // Missioni che questo PNG affida (offerte) o riceve (consegne). lontano: il PNG è in una mappa lontana (la Guida
-  // affida gli incarichi solo lì, dove non c'è lo Scrivano; nei villaggi apre soltanto i viaggi).
+  // affida gli incarichi solo lì, dove non c'è la Scrivana; nei villaggi apre soltanto i viaggi).
   missioniDelPng(p, ruolo, lontano = false) {
     const s = p.ch.mis, offerte = [], consegne = [];
     if (!s) return { offerte, consegne };

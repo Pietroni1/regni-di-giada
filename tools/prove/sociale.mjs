@@ -347,7 +347,7 @@ async function main() {
 
   // ============================================================ deposito
   const mag = A1.png('magazziniere');
-  verifica(mag && mag.n === 'Cassiere Zhou', `magazziniere nel villaggio: ${mag && mag.n}`);
+  verifica(mag && mag.n === 'Cassiera Zhou', `magazziniere nel villaggio: ${mag && mag.n}`);
   // da lontano non si apre
   await A1.cmd(`/tp ${mag.x + 25} ${mag.z}`);
   await attesa(300);

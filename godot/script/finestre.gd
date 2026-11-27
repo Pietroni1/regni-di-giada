@@ -875,8 +875,8 @@ Trascina tecniche e pozioni sulla barra rapida; tasto destro su un tasto della b
 
 MISSIONI
 «!» sopra un abitante: ha una missione per te  ·  «?»: puoi consegnargliela (o devi parlargli). Le missioni aperte sono a destra,
-sotto la minimappa; il punto dorato sulla minimappa e sulla mappa (M) indica dove andare. Lo Scrivano Ming, vicino all'arrivo del
-villaggio, affida ogni giorno 3-4 incarichi adatti al tuo livello (nelle terre lontane: il Viandante Lu).
+sotto la minimappa; il punto dorato sulla minimappa e sulla mappa (M) indica dove andare. La Scrivana Mei, vicino all'arrivo del
+villaggio, affida ogni giorno 3-4 incarichi adatti al tuo livello (nelle terre lontane: la Viandante Lu).
 
 IN GIRO PER IL MONDO
 Clic su un abitante del villaggio per parlargli: mercanti, fabbro (potenziamenti), maestro delle Vie,

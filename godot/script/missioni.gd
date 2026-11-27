@@ -324,7 +324,7 @@ func _scrivi_elenco() -> void:
 			righe.append("[color=#a09a8c]Prossima missione al livello %d[/color]" % int(pross.liv))
 	var gg = stato.get("gg")
 	if gg is Dictionary and int(gg.get("libere", 0)) > 0:
-		righe.append("[color=#c8b890]◇ %d incarichi del giorno dallo Scrivano Ming[/color]" % int(gg.libere))
+		righe.append("[color=#c8b890]◇ %d incarichi del giorno dalla Scrivana Mei[/color]" % int(gg.libere))
 	var testo := "\n".join(PackedStringArray(righe))
 	if testo != _firma_elenco:
 		_firma_elenco = testo
@@ -349,7 +349,7 @@ func _riempi_diario() -> void:
 	_corpo_diario.add_child(barra)
 	var gg = stato.get("gg")
 	if gg is Dictionary:
-		_etichetta(_corpo_diario, "Incarichi di oggi: %d compiuti su %d (dallo Scrivano Ming, nei villaggi; nelle terre lontane dal Viandante Lu)" % [int(gg.fatte), int(gg.tot)], Color(0.85, 0.8, 0.65), 12, 520)
+		_etichetta(_corpo_diario, "Incarichi di oggi: %d compiuti su %d (dalla Scrivana Mei, nei villaggi; nelle terre lontane dalla Viandante Lu)" % [int(gg.fatte), int(gg.tot)], Color(0.85, 0.8, 0.65), 12, 520)
 	var aperte: Array = stato.get("a", [])
 	aperte.sort_custom(func(a, b) -> bool: return int(a.get("g", 0)) < int(b.get("g", 0)))
 	if aperte.is_empty():
