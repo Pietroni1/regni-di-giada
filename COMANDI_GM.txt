@@ -1,0 +1,265 @@
+REGNI DI GIADA — COMANDI DEL GAME MASTER
+=========================================
+
+Si scrivono in chat (Invio), una riga alla volta.
+Servono un account GM: sul server normale è "admin" (server/config.json).
+Nel pacchetto "gioca da solo" il giocatore non è GM, a meno di rifare il
+pacchetto con:  npm.cmd run pacchetto -- --gm
+
+
+1. MAXARE IL PERSONAGGIO (uguale per tutte le classi)
+-----------------------------------------------------
+
+/level 99
+/tael 9999999
+/destriero 20
+/sigillo 30
+/item elmo_45 1 15 4
+/item corazza_45 1 15 4
+/item calzari_45 1 15 4
+/item gemma_rubino_2 10
+/item gemma_zaffiro_2 10
+/item gemma_ambra_2 10
+/item gemma_perla_2 10
+/item gemma_giada_2 10
+/item gemma_onice_2 10
+/item ginseng_g 99
+/item loto_g 99
+
+Note:
+- /item id quantità potenziamento rarità
+  potenziamento: da 0 a 15 (15 = massimo, con gli effetti leggendari)
+  rarità: 0 Comune, 1 Pregiato, 2 Raro, 3 Epico, 4 Leggendario
+- I punti statistica (3 a livello) si spendono dalla finestra Personaggio (C).
+- Le gemme si trascinano sul pezzo che ha un incavo libero:
+  rubino = attacco, zaffiro = attacco magico (Mistico), ambra = critico,
+  perla = rapidità, giada = vita, onice = difesa.
+- /level rimette l'esperienza a zero; abbassando il livello i punti già
+  dati non vengono tolti.
+
+Pezzi unici dei boss (si provano allo stesso modo, es. /item corazza_colosso 1 15 4):
+  corazza_colosso   elmo_colosso       calzari_colosso
+  veste_canne       corona_canne       passi_canne
+  manto_miraggio    maschera_miraggio  sandali_miraggio
+
+Altri oggetti utili:
+/item pietra_affinamento 20      (rilancia i valori dei bonus)
+/item pergamena_mutamento 20     (rimescola i bonus)
+/item sigillo_ascensione 20      (35% di alzare la rarità)
+/item scalpello 10               (toglie le gemme da un pezzo)
+/item pergamena_ritorno 20
+
+
+2. LAMA
+-------
+
+/item spada_45 1 15 4
+
+Tecniche di base e Suprema:
+/abilita squarcio 20
+/abilita fendente 20
+/abilita affondo_ira 20
+/abilita carica 20
+/abilita grido_guerra 20
+/abilita risveglio_drago 20
+/abilita giudizio_tuoni 20
+
+Via del Fulmine (danni):
+/via fulmine
+/abilita lama_tuono 20
+
+Via della Montagna (difensore):
+/via montagna
+/abilita radici_monte 20
+/abilita martello_monte 20
+
+
+3. OMBRA
+--------
+
+/item pugnali_45 1 15 4
+/item arco_45 1 15 4
+
+Tecniche di base e Suprema:
+/abilita colpo_rapido 20
+/abilita taglio_netto 20
+/abilita colpo_gola 20
+/abilita passo_ombra 20
+/abilita ventaglio 20
+/abilita velo_ombra 20
+/abilita eclissi 20
+/abilita mille_ombre 20
+
+Via dei Pugnali (impugna i pugnali):
+/via pugnali
+/abilita taglio_finale 20
+/abilita danza_lame 20
+
+Via dell'Arco (impugna l'arco):
+/via arco
+/abilita freccia_perforante 20
+/abilita pioggia_frecce 20
+/abilita ala_vento 20
+
+
+4. MONACO
+---------
+
+/item pugni_45 1 15 4
+
+Tecniche di base e Suprema:
+/abilita pugno_ferro 20
+/abilita calcio_gru 20
+/abilita onda_chi 20
+/abilita palmo_chi 20
+/abilita calcio_volante 20
+/abilita respiro_drago 20
+/abilita cuore_sole 20
+/abilita drago_celeste 20
+
+Via del Pugno di Ferro:
+/via ferro
+/abilita raffica 20
+/abilita pelle_bronzo 20
+
+Via del Loto Interiore:
+/via loto
+/abilita vortice_interiore 20
+/abilita meditazione 20
+
+
+5. MISTICO
+----------
+
+/item bastone_45 1 15 4
+
+Tecniche di base e Suprema:
+/abilita dardo_luce 20
+/abilita sfera_celeste 20
+/abilita lancia_luce 20
+/abilita sigillo_silenzio 20
+/abilita passo_luce 20
+/abilita benedizione_astri 20
+/abilita congiunzione 20
+/abilita collera_cielo 20
+
+Via della Tempesta (danni):
+/via tempesta
+/abilita giudizio_cielo 20
+/abilita occhio_ciclone 20
+
+Via della Benedizione (guaritore):
+/via benedizione
+/abilita tocco_curativo 20
+/abilita scudo_giada 20
+
+
+6. IN COMBATTIMENTO
+-------------------
+
+/suprema          Tecnica Suprema pronta subito
+/punti            punti della classe al massimo (l'Ombra usa i Marchi: non le servono)
+/risorsa          risorsa piena
+/heal             vita e risorsa piene
+/uccidi           abbatte il nemico più vicino entro 20 metri
+/vita 30          ti porta al 30% di vita
+/vita 0           cadi (per provare la rinascita)
+
+Tasto N in gioco: contatore dei danni.
+
+
+7. MOSTRI DA FAR COMPARIRE
+--------------------------
+
+/spawn tipo numero raggio        (massimo 30 alla volta)
+/mobs                            elenco di tutti i tipi
+
+/spawn fantoccio 5 3             fantocci per provare le rotazioni
+/spawn lupo 8 3                  branco stretto: colpi ad area e Risonanza
+/spawn bandito 6 4
+/spawn lanterna_cripta 1         lancia incantesimi: per provare l'interruzione
+
+Élite e capi:
+/spawn lupo_anziano 1
+/spawn orso_nero 1
+/spawn terracotta 1
+/spawn tigre_spettrale 1
+/spawn generale 1
+/spawn custode_insonne 1
+/spawn orso_ventre_giada 1
+/spawn tigre_smeraldo 1
+/spawn campione_arenaria 1
+/spawn tigre_sole_rovente 1
+/spawn yan_fornace 1
+
+
+8. BOSS DEL MONDO
+-----------------
+
+/boss                            elenco e tempi
+/boss colosso_ardente qui        compare accanto a te (livello 32)
+/boss madre_canne qui            (livello 40)
+/boss re_miraggio qui            (livello 50)
+/boss colosso_ardente            compare al suo posto nel mondo
+/boss colosso_ardente tra 5      comparirà fra 5 minuti
+/boss colosso_ardente via        lo toglie
+/boss vita 0.5                   il boss più vicino va a metà vita
+/boss furia                      fa scattare subito la furia
+
+
+9. VIAGGI
+---------
+
+/tp fenice        /tp tigre        /tp drago        i tre villaggi
+/tp selva         Selva dei Mille Steli (livelli 30-40)
+/tp distesa       Distesa dei Venti Rossi (livelli 40-50)
+/tp arena         Arena del Loto Cremisi (PvP)
+/tp x z           coordinate
+/tp Nome          accanto a un giocatore
+/tp -228 -228     radura libera, comoda per le prove
+/tp 0 206         Valle delle Braci (Colosso Ardente)
+/pos              dice dove sei
+
+
+10. PROVE, MISSIONI, ONORE, TITOLI
+----------------------------------
+
+/sigillo 15       imposta il Sigillo della Prova (da 2 a 30);
+                  poi dal Custode si apre la Cripta o la Forgia
+/missione c07     porta la catena a quella missione (da c01 a c34)
+/missione fatta   completa gli obiettivi delle missioni aperte
+/missione giorno  nuovi incarichi giornalieri
+/onore 5000       onore da spendere dall'Araldo dell'arena
+/titolo           elenco dei titoli
+/titolo id        indossa un titolo:
+                  spezzacolossi, flagello_selva, oltre_miraggio,
+                  cacciatore_leggende, custode_sigillo, signore_prove,
+                  cuore_brace, lama_arena, loto_cremisi, sfidante,
+                  lama_cremisi, campione_loto
+/impresa id       sblocca un'impresa (tasto J per vederle)
+/stagione         stato della stagione dell'arena
+/stagione chiudi  chiude la settimana e assegna i premi
+
+
+11. SERVER
+----------
+
+/rate exp 5       moltiplicatore dell'esperienza (resta salvato)
+/rate drop 3      moltiplicatore del bottino
+/rate tael 2      moltiplicatore dei tael
+/exp 100000       dà esperienza
+/annuncio testo   scritta a tutti i giocatori
+/save             salva subito
+/items            tutti gli id degli oggetti
+/online           chi è in linea
+
+
+12. COMANDI PER TUTTI (anche senza GM)
+--------------------------------------
+
+/aiuto            elenco dei comandi
+/invita nome      /lascia      /espelli nome        gruppo
+/s nome testo     sussurro     /r testo             rispondi
+/amico nome       /amici       /scambia nome
+!testo            grido al regno
+#testo            chat del gruppo
