@@ -818,6 +818,15 @@ func _crea_impostazioni() -> void:
 		Impostazioni.numeri_danno = si
 		_salva_impostazioni())
 	v.add_child(num)
+	var st := CheckButton.new()
+	st.text = "Stile dark fantasy (prova)"
+	st.tooltip_text = "Cielo con l'eclissi, colori cupi per zona, pixel grossi. Spento: la grafica di sempre."
+	st.button_pressed = Impostazioni.stile == 1
+	st.toggled.connect(func(si: bool) -> void:
+		Impostazioni.stile = 1 if si else 0
+		_salva_impostazioni()
+		gioco.cambia_stile())
+	v.add_child(st)
 	_etichetta(v, "Il motore grafico (Compatibilità o Forward+) si cambia dall'editor di Godot, in alto a destra.", Color(0.65, 0.63, 0.58), 11)
 
 

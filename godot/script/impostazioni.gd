@@ -9,6 +9,7 @@ var volume := 0.7              # 0..1
 var sensibilita := 1.0         # visuale col mouse
 var numeri_danno := true
 var contatore := true          # contatore dei danni visibile
+var stile := 1                 # 0 grafica di sempre, 1 «tenebra» (prova dark fantasy: tenebra.gd)
 var server := "localhost:3000"
 var utente := ""
 var _tema: Theme
@@ -24,6 +25,7 @@ func _ready() -> void:
 		sensibilita = c.get_value("comandi", "sensibilita", sensibilita)
 		numeri_danno = c.get_value("comandi", "numeri_danno", numeri_danno)
 		contatore = c.get_value("comandi", "contatore", contatore)
+		stile = c.get_value("schermo", "stile", stile)
 		server = c.get_value("accesso", "server", server)
 		utente = c.get_value("accesso", "utente", utente)
 		Tasti.carica(c)
@@ -38,6 +40,7 @@ func salva() -> void:
 	c.set_value("comandi", "sensibilita", sensibilita)
 	c.set_value("comandi", "numeri_danno", numeri_danno)
 	c.set_value("comandi", "contatore", contatore)
+	c.set_value("schermo", "stile", stile)
 	c.set_value("accesso", "server", server)
 	c.set_value("accesso", "utente", utente)
 	Tasti.salva(c)

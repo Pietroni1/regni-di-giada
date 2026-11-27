@@ -31,6 +31,8 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		var p := a.trim_prefix("--").split("=", true, 1)
 		_arg[p[0]] = p[1] if p.size() > 1 else "1"
+	if _arg.has("stile"):
+		Impostazioni.stile = int(_arg.stile)          # prove: --stile=0 grafica di sempre, 1 dark fantasy (non si salva)
 	_interfaccia()
 	Rete.aperta.connect(_connesso)
 	Rete.chiusa.connect(_disconnesso)
@@ -504,6 +506,9 @@ func _prova_automatica() -> void:
 					if e.tipo == "n" and String(e.info.get("role", "")) == "custode":
 						Rete.manda({"t": "trial", "npc": e.id, "a": p[1], "p": p[2] if p.size() > 2 else "cripta"})
 						break
+			"stile":   # stile 0|1: grafica di sempre o dark fantasy (come l'interruttore delle Impostazioni, senza salvare)
+				Impostazioni.stile = int(p[1])
+				gioco.cambia_stile()
 			"prova_tp":
 				# prova_tp x z: dentro una Prova, teletrasporto GM in coordinate della pianta (shared/prove.js)
 				if gioco.cripta != null:

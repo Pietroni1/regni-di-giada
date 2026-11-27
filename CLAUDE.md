@@ -918,6 +918,32 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 
+## Prova di grafica dark fantasy (solo sul ramo `prova-dark-fantasy`)
+L'autore ha mandato quattro immagini di riferimento (3D «d'altri tempi», pixel grossi, cieli viola e rossi con
+l'eclissi, sagome nere, cristalli azzurri luminosi, neve blu) chiedendo di provare, in un altro ramo, a cambiare tutta
+la grafica in quello stile: **se ne prende il genere, non si copiano personaggi o luoghi di altri giochi**.
+Fatto senza toccare modelli e dati: cambia l'aria. `godot/script/tenebra.gd` (`Tenebra`, creato da `Gioco._ready`):
+- `TAVOLOZZE` per zona, tre toni ombra → mezzo → luce più cielo, nebbia e luci: `sangue` (mondo aperto: viola e rosso,
+  eclissi), `borgo` (villaggi), `gelo` (Altopiano: blu, luna), `selva` (verde acqua), `distesa` (cremisi e arancio),
+  `arena`, e per le Prove `cripta` / `forgia` (lì l'ambiente resta il loro e la tavolozza pesa un terzo, così i temi
+  delle ali si vedono ancora). I valori si inseguono in un paio di secondi passando da una zona all'altra.
+- `tenebra_post.gdshader` (ColorRect su un CanvasLayer a `layer = -1`: sopra il 3D, sotto l'interfaccia, che resta
+  nitida): pixel grossi (circa 300 righe), contrasto schiacciato verso il nero, luminanza ricondotta alla tavolozza
+  (`forza`), retinatura a scacchi con pochi livelli, bordi scuri; i colori molto saturi e luminosi (effetti, lava,
+  cristalli) restano in parte i loro, il verde dell'erba no.
+- `tenebra_cielo.gdshader`: cupola che segue la visuale (non un `Sky`: così `TIME` non costa il ricalcolo della
+  radianza), nubi a fasce, eclissi con corona o luna, guglie nere all'orizzonte. L'ambiente all'aperto è uno solo
+  (`Tenebra.env`, sfondo a colore, luce d'ambiente a colore fisso, nebbia fitta colorata).
+- **Da sapere**: le luci devono restare quasi bianche. Con sole e ambiente magenta l'erba verde diventava nera (un
+  albedo verde non riflette il rosso): il colore lo dà la passata finale, non la luce.
+- Cristalli luminosi (`tenebra_cristallo.gdshader`, un MultiMesh): accanto a una roccia su due e ai piedi di un albero
+  su sei (già ostacoli); azzurri entro 110 m dal centro dell'Altopiano, rossi e viola altrove.
+- Si accende e spegne da Impostazioni → «Stile dark fantasy (prova)» (`Impostazioni.stile`, 1 di base su questo ramo;
+  `Gioco.cambia_stile()`), argomento `--stile=0|1`, comando del copione `stile 0|1`.
+- Visto a schermo: villaggio, campagna, combattimento, Altopiano, in sella, Selva, Distesa, una Prova; confronto
+  prima/dopo con `stile 0|1`. Non visto: Forward+, browser, prestazioni su un PC vero (la passata finale è leggera, la
+  cupola è una sfera sola). Non toccati: interfaccia, modelli, schermata d'accesso, client nel browser.
+
 ## Mappe da esperienza e Arena PvP
 - Definizioni in `shared/mappe.js` (nessun import: lo importano `data.js`, che aggiunge `MOBS_MAPPE` a `MOBS` e
   `NPC_MAPPE` a `NPC_ROLES`, e `world.js`, dove `heightAt`, `safeZoneAt` e `zoneAt` passano alle mappe per x > `MAPPE_X` = 5000).

@@ -39,6 +39,7 @@ var stordito_fino := 0.0
 var lento_fino := 0.0
 var _fermo_immagine := 0.0
 var cripta: Cripta = null
+var tenebra: Tenebra                # stile dark fantasy (prova): cielo, tavolozze per zona, passata finale
 var prova: Dictionary = {}         # ultimo stato della Prova del Sigillo (messaggio `dg`)
 var gruppo: Dictionary = {}        # ultimo messaggio `party`
 var marchi_miei: Dictionary = {}       # id del nemico → { n, resto }: i Marchi che ho inciso io (Ombra)
@@ -80,6 +81,9 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.gioco = self
 	add_child(hud)
+	tenebra = Tenebra.new()
+	tenebra.gioco = self
+	add_child(tenebra)
 	viaggi = Viaggi.new()
 	viaggi.gioco = self
 	hud.radice.add_child(viaggi)
@@ -663,6 +667,15 @@ func _ambiente(zona: String) -> void:
 		sole.light_color = Color(String(tema.sole)) if tema.has("sole") else _sole_base.colore
 		sole.light_energy = float(tema.luce) if tema.has("luce") else float(_sole_base.energia)
 	mondo.visible = zona == ""
+	if tenebra != null:
+		tenebra.zona(zona, dentro, cripta.id_prova if (dentro and cripta != null) else "", we, _amb_fuori)
+
+
+## Lo stile grafico è cambiato dalle Impostazioni: si rifà l'ambiente della zona in cui si è.
+func cambia_stile() -> void:
+	var z := _zona_amb
+	_zona_amb = "?"
+	_ambiente(z)
 
 
 ## Ambiente di una mappa lontana: copia di quello della scena con cielo e nebbia del tema.
