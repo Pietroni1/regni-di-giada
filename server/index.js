@@ -46,8 +46,38 @@ const MOUNTS = [
   ['/', path.join(ROOT, 'client')],
 ];
 
+// Versione per il browser del client Godot (cartella `web/`, esportata con la preimpostazione «Web»): si gioca da
+// http://indirizzo:porta/gioca senza installare nulla. I file grossi si mandano a pezzi e, se accanto c'è la copia
+// compressa (`npm run web:comprimi`), si manda quella; il browser li tiene in memoria e li riscarica solo se cambiano.
+const WEB = path.join(ROOT, 'web');
+const MIME_WEB = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm', '.pck': 'application/octet-stream', '.png': 'image/png' };
+function servWeb(req, res, url) {
+  if (url === '/gioca') { res.writeHead(302, { Location: '/gioca/' }); res.end(); return; }
+  const nome = url.slice('/gioca/'.length) || 'index.html';
+  const file = path.resolve(WEB, nome);
+  if (!file.startsWith(WEB + path.sep)) { res.writeHead(404); res.end('Non trovato'); return; }
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(nome === 'index.html' ? 'La versione per il browser non è installata su questo server (manca la cartella web/).' : 'Non trovato');
+      return;
+    }
+    const etag = `"${st.size}-${Math.round(st.mtimeMs)}"`;
+    const testa = { 'Content-Type': MIME_WEB[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: etag };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, testa); res.end(); return; }
+    const gz = file + '.gz';
+    const compresso = /\bgzip\b/.test(String(req.headers['accept-encoding'] || '')) && fs.existsSync(gz) && fs.statSync(gz).mtimeMs >= st.mtimeMs;
+    if (compresso) testa['Content-Encoding'] = 'gzip';
+    testa['Content-Length'] = compresso ? fs.statSync(gz).size : st.size;
+    res.writeHead(200, testa);
+    if (req.method === 'HEAD') { res.end(); return; }
+    fs.createReadStream(compresso ? gz : file).pipe(res);
+  });
+}
+
 const server = http.createServer((req, res) => {
   let url = decodeURIComponent((req.url || '/').split('?')[0]);
+  if (url === '/gioca' || url.startsWith('/gioca/')) return servWeb(req, res, url);
   if (url === '/') url = '/index.html';
   for (const [prefix, dir] of MOUNTS) {
     if (!url.startsWith(prefix)) continue;

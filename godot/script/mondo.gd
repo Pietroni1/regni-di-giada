@@ -66,10 +66,29 @@ func _terreno() -> void:
 			add_child(mi)
 
 
-## Immagine letta come file (non come risorsa importata): funziona anche senza passare dall'editor.
-static func _immagine(percorso: String) -> ImageTexture:
+## Legge un'immagine del progetto. Dall'editor (o dai sorgenti) c'è il file PNG e lo si legge direttamente; negli
+## eseguibili esportati e nella versione per il browser il PNG non c'è (l'esportazione tiene solo la risorsa importata):
+## lì si prende l'immagine dalla risorsa. Senza questo ripiego il terreno esportato restava senza texture.
+static func leggi_immagine(percorso: String) -> Image:
 	var img := Image.new()
-	img.load_png_from_buffer(FileAccess.get_file_as_bytes(percorso))
+	if FileAccess.file_exists(percorso):
+		var dati := FileAccess.get_file_as_bytes(percorso)
+		if not dati.is_empty() and img.load_png_from_buffer(dati) == OK:
+			return img
+	var t := load(percorso) as Texture2D
+	if t != null:
+		img = t.get_image()
+		if img.is_compressed():
+			img.decompress()
+		if img.has_mipmaps():
+			img.clear_mipmaps()
+		if img.get_format() != Image.FORMAT_RGBA8:
+			img.convert(Image.FORMAT_RGBA8)
+	return img
+
+
+static func _immagine(percorso: String) -> ImageTexture:
+	var img := leggi_immagine(percorso)
 	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
 
@@ -88,8 +107,7 @@ static var _riquadri: Dictionary = {}
 static func _riquadro(nome: String) -> Image:
 	if not _riquadri.has(nome):
 		var file := "res://texture/terreno.png" if nome.begins_with("t") else "res://texture/terreno_mappe.png"
-		var atl := Image.new()
-		atl.load_png_from_buffer(FileAccess.get_file_as_bytes(file))
+		var atl := leggi_immagine(file)
 		var lato := atl.get_width() / 4
 		for k in range(8):
 			var im := atl.get_region(Rect2i((k % 4) * lato, (k / 4) * lato, lato, lato))

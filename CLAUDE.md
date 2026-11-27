@@ -583,6 +583,22 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   al PNG o all'oggetto), rinascita sul posto o al villaggio, gemme e pergamene (`apply`, `combine`), trascinamento fra
   inventario, equipaggiamento e barra rapida, menu (Esc), impostazioni salvate (`impostazioni.gd`, autoload), aiuto (H),
   suoni generati da codice (`suoni.gd`, autoload: `Suoni.suona(nome, dB, intonazione)`), barra dell'esperienza.
+- **Versione per il browser** (l'autore: far giocare un amico «senza l'exe e senza fargli scaricare tutta sta roba»):
+  preimpostazione «Web» in `export_presets.cfg` (senza thread: non servono intestazioni speciali) → cartella `web/`
+  (ignorata da git: `index.pck` 62 MB, `index.wasm` 44 MB). `godot --headless --path godot --export-release "Web"
+  ../web/index.html`, poi `npm run web:comprimi` (`tools/web/comprimi.mjs`: copie `.gz`, 67 MB da scaricare la prima
+  volta). `server/index.js` la serve da `/gioca/` (`servWeb`: a flusso, ETag, gzip se c'è la copia). Nel browser
+  `principale.gd` nasconde il campo del server e usa l'indirizzo della pagina (`Rete.ospite_web`, `wss://` se la pagina è
+  in https: funziona dietro un tunnel). Il modello d'esportazione `web_nothreads_release.zip` non è nel container di
+  base: lo si estrae dall'archivio ufficiale dei modelli 4.4.1 (1,2 GB) con richieste a intervalli, senza scaricarlo tutto
+  (script `prendi.py`, tenuto nello scratchpad). Provato con Chromium senza scheda video (Playwright): accesso, elenco dei
+  personaggi, ingresso nel mondo con terreno, piante, personaggio e interfaccia. **Non provati**: un browser vero con GPU
+  (fluidità), suoni, tastiera e mouse in gioco, telefono, tunnel https.
+- **Difetto delle esportazioni corretto**: `terreno.png`, `variazione.png` e il font venivano letti come file, ma
+  l'esportazione tiene solo le risorse importate: negli eseguibili (e nel browser) il terreno restava senza texture e il
+  font era quello predefinito. Ora `Mondo.leggi_immagine` e `Impostazioni._metti_font` ripiegano sulla risorsa importata.
+  Verificato con l'eseguibile Linux esportato (terreno e font giusti). Gli eseguibili Windows mandati fra il lavoro sul
+  terreno dipinto e questa correzione avevano con ogni probabilità quel difetto.
 - **Eseguibile**: `godot/export_presets.cfg` (Windows e Linux, `include_filter="dati/*"`). Nel container:
   `godot --headless --path godot --export-release "Windows" ../esporta/RegniDiGiada.exe` (modelli di esportazione in
   `~/.local/share/godot/export_templates/4.4.1.stable/`). L'eseguibile Linux esportato è stato provato ed entra in gioco;

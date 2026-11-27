@@ -24,6 +24,16 @@ Le preimpostazioni sono già in `export_presets.cfg` (includono la cartella `dat
   3. mettere il server su una macchina in rete sempre accesa (serve solo Node.js).
 Il client ricorda l'ultimo server e l'ultimo account usati.
 
+**Senza installare niente: dal browser.** Lo stesso client si esporta anche per il browser (preimpostazione «Web»,
+cartella `web/` accanto a `server/`, fuori da git perché pesa 100 MB). Il server del gioco la serve da solo: chi gioca
+apre `http://INDIRIZZO:3000/gioca`, crea l'account ed entra — nessun programma da scaricare, il server è quello della
+pagina. La prima volta il browser scarica circa 70 MB (poi li tiene in memoria); serve un browser recente con la scheda
+video attiva (WebGL 2). Dopo ogni esportazione: `npm.cmd run web:comprimi` (prepara le copie compresse).
+Per dare il link a chi è fuori casa senza toccare il router: un tunnel gratuito verso il tuo PC, per esempio
+`cloudflared tunnel --url http://localhost:3000` (stampa un indirizzo `https://….trycloudflare.com`: il link da mandare
+è quello più `/gioca`; cambia a ogni avvio) oppure Tailscale Funnel. Perché un amico giochi anche quando il tuo PC è
+spento il server va messo su una macchina sempre accesa (basta Node.js, la cartella del progetto e la cartella `web/`).
+
 ## Comandi
 - **Movimento**: WASD o clic sul terreno · tasto destro trascinato o Q/E per girare la visuale · rotellina per lo zoom.
 - **Combattimento**: clic o Tab per il bersaglio · 1-0 barra rapida · V Tecnica Suprema. Una tecnica premuta poco prima

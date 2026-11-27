@@ -90,7 +90,7 @@ static func nome_tasto(tasto: int) -> String:
 	if NOMI_SPECIALI.has(tasto):
 		return String(NOMI_SPECIALI[tasto])
 	var etichetta: int = tasto
-	if DisplayServer.get_name() != "headless":
+	if DisplayServer.get_name() != "headless" and not OS.has_feature("web"):      # nel browser la funzione non esiste
 		var e: int = DisplayServer.keyboard_get_label_from_physical(tasto as Key)
 		if e != 0:
 			etichetta = e

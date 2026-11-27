@@ -8,7 +8,8 @@
     "start": "node server/index.js",
     "sim": "node tools/sim/simula.mjs",
     "farming": "node tools/sim/farming.mjs",
-    "godot:dati": "node tools/godot/esporta.mjs"
+    "godot:dati": "node tools/godot/esporta.mjs",
+    "web:comprimi": "node tools/web/comprimi.mjs"
   },
   "dependencies": {
     "three": "0.170.0",

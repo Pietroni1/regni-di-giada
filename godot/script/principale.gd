@@ -79,6 +79,11 @@ func _interfaccia() -> void:
 	riq_accesso = VBoxContainer.new()
 	col.add_child(riq_accesso)
 	campo_server = _campo(riq_accesso, "Server (chi ospita la partita: localhost:3000 sul suo PC, altrimenti il suo indirizzo)", Impostazioni.server)
+	if OS.has_feature("web"):
+		# nel browser il server è quello che ha servito la pagina: niente da scrivere
+		campo_server.text = Rete.ospite_web()
+		campo_server.visible = false
+		(riq_accesso.get_child(campo_server.get_index() - 1) as Control).visible = false      # la sua etichetta
 	campo_utente = _campo(riq_accesso, "Account", Impostazioni.utente)
 	campo_pass = _campo(riq_accesso, "Password", "")
 	campo_pass.secret = true
@@ -151,6 +156,8 @@ func _connesso() -> void:
 
 func _disconnesso() -> void:
 	messaggio.text = "Il server %s non risponde. È avviato? (npm.cmd start sul PC di chi ospita)" % campo_server.text
+	if OS.has_feature("web"):
+		messaggio.text = "Il server non risponde: riprova fra poco o ricarica la pagina."
 	if gioco != null:
 		gioco.queue_free()
 		gioco = null

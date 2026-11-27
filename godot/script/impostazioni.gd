@@ -69,11 +69,19 @@ func applica() -> void:
 ## Font dei testi: Tahoma libero (vedi font/LEGGIMI.md); kanji e simboli mancanti dal font predefinito di Godot.
 func _metti_font() -> void:
 	# letto come file (non come risorsa importata): funziona anche senza passare dall'editor
-	var dati := FileAccess.get_file_as_bytes("res://font/testo.ttf")
-	if dati.is_empty():
+	# (negli eseguibili esportati e nel browser il file .ttf non c'è: lì si prende la risorsa importata)
+	var f: FontFile = null
+	if FileAccess.file_exists("res://font/testo.ttf"):
+		var dati := FileAccess.get_file_as_bytes("res://font/testo.ttf")
+		if not dati.is_empty():
+			f = FontFile.new()
+			f.data = dati
+	if f == null:
+		var ris := load("res://font/testo.ttf") as FontFile
+		if ris != null:
+			f = ris.duplicate() as FontFile
+	if f == null:
 		return
-	var f := FontFile.new()
-	f.data = dati
 	f.fallbacks = [ThemeDB.fallback_font]
 	f.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
 	f.hinting = TextServer.HINTING_LIGHT

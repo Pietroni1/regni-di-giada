@@ -10,10 +10,22 @@ var _aperta := false
 var _gestori: Dictionary = {}   # t → Array[Callable]
 
 
+## Nel browser: l'indirizzo da cui è stata aperta la pagina (il server del gioco è lo stesso che la serve).
+static func ospite_web() -> String:
+	if not OS.has_feature("web"):
+		return ""
+	return str(JavaScriptBridge.eval("window.location.host", true))
+
+
+static func sicuro_web() -> bool:
+	return OS.has_feature("web") and str(JavaScriptBridge.eval("window.location.protocol", true)) == "https:"
+
+
 func connetti(indirizzo: String) -> void:
 	var url := indirizzo.strip_edges()
 	if not url.begins_with("ws"):
-		url = "ws://" + url
+		# nel browser, se la pagina è arrivata in https, anche il collegamento dev'essere cifrato
+		url = ("wss://" if sicuro_web() else "ws://") + url
 	if not url.ends_with("/ws"):
 		url = url.trim_suffix("/") + "/ws"
 	ws = WebSocketPeer.new()
