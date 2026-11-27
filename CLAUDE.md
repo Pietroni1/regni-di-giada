@@ -923,14 +923,21 @@ L'autore ha mandato quattro immagini di riferimento (3D «d'altri tempi», pixel
 l'eclissi, sagome nere, cristalli azzurri luminosi, neve blu) chiedendo di provare, in un altro ramo, a cambiare tutta
 la grafica in quello stile: **se ne prende il genere, non si copiano personaggi o luoghi di altri giochi**.
 Fatto senza toccare modelli e dati: cambia l'aria. `godot/script/tenebra.gd` (`Tenebra`, creato da `Gioco._ready`):
-- `TAVOLOZZE` per zona, tre toni ombra → mezzo → luce più cielo, nebbia e luci: `sangue` (mondo aperto: viola e rosso,
-  eclissi), `borgo` (villaggi), `gelo` (Altopiano: blu, luna), `selva` (verde acqua), `distesa` (cremisi e arancio),
-  `arena`, e per le Prove `cripta` / `forgia` (lì l'ambiente resta il loro e la tavolozza pesa un terzo, così i temi
-  delle ali si vedono ancora). I valori si inseguono in un paio di secondi passando da una zona all'altra.
+- **Seconda stesura** (l'autore, viste le foto della prima: «lo stile è quello ma anche con altri colori», «tieni i
+  colori come li avevamo prima, fallo a tuo gusto, in quello stile ma anche i personaggi», «un po' troppo low res, un
+  pelo meno»). La prima stesura ricolorava tutto in due toni per zona (viola e rosso, blu, verde acqua…) a circa 300
+  righe: **non riproporla**. Ora i colori sono quelli del gioco, incupiti: la tavolozza della zona li vela soltanto.
+- `TAVOLOZZE` per zona (ombra → mezzo → luce, cielo, nebbia, luci, `forza` ≈ 0,26, `soglia` del nero): `sangue` (mondo
+  aperto: crepuscolo con l'eclissi), `borgo` (villaggi), `gelo` (Altopiano: freddo, luna), `selva`, `distesa`, `arena`,
+  e per le Prove `cripta` / `forgia` (lì l'ambiente resta il loro). I valori si inseguono in un paio di secondi.
 - `tenebra_post.gdshader` (ColorRect su un CanvasLayer a `layer = -1`: sopra il 3D, sotto l'interfaccia, che resta
-  nitida): pixel grossi (circa 300 righe), contrasto schiacciato verso il nero, luminanza ricondotta alla tavolozza
-  (`forza`), retinatura a scacchi con pochi livelli, bordi scuri; i colori molto saturi e luminosi (effetti, lava,
-  cristalli) restano in parte i loro, il verde dell'erba no.
+  nitida): pixel appena ingranditi (450-500 righe), contrasto schiacciato verso il nero, velo della tavolozza,
+  retinatura a scacchi con 22 livelli, bordi scuri.
+- **Personaggi** (`tenebra_velo.gdshader` come `material_overlay`): un velo scuro a grana grossa e il contorno acceso
+  nel colore di chi è — per classe ai giocatori (`ACCENTI`), rosso ai nemici, oro spento ai PNG. `_vela_un_po` guarda
+  un'entità a fotogramma (i modelli si rifanno quando cambia l'equipaggiamento) e salta le parti che fanno luce
+  (materiali senza ombreggiatura o additivi: `_fa_luce`); spegnendo lo stile `_togli_veli` li leva. È una bozza: per
+  figure davvero in quello stile (scheletriche, incappucciate, armature nere) servono modelli nuovi.
 - `tenebra_cielo.gdshader`: cupola che segue la visuale (non un `Sky`: così `TIME` non costa il ricalcolo della
   radianza), nubi a fasce, eclissi con corona o luna, guglie nere all'orizzonte. L'ambiente all'aperto è uno solo
   (`Tenebra.env`, sfondo a colore, luce d'ambiente a colore fisso, nebbia fitta colorata).

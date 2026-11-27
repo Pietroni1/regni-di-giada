@@ -11,33 +11,33 @@ extends Node
 
 ## ombra/mezzo/luce: tavolozza della passata finale; alto/basso/nubi/astro: cielo; tipo 0 eclissi, 1 luna.
 const TAVOLOZZE := {
-	"sangue": {"ombra": Color(0.03, 0.0, 0.07), "mezzo": Color(0.3, 0.12, 0.82), "luce": Color(1.0, 0.22, 0.16),
-		"alto": Color(0.10, 0.03, 0.32), "basso": Color(0.9, 0.07, 0.1), "nubi": Color(0.42, 0.18, 0.95), "astro": Color(1.0, 0.2, 0.1), "tipo": 0.0,
-		"nebbia": Color(0.5, 0.06, 0.2), "densita": 0.0065, "sole": Color(1.0, 0.84, 0.88), "sole_e": 1.2, "amb": Color(0.66, 0.6, 0.9), "amb_e": 0.75,
-		"forza": 0.86, "soglia": 0.47},
-	"borgo": {"ombra": Color(0.04, 0.0, 0.06), "mezzo": Color(0.4, 0.13, 0.7), "luce": Color(1.0, 0.36, 0.18),
-		"alto": Color(0.10, 0.03, 0.32), "basso": Color(0.9, 0.07, 0.1), "nubi": Color(0.42, 0.18, 0.95), "astro": Color(1.0, 0.2, 0.1), "tipo": 0.0,
-		"nebbia": Color(0.45, 0.08, 0.22), "densita": 0.0035, "sole": Color(1.0, 0.86, 0.84), "sole_e": 1.2, "amb": Color(0.7, 0.62, 0.86), "amb_e": 0.8,
-		"forza": 0.82},
-	"gelo": {"ombra": Color(0.0, 0.015, 0.08), "mezzo": Color(0.1, 0.3, 0.88), "luce": Color(0.72, 0.9, 1.0),
-		"alto": Color(0.02, 0.05, 0.32), "basso": Color(0.25, 0.5, 1.0), "nubi": Color(0.2, 0.36, 0.92), "astro": Color(0.8, 0.9, 1.0), "tipo": 1.0,
-		"nebbia": Color(0.16, 0.32, 0.8), "densita": 0.009, "sole": Color(0.82, 0.9, 1.0), "sole_e": 1.15, "amb": Color(0.6, 0.7, 0.95), "amb_e": 0.8,
-		"forza": 0.88},
-	"selva": {"ombra": Color(0.0, 0.03, 0.045), "mezzo": Color(0.04, 0.4, 0.46), "luce": Color(0.5, 1.0, 0.85),
-		"alto": Color(0.0, 0.04, 0.1), "basso": Color(0.0, 0.36, 0.42), "nubi": Color(0.08, 0.5, 0.5), "astro": Color(0.6, 1.0, 0.82), "tipo": 1.0,
-		"nebbia": Color(0.02, 0.26, 0.27), "densita": 0.012, "sole": Color(0.82, 1.0, 0.95), "sole_e": 1.1, "amb": Color(0.55, 0.8, 0.8), "amb_e": 0.8,
-		"forza": 0.86, "soglia": 0.38},
-	"distesa": {"ombra": Color(0.07, 0.0, 0.0), "mezzo": Color(0.72, 0.12, 0.05), "luce": Color(1.0, 0.76, 0.3),
-		"alto": Color(0.26, 0.02, 0.03), "basso": Color(1.0, 0.45, 0.1), "nubi": Color(0.62, 0.1, 0.06), "astro": Color(1.0, 0.6, 0.2), "tipo": 0.0,
-		"nebbia": Color(0.62, 0.16, 0.05), "densita": 0.007, "sole": Color(1.0, 0.86, 0.72), "sole_e": 1.2, "amb": Color(0.8, 0.66, 0.6), "amb_e": 0.75,
-		"forza": 0.86},
-	"arena": {"ombra": Color(0.06, 0.0, 0.02), "mezzo": Color(0.62, 0.06, 0.2), "luce": Color(1.0, 0.5, 0.45),
-		"alto": Color(0.14, 0.0, 0.08), "basso": Color(0.85, 0.05, 0.18), "nubi": Color(0.5, 0.05, 0.3), "astro": Color(1.0, 0.15, 0.2), "tipo": 1.0,
-		"nebbia": Color(0.45, 0.03, 0.12), "densita": 0.006, "sole": Color(1.0, 0.82, 0.86), "sole_e": 1.2, "amb": Color(0.75, 0.6, 0.7), "amb_e": 0.75,
-		"forza": 0.86},
-	# dentro le Prove l'ambiente resta il loro (ogni ala ha il suo tema): la tavolozza pesa meno
-	"cripta": {"ombra": Color(0.02, 0.0, 0.05), "mezzo": Color(0.4, 0.2, 0.8), "luce": Color(1.0, 0.82, 0.9), "forza": 0.34, "soglia": 0.3},
-	"forgia": {"ombra": Color(0.05, 0.0, 0.0), "mezzo": Color(0.7, 0.14, 0.05), "luce": Color(1.0, 0.8, 0.4), "forza": 0.36, "soglia": 0.32},
+	"sangue": {"ombra": Color(0.02, 0.01, 0.05), "mezzo": Color(0.30, 0.2, 0.42), "luce": Color(1.0, 0.72, 0.55),
+		"alto": Color(0.05, 0.04, 0.14), "basso": Color(0.62, 0.16, 0.12), "nubi": Color(0.24, 0.14, 0.36), "astro": Color(1.0, 0.3, 0.12), "tipo": 0.0,
+		"nebbia": Color(0.2, 0.11, 0.18), "densita": 0.006, "sole": Color(1.0, 0.84, 0.76), "sole_e": 0.95, "amb": Color(0.5, 0.5, 0.75), "amb_e": 0.55,
+		"forza": 0.26, "soglia": 0.42},
+	"borgo": {"ombra": Color(0.03, 0.01, 0.04), "mezzo": Color(0.34, 0.2, 0.36), "luce": Color(1.0, 0.76, 0.5),
+		"alto": Color(0.05, 0.04, 0.14), "basso": Color(0.62, 0.16, 0.12), "nubi": Color(0.24, 0.14, 0.36), "astro": Color(1.0, 0.3, 0.12), "tipo": 0.0,
+		"nebbia": Color(0.2, 0.12, 0.17), "densita": 0.004, "sole": Color(1.0, 0.86, 0.78), "sole_e": 1.0, "amb": Color(0.55, 0.52, 0.72), "amb_e": 0.6,
+		"forza": 0.22},
+	"gelo": {"ombra": Color(0.0, 0.015, 0.06), "mezzo": Color(0.2, 0.3, 0.5), "luce": Color(0.8, 0.92, 1.0),
+		"alto": Color(0.02, 0.04, 0.14), "basso": Color(0.2, 0.34, 0.6), "nubi": Color(0.14, 0.2, 0.4), "astro": Color(0.85, 0.92, 1.0), "tipo": 1.0,
+		"nebbia": Color(0.14, 0.2, 0.36), "densita": 0.008, "sole": Color(0.78, 0.86, 1.0), "sole_e": 0.9, "amb": Color(0.5, 0.6, 0.85), "amb_e": 0.6,
+		"forza": 0.3},
+	"selva": {"ombra": Color(0.0, 0.025, 0.03), "mezzo": Color(0.1, 0.32, 0.3), "luce": Color(0.7, 1.0, 0.85),
+		"alto": Color(0.01, 0.05, 0.07), "basso": Color(0.06, 0.28, 0.26), "nubi": Color(0.08, 0.25, 0.25), "astro": Color(0.7, 1.0, 0.85), "tipo": 1.0,
+		"nebbia": Color(0.05, 0.2, 0.18), "densita": 0.011, "sole": Color(0.82, 1.0, 0.92), "sole_e": 0.9, "amb": Color(0.5, 0.75, 0.7), "amb_e": 0.65,
+		"forza": 0.26, "soglia": 0.36},
+	"distesa": {"ombra": Color(0.05, 0.01, 0.0), "mezzo": Color(0.45, 0.2, 0.12), "luce": Color(1.0, 0.8, 0.5),
+		"alto": Color(0.12, 0.04, 0.06), "basso": Color(0.75, 0.3, 0.1), "nubi": Color(0.35, 0.12, 0.08), "astro": Color(1.0, 0.55, 0.2), "tipo": 0.0,
+		"nebbia": Color(0.35, 0.16, 0.1), "densita": 0.006, "sole": Color(1.0, 0.86, 0.72), "sole_e": 1.0, "amb": Color(0.75, 0.6, 0.55), "amb_e": 0.6,
+		"forza": 0.26},
+	"arena": {"ombra": Color(0.05, 0.0, 0.02), "mezzo": Color(0.42, 0.14, 0.2), "luce": Color(1.0, 0.7, 0.6),
+		"alto": Color(0.08, 0.02, 0.08), "basso": Color(0.6, 0.1, 0.16), "nubi": Color(0.3, 0.08, 0.2), "astro": Color(1.0, 0.25, 0.25), "tipo": 1.0,
+		"nebbia": Color(0.24, 0.08, 0.12), "densita": 0.006, "sole": Color(1.0, 0.84, 0.82), "sole_e": 0.95, "amb": Color(0.65, 0.5, 0.6), "amb_e": 0.55,
+		"forza": 0.26},
+	# dentro le Prove l'ambiente resta il loro (ogni ala ha il suo tema)
+	"cripta": {"ombra": Color(0.02, 0.0, 0.05), "mezzo": Color(0.3, 0.22, 0.5), "luce": Color(1.0, 0.86, 0.9), "forza": 0.18, "soglia": 0.3},
+	"forgia": {"ombra": Color(0.05, 0.0, 0.0), "mezzo": Color(0.5, 0.2, 0.1), "luce": Color(1.0, 0.82, 0.5), "forza": 0.2, "soglia": 0.32},
 }
 const CHIAVI_COLORE := ["ombra", "mezzo", "luce", "alto", "basso", "nubi", "astro", "nebbia", "sole", "amb"]
 const CHIAVI_NUMERO := ["tipo", "densita", "sole_e", "amb_e", "forza", "soglia"]
@@ -54,6 +54,12 @@ var _meta := "sangue"
 var _zona := ""
 var _dentro := false
 var _conta := 0.0
+var _veli: Dictionary = {}           # colore → materiale del velo dei personaggi
+var _giro := 0                       # a ogni fotogramma si guarda un'entità (i modelli si rifanno quando cambia l'equipaggiamento)
+var _velati := false
+
+## Colore del contorno acceso: per classe ai giocatori, rosso ai nemici, oro spento ai PNG.
+const ACCENTI := {"lama": Color(0.35, 0.62, 1.0), "ombra": Color(0.72, 0.28, 1.0), "monaco": Color(1.0, 0.55, 0.15), "mistico": Color(0.5, 0.75, 1.0)}
 
 
 static func attivo() -> bool:
@@ -159,7 +165,10 @@ func _zona_aperta() -> String:
 
 func _process(dt: float) -> void:
 	if not attivo():
+		if _velati:
+			_togli_veli()
 		return
+	_vela_un_po()
 	if gioco != null and gioco.cam != null:
 		_cupola.global_position = gioco.cam.global_position
 		_cupola.scale = Vector3.ONE * gioco.cam.far * 0.88
@@ -182,9 +191,9 @@ func _applica_valori() -> void:
 		_post.set_shader_parameter(c, _ora[c])
 	_post.set_shader_parameter("forza", float(_ora.forza))
 	_post.set_shader_parameter("soglia", float(_ora.soglia))
-	# pixel più grossi sugli schermi grandi: l'immagine resta di circa 300 righe
+	# pixel più grossi sugli schermi grandi: l'immagine resta di circa 450-500 righe (300 erano troppo poche)
 	var alto := float(get_viewport().get_visible_rect().size.y) if is_inside_tree() else 900.0
-	_post.set_shader_parameter("pixel", maxf(2.0, round(alto / 300.0)))
+	_post.set_shader_parameter("pixel", maxf(1.0, round(alto / 450.0)))
 	for c in ["alto", "basso", "nubi", "astro"]:
 		_cielo.set_shader_parameter(c, _ora[c])
 	_cielo.set_shader_parameter("tipo", float(_ora.tipo))
@@ -202,6 +211,91 @@ func _applica_valori() -> void:
 		# l'astro sta dalla parte del sole ma basso sull'orizzonte, dove lo si vede anche con la visuale dall'alto
 		var verso: Vector3 = sole.global_transform.basis.z
 		_cielo.set_shader_parameter("astro_dir", Vector3(verso.x, 0.0, verso.z).normalized() + Vector3(0, 0.25, 0))
+
+
+# ------------------------------------------------------------------ personaggi
+func _velo(colore: Color, forza: float, bordo: float) -> ShaderMaterial:
+	var chiave := "%s:%.2f:%.2f" % [colore.to_html(false), forza, bordo]
+	if not _veli.has(chiave):
+		var m := ShaderMaterial.new()
+		m.shader = preload("res://shader/tenebra_velo.gdshader")
+		m.set_shader_parameter("accento", colore)
+		m.set_shader_parameter("velo", forza)
+		m.set_shader_parameter("bordo", bordo)
+		_veli[chiave] = m
+	return _veli[chiave]
+
+
+## Le parti che fanno luce (aloni, rune, fiamme, scie) non si velano: sono materiali senza ombreggiatura o additivi.
+func _fa_luce(mi: MeshInstance3D) -> bool:
+	var m: Material = mi.material_override
+	if m == null and mi.mesh != null and mi.mesh.get_surface_count() > 0:
+		m = mi.get_active_material(0)
+	if m is ShaderMaterial:
+		var sh: Shader = (m as ShaderMaterial).shader
+		return sh == null or sh.code.contains("unshaded") or sh.code.contains("blend_add")
+	if m is BaseMaterial3D:
+		var b := m as BaseMaterial3D
+		return b.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED or b.blend_mode == BaseMaterial3D.BLEND_MODE_ADD or b.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
+	return false
+
+
+## Un'entità per fotogramma: alle sue mesh ancora senza velo si mette quello del suo colore.
+func _vela_un_po() -> void:
+	if gioco == null or gioco.me == null:
+		return
+	var tutte: Array = gioco.ents.values()
+	tutte.append(gioco.me)                   # il proprio personaggio non sta fra le entità
+	_giro = (_giro + 1) % tutte.size()
+	var e: Entita = tutte[_giro]
+	if e == null or e.corpo == null or e.tipo == "d":
+		return
+	var colore := Color(0.85, 0.7, 0.4)
+	var forza := 0.45
+	var bordo := 0.85
+	if e.tipo == "p":
+		colore = ACCENTI.get(String(e.info.get("cls", "")), Color(0.6, 0.7, 1.0))
+		forza = 0.5
+		bordo = 1.25
+	elif e.tipo == "m":
+		colore = Color(1.0, 0.16, 0.1)
+		forza = 0.62
+		bordo = 1.4
+	var velo := _velo(colore, forza, bordo)
+	for n in e.corpo.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.has_meta("ten"):
+			continue
+		mi.set_meta("ten", true)
+		if mi.material_overlay == null and not _fa_luce(mi):
+			mi.material_overlay = velo
+			mi.set_meta("ten_velo", true)
+	if OS.get_cmdline_user_args().has("--ten_debug"):
+		var si := 0
+		var tot := 0
+		for n in e.corpo.find_children("*", "MeshInstance3D", true, false):
+			tot += 1
+			si += int((n as MeshInstance3D).has_meta("ten_velo"))
+		print("VELO ", e.nome, " ", e.tipo, " ", si, "/", tot)
+	_velati = true
+
+
+func _togli_veli() -> void:
+	_velati = false
+	if gioco == null:
+		return
+	var tutte: Array = gioco.ents.values()
+	tutte.append(gioco.me)
+	for e: Entita in tutte:
+		if e == null or e.corpo == null:
+			continue
+		for n in e.corpo.find_children("*", "MeshInstance3D", true, false):
+			var mi := n as MeshInstance3D
+			if mi.has_meta("ten_velo"):
+				mi.material_overlay = null
+				mi.remove_meta("ten_velo")
+			if mi.has_meta("ten"):
+				mi.remove_meta("ten")
 
 
 # ------------------------------------------------------------------ cristalli
