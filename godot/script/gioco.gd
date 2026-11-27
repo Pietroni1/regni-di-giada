@@ -26,6 +26,7 @@ var distanza := 13.0
 var _trascina := false
 var _dist_vista := 13.0
 
+var autocorsa := false            # corsa automatica (tasto «autocorsa»): si va avanti da soli
 var intento: Dictionary = {}       # { tipo: "muovi" | "attacco" | "tecnica", ... }
 var prossimo_attacco := 0.0
 var ultimo_invio := 0.0
@@ -702,7 +703,7 @@ func ostile_vicino(salta: Entita = null) -> Entita:
 	return meglio
 
 
-func prossimo_bersaglio() -> void:
+func prossimo_bersaglio(verso: int = 1) -> void:
 	var lista: Array = []
 	for e: Entita in ents.values():
 		if ostile(e) and Vector2(e.x - me.x, e.z - me.z).length() < 30.0:
@@ -711,7 +712,8 @@ func prossimo_bersaglio() -> void:
 		return
 	lista.sort_custom(func(a: Entita, b: Entita) -> bool: return Vector2(a.x - me.x, a.z - me.z).length() < Vector2(b.x - me.x, b.z - me.z).length())
 	var i := lista.find(bersaglio)
-	bersaglio = lista[(i + 1) % lista.size()]
+	# verso -1 = bersaglio precedente (dal più lontano se non ce n'è uno scelto)
+	bersaglio = lista[posmod(i + verso, lista.size())] if i >= 0 or verso > 0 else lista[lista.size() - 1]
 
 
 func portata(sk: Dictionary) -> float:
@@ -816,60 +818,70 @@ func _unhandled_input(ev: InputEvent) -> void:
 		elif ev.button_index == MOUSE_BUTTON_WHEEL_DOWN and ev.pressed:
 			distanza = minf(32.0, distanza + 1.2)
 		elif ev.button_index == MOUSE_BUTTON_LEFT and ev.pressed:
+			autocorsa = false
 			_clic(ev.position)
+		elif ev.pressed and not hud.chat_attiva():
+			_azione(Tasti.azione_evento(ev))      # tasto centrale e tasti laterali
 	elif ev is InputEventMouseMotion and _trascina:
 		yaw -= ev.relative.x * 0.006 * Impostazioni.sensibilita
 		pitch = clampf(pitch + ev.relative.y * 0.005 * Impostazioni.sensibilita, 0.08, 1.35)
 	elif ev is InputEventKey and ev.pressed and not ev.echo:
 		if hud.chat_attiva():
 			return
-		var k: int = ev.physical_keycode
-		# i tasti sono quelli scelti dal giocatore (tasti.gd); Esc, F1 e F11 restano fissi
-		var az := Tasti.azione_di(k)
-		if az.begins_with("barra_"):
-			usa_tasto(int(az.substr(6)) - 1)
-		elif az == "bersaglio":
-			prossimo_bersaglio()
-		elif az == "suprema":
-			usa_suprema()
-		elif az == "chat" or k == KEY_KP_ENTER:
-			hud.apri_chat()
-			get_viewport().set_input_as_handled()
-		elif k == KEY_ESCAPE:
+		# i comandi sono quelli scelti dal giocatore (tasti.gd); solo Esc resta fisso
+		if ev.physical_keycode == KEY_ESCAPE:
 			if not hud.finestre.chiudi_tutto():
-				if bersaglio != null or not intento.is_empty():
+				if bersaglio != null or not intento.is_empty() or autocorsa:
 					bersaglio = null
 					intento = {}
+					autocorsa = false
 				else:
 					hud.finestre.apri_chiudi("menu")
-		elif az == "aiuto" or k == KEY_F1:
-			hud.finestre.apri_chiudi("aiuto")
-		elif az == "impostazioni":
-			hud.finestre.apri_chiudi("impostazioni")
-		elif k == KEY_F11:
+			return
+		_azione(Tasti.azione_evento(ev))
+
+
+## Esegue un'azione dei tasti (da tastiera o dai tasti centrale e laterali del mouse).
+func _azione(az: String) -> void:
+	if az.is_empty():
+		return
+	if az.begins_with("barra_"):
+		usa_tasto(int(az.substr(6)) - 1)
+		return
+	match az:
+		"bersaglio": prossimo_bersaglio()
+		"bersaglio_prec": prossimo_bersaglio(-1)
+		"attacca":
+			if bersaglio == null or not ostile(bersaglio):
+				prossimo_bersaglio()
+			if bersaglio != null and ostile(bersaglio):
+				intento = {"tipo": "attacco", "id": bersaglio.id}
+				autocorsa = false
+		"suprema": usa_suprema()
+		"autocorsa":
+			autocorsa = not autocorsa
+			if autocorsa:
+				intento = {}
+			hud.avvisa("Corsa automatica" if autocorsa else "Corsa automatica: ferma")
+		"chat":
+			hud.apri_chat()
+			get_viewport().set_input_as_handled()
+		"aiuto": hud.finestre.apri_chiudi("aiuto")
+		"impostazioni": hud.finestre.apri_chiudi("impostazioni")
+		"schermo_intero":
 			Impostazioni.schermo_intero = not Impostazioni.schermo_intero
 			Impostazioni.applica()
 			Impostazioni.salva()
-		elif az == "mappa":
-			mappa.apri_chiudi()
-		elif az == "inventario":
-			hud.finestre.apri_chiudi("inventario")
-		elif az == "personaggio":
-			hud.finestre.apri_chiudi("personaggio")
-		elif az == "abilita":
-			hud.finestre.apri_chiudi("abilita")
-		elif az == "diario":
-			missioni.apri_chiudi()
-		elif k == KEY_J:
-			altolivello.apri_imprese()
-		elif az == "contatore":
-			contatore.apri_chiudi()
-		elif az == "amici":
-			sociale.apri_chiudi("amici")
-		elif az == "cavalcatura":
-			Rete.manda({"t": "mount"})
-		elif az == "interagisci":
-			_raccogli()
+		"mappa": mappa.apri_chiudi()
+		"inventario": hud.finestre.apri_chiudi("inventario")
+		"personaggio": hud.finestre.apri_chiudi("personaggio")
+		"abilita": hud.finestre.apri_chiudi("abilita")
+		"diario": missioni.apri_chiudi()
+		"imprese": altolivello.apri_imprese()
+		"contatore": contatore.apri_chiudi()
+		"amici": sociale.apri_chiudi("amici")
+		"cavalcatura": Rete.manda({"t": "mount"})
+		"interagisci": _raccogli()
 
 
 func _clic(p: Vector2) -> void:
@@ -1014,10 +1026,15 @@ func _process(dt: float) -> void:
 		if not hud.chat_attiva():
 			avanti = float(Tasti.premuto("avanti")) - float(Tasti.premuto("indietro"))
 			lato = float(Tasti.premuto("destra")) - float(Tasti.premuto("sinistra"))
+			# corsa automatica: si va avanti da soli finché non si preme avanti o indietro (o Esc, o un clic)
+			if avanti != 0.0:
+				autocorsa = false
 			if Tasti.premuto("ruota_sx"):
 				yaw += dt * 2.2
 			if Tasti.premuto("ruota_dx"):
 				yaw -= dt * 2.2
+		if autocorsa:
+			avanti = 1.0
 		if avanti != 0.0 or lato != 0.0:
 			intento = {}
 			dir = Vector2(-sin(yaw) * avanti + cos(yaw) * lato, -cos(yaw) * avanti - sin(yaw) * lato).normalized()

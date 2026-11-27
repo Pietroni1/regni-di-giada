@@ -782,7 +782,7 @@ func _crea_impostazioni() -> void:
 	impostazioni = f[0]
 	var v: VBoxContainer = f[1]
 	var intero := CheckButton.new()
-	intero.text = "Schermo intero  [F11]"
+	Tasti.registra(intero, "Schermo intero  [{schermo_intero}]")
 	intero.button_pressed = Impostazioni.schermo_intero
 	intero.toggled.connect(func(si: bool) -> void:
 		Impostazioni.schermo_intero = si
@@ -839,9 +839,12 @@ func _crea_aiuto() -> void:
 	aiuto = f[0]
 	var testo := """MOVIMENTO E VISUALE
 {avanti}{sinistra}{indietro}{destra} (o frecce) o clic sul terreno: muoversi  ·  tasto destro trascinato, {ruota_sx} / {ruota_dx}: girare la visuale  ·  rotellina: zoom
+{autocorsa} (o tasto centrale del mouse): corsa automatica, si ferma con avanti, indietro o Esc
+TASTI: tutti i comandi si cambiano da Impostazioni → «Personalizza i tasti» (o dal menu Esc): due tasti per azione,
+anche con Maiusc / Ctrl / Alt e con i tasti laterali del mouse.
 
 COMBATTIMENTO
-Clic su un nemico o {bersaglio}: bersaglio e attacco automatico  ·  {barra_1}-{barra_10}: barra rapida  ·  {suprema}: Tecnica Suprema (dal livello 15)
+Clic su un nemico o {bersaglio} ({bersaglio_prec}: precedente; {attacca}: attacca il bersaglio): bersaglio e attacco automatico  ·  {barra_1}-{barra_10}: barra rapida  ·  {suprema}: Tecnica Suprema (dal livello 15)
 Pochi tasti: due COLPI BASE (tacca verde) sempre premibili, un COLPO FINALE (rosso), un'INTERRUZIONE (azzurra),
 uno SCATTO (viola), il POTENZIAMENTO di classe (arancio) e la mossa di Via. L'attacco automatico continua anche camminando.
 Il colpo base singolo dà punti di Concentrazione: il finale fa più danni su un bersaglio per ogni punto.

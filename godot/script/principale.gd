@@ -347,6 +347,30 @@ func _prova_automatica() -> void:
 				while Time.get_ticks_msec() < lim4 and Vector2(gioco.me.x - float(p[1]), gioco.me.z - float(p[2])).length() > 4.0:
 					await get_tree().process_frame
 			"tecnica": gioco.usa_tecnica(p[1])
+			"premi", "mouse":
+				# premi codice [maiusc] [ctrl] [alt]  ·  mouse indice [maiusc]…: un comando vero, come dalla tastiera o dal mouse
+				var evento: InputEventWithModifiers
+				if p[0] == "premi":
+					var ek := InputEventKey.new()
+					ek.physical_keycode = int(p[1]) as Key
+					ek.keycode = int(p[1]) as Key
+					evento = ek
+				else:
+					var em := InputEventMouseButton.new()
+					em.button_index = int(p[1]) as MouseButton
+					em.position = Vector2(8, 8)
+					evento = em
+				evento.shift_pressed = "maiusc" in p
+				evento.ctrl_pressed = "ctrl" in p
+				evento.alt_pressed = "alt" in p
+				evento.set("pressed", true)
+				Input.parse_input_event(evento)
+				await get_tree().process_frame
+				await get_tree().process_frame
+				var su := evento.duplicate()
+				su.set("pressed", false)
+				Input.parse_input_event(su)
+				await get_tree().process_frame
 			"mappa": gioco.mappa.apri_chiudi()
 			"diario": gioco.missioni.apri_chiudi()
 			"imprese": gioco.altolivello.apri_imprese()

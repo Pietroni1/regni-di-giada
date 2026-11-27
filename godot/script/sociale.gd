@@ -122,8 +122,8 @@ func aggancia() -> void:
 	# impostazioni: pagina dei tasti
 	var vimp: Control = fin.impostazioni.get_child(0)
 	var bt := Button.new()
-	bt.text = "Tasti…"
-	bt.tooltip_text = "Cambia i tasti di movimento, barra rapida, Suprema, finestre, bersaglio e interazione."
+	bt.text = "Personalizza i tasti…"
+	bt.tooltip_text = "Due tasti per ogni azione, anche con Maiusc / Ctrl / Alt e con i tasti laterali del mouse."
 	bt.pressed.connect(func() -> void:
 		tasti.visible = not tasti.visible
 		tasti.riempi())
@@ -137,6 +137,15 @@ func aggancia() -> void:
 		apri_chiudi("amici"))
 	vmenu.add_child(ba)
 	vmenu.move_child(ba, 1)
+	# menu Esc: Personalizza i tasti
+	var bm := Button.new()
+	bm.text = "Personalizza i tasti…"
+	bm.pressed.connect(func() -> void:
+		fin.menu.visible = false
+		tasti.visible = true
+		tasti.riempi())
+	vmenu.add_child(bm)
+	vmenu.move_child(bm, 3)
 	# chat: nomi cliccabili
 	hud.chat.mouse_filter = Control.MOUSE_FILTER_STOP
 	hud.chat.meta_clicked.connect(_su_nome_chat)
@@ -794,8 +803,15 @@ func copione(p: PackedStringArray) -> void:
 			var scade3 := Time.get_ticks_msec() + 400000
 			while Time.get_ticks_msec() < scade3 and _amici.is_empty():
 				await get_tree().process_frame
+		"cattura":
+			# sociale cattura azione [posto]: la casella aspetta un comando (poi `premi` o `mouse` nel copione)
+			tasti._comincia("%s:%d" % [p[2], int(p[3]) if p.size() > 3 else 0])
+		"ripristina_tasti":
+			Tasti.ripristina()
+			tasti._salva()
 		"tasto":
-			Tasti.assegna(p[2], int(p[3]))
+			# sociale tasto azione codice [posto]   (posto 1 = alternativo)
+			Tasti.assegna(p[2], int(p[4]) if p.size() > 4 else 0, int(p[3]))
 			tasti._salva()
 
 

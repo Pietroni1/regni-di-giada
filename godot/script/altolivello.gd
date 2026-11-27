@@ -1,7 +1,7 @@
 class_name AltoLivello
 extends Control
 ## Contenuto per il livello alto (server/altolivello.js): riquadro del boss con le fasi, boss del mondo sulla minimappa e
-## sulla mappa grande, premi dei boss in chat, finestra delle Imprese e dei titoli (tasto J), finestra dell'Araldo
+## sulla mappa grande, premi dei boss in chat, finestra delle Imprese e dei titoli (tasto delle imprese, predefinito J), finestra dell'Araldo
 ## (stagione dell'Arena, classifica e negozio dell'onore), titoli sopra i nomi.
 ## Messaggi del server: `boss_mondo`, `boss`, `boss_premi`, `imprese`, `impresa`, `onori`. Qui non si decide nulla.
 
