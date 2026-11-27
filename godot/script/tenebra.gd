@@ -14,7 +14,7 @@ const TAVOLOZZE := {
 	"sangue": {"ombra": Color(0.03, 0.0, 0.07), "mezzo": Color(0.3, 0.12, 0.82), "luce": Color(1.0, 0.22, 0.16),
 		"alto": Color(0.10, 0.03, 0.32), "basso": Color(0.9, 0.07, 0.1), "nubi": Color(0.42, 0.18, 0.95), "astro": Color(1.0, 0.2, 0.1), "tipo": 0.0,
 		"nebbia": Color(0.5, 0.06, 0.2), "densita": 0.0065, "sole": Color(1.0, 0.84, 0.88), "sole_e": 1.2, "amb": Color(0.66, 0.6, 0.9), "amb_e": 0.75,
-		"forza": 0.86},
+		"forza": 0.86, "soglia": 0.47},
 	"borgo": {"ombra": Color(0.04, 0.0, 0.06), "mezzo": Color(0.4, 0.13, 0.7), "luce": Color(1.0, 0.36, 0.18),
 		"alto": Color(0.10, 0.03, 0.32), "basso": Color(0.9, 0.07, 0.1), "nubi": Color(0.42, 0.18, 0.95), "astro": Color(1.0, 0.2, 0.1), "tipo": 0.0,
 		"nebbia": Color(0.45, 0.08, 0.22), "densita": 0.0035, "sole": Color(1.0, 0.86, 0.84), "sole_e": 1.2, "amb": Color(0.7, 0.62, 0.86), "amb_e": 0.8,
@@ -26,7 +26,7 @@ const TAVOLOZZE := {
 	"selva": {"ombra": Color(0.0, 0.03, 0.045), "mezzo": Color(0.04, 0.4, 0.46), "luce": Color(0.5, 1.0, 0.85),
 		"alto": Color(0.0, 0.04, 0.1), "basso": Color(0.0, 0.36, 0.42), "nubi": Color(0.08, 0.5, 0.5), "astro": Color(0.6, 1.0, 0.82), "tipo": 1.0,
 		"nebbia": Color(0.02, 0.26, 0.27), "densita": 0.012, "sole": Color(0.82, 1.0, 0.95), "sole_e": 1.1, "amb": Color(0.55, 0.8, 0.8), "amb_e": 0.8,
-		"forza": 0.86},
+		"forza": 0.86, "soglia": 0.38},
 	"distesa": {"ombra": Color(0.07, 0.0, 0.0), "mezzo": Color(0.72, 0.12, 0.05), "luce": Color(1.0, 0.76, 0.3),
 		"alto": Color(0.26, 0.02, 0.03), "basso": Color(1.0, 0.45, 0.1), "nubi": Color(0.62, 0.1, 0.06), "astro": Color(1.0, 0.6, 0.2), "tipo": 0.0,
 		"nebbia": Color(0.62, 0.16, 0.05), "densita": 0.007, "sole": Color(1.0, 0.86, 0.72), "sole_e": 1.2, "amb": Color(0.8, 0.66, 0.6), "amb_e": 0.75,
@@ -36,11 +36,11 @@ const TAVOLOZZE := {
 		"nebbia": Color(0.45, 0.03, 0.12), "densita": 0.006, "sole": Color(1.0, 0.82, 0.86), "sole_e": 1.2, "amb": Color(0.75, 0.6, 0.7), "amb_e": 0.75,
 		"forza": 0.86},
 	# dentro le Prove l'ambiente resta il loro (ogni ala ha il suo tema): la tavolozza pesa meno
-	"cripta": {"ombra": Color(0.02, 0.0, 0.05), "mezzo": Color(0.4, 0.2, 0.8), "luce": Color(1.0, 0.82, 0.9), "forza": 0.34},
-	"forgia": {"ombra": Color(0.05, 0.0, 0.0), "mezzo": Color(0.7, 0.14, 0.05), "luce": Color(1.0, 0.8, 0.4), "forza": 0.36},
+	"cripta": {"ombra": Color(0.02, 0.0, 0.05), "mezzo": Color(0.4, 0.2, 0.8), "luce": Color(1.0, 0.82, 0.9), "forza": 0.34, "soglia": 0.3},
+	"forgia": {"ombra": Color(0.05, 0.0, 0.0), "mezzo": Color(0.7, 0.14, 0.05), "luce": Color(1.0, 0.8, 0.4), "forza": 0.36, "soglia": 0.32},
 }
 const CHIAVI_COLORE := ["ombra", "mezzo", "luce", "alto", "basso", "nubi", "astro", "nebbia", "sole", "amb"]
-const CHIAVI_NUMERO := ["tipo", "densita", "sole_e", "amb_e", "forza"]
+const CHIAVI_NUMERO := ["tipo", "densita", "sole_e", "amb_e", "forza", "soglia"]
 
 var gioco
 var env: Environment                 # l'ambiente all'aperto di questo stile (uno solo: cambia colore con la zona)
@@ -181,6 +181,7 @@ func _applica_valori() -> void:
 	for c in ["ombra", "mezzo", "luce"]:
 		_post.set_shader_parameter(c, _ora[c])
 	_post.set_shader_parameter("forza", float(_ora.forza))
+	_post.set_shader_parameter("soglia", float(_ora.soglia))
 	# pixel più grossi sugli schermi grandi: l'immagine resta di circa 300 righe
 	var alto := float(get_viewport().get_visible_rect().size.y) if is_inside_tree() else 900.0
 	_post.set_shader_parameter("pixel", maxf(2.0, round(alto / 300.0)))

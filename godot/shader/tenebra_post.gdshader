@@ -10,6 +10,7 @@ uniform vec3 mezzo : source_color = vec3(0.36, 0.12, 0.75);
 uniform vec3 luce : source_color = vec3(1.0, 0.25, 0.18);
 uniform float forza = 0.72;                // quanto la tavolozza sostituisce i colori veri
 uniform float contrasto = 1.38;
+uniform float soglia = 0.47;               // sotto questa luminanza si va verso il nero (più bassa nei luoghi bui)
 uniform float livelli = 12.0;
 uniform float bordi = 0.55;
 
@@ -21,12 +22,12 @@ void fragment() {
 	vec2 uv = (cella + 0.5) * px;
 	vec3 c = texture(schermo, uv).rgb;
 	float l = dot(c, vec3(0.299, 0.587, 0.114));
-	float lc = clamp((l - 0.47) * contrasto + 0.33, 0.0, 1.0);
+	float lc = clamp((l - soglia) * contrasto + 0.33, 0.0, 1.0);
 	lc = lc * lc * (3.0 - 2.0 * lc);
 	// ombra → mezzo per quasi tutta la scala; il tono di luce solo sulle parti più chiare
 	vec3 tav = lc < 0.68 ? mix(ombra, mezzo, lc / 0.68) : mix(mezzo, luce, (lc - 0.68) / 0.32);
 	// il colore vero, col suo contrasto, per quel che ne resta
-	vec3 vero = clamp((c - 0.47) * contrasto + 0.33, 0.0, 1.0);
+	vec3 vero = clamp((c - soglia) * contrasto + 0.33, 0.0, 1.0);
 	float mx = max(c.r, max(c.g, c.b));
 	float mn = min(c.r, min(c.g, c.b));
 	float sat = mx > 0.001 ? (mx - mn) / mx : 0.0;
