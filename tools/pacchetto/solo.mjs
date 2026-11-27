@@ -101,16 +101,24 @@ fs.writeFileSync(path.join(DEST, 'LEGGIMI.txt'), [
   'questa cartella con una versione nuova.',
   '',
   'In gioco il tasto H apre l\'aiuto.',
+  ...(arg('gm') ? ['Sei Game Master: i comandi da scrivere in chat sono in COMANDI_GM.txt.'] : []),
   'Per giocare con gli amici: «Gioca in rete con gli amici…» e l\'indirizzo di chi ospita.',
   '',
 ].join('\r\n'));
+
+// con --gm si mette nel pacchetto anche l'elenco dei comandi (a capo alla maniera di Windows, per il Blocco note)
+if (arg('gm')) {
+  fs.writeFileSync(path.join(DEST, 'COMANDI_GM.txt'), fs.readFileSync(path.join(ROOT, 'COMANDI_GM.txt'), 'utf8')
+    .replace(/^Servono un account GM[\s\S]*?--gm\n/m, 'In questa copia del gioco sei già Game Master: funzionano tutti.\n')
+    .replace(/\r?\n/g, '\r\n'));
+}
 
 let peso = 0;
 (function somma(d) { for (const v of fs.readdirSync(d, { withFileTypes: true })) v.isDirectory() ? somma(path.join(d, v.name)) : (peso += fs.statSync(path.join(d, v.name)).size); })(DEST);
 console.log(`Pacchetto: ${path.relative(ROOT, DEST)}  (${(peso / 1048576).toFixed(0)} MB)`);
 
 if (!arg('niente-zip')) {
-  const zip = path.join(ESPORTA, `RegniDiGiada-solo-${piattaforma}.zip`);
+  const zip = path.join(ESPORTA, `RegniDiGiada-solo-${piattaforma}${arg('gm') ? '-gm' : ''}.zip`);
   fs.rmSync(zip, { force: true });
   try {
     if (process.platform === 'win32') {
