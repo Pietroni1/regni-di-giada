@@ -22,6 +22,29 @@ const TEMI := {
 		"vuoto": Color(1.0, 0.36, 0.06), "fondo": -1.7, "fluido": 0, "sfondo": Color(0.03, 0.012, 0.008), "ambiente": Color(0.80, 0.62, 0.54),
 		"amb_forza": 1.12, "foschia": Color(0.11, 0.04, 0.02), "densita": 0.013, "ferro": Color(0.075, 0.068, 0.065)},
 }
+## Tema di ogni ALA dentro una Prova (l'autore: «dai dei temi ai dungeon, non tutti con grafica uguale»): colori di muro
+## e pavimento, variante del muro (`prova_muro`: 1 ossario, 2 bronzo e giada, 3 lacca rossa, 4 lamiera, 5 scoria,
+## 6 tesoro, 7 ossidiana), motivo del pavimento ed emblema al centro delle sale (`prova_pavimento`), colore del fregio
+## acceso e della nebbia bassa. La chiave "" vale per le sale comuni, "boss" per la sala del boss e il corridoio che ci
+## porta, "tesoro" per la camera del tesoro. Una Prova nuova = una voce in TEMI e una qui.
+const ALI_TEMI := {
+	"cripta": {
+		"": {"emblema": 0},
+		"ovest": {"muro": Color(0.50, 0.43, 0.31), "pav": Color(0.40, 0.33, 0.24), "var": 1, "motivo": 1, "emblema": 2, "fregio": Color(0.35, 1.0, 0.6), "nebbia": Color(0.25, 0.6, 0.35)},
+		"centro": {"muro": Color(0.26, 0.34, 0.32), "pav": Color(0.22, 0.34, 0.30), "var": 2, "motivo": 2, "emblema": 3, "fregio": Color(0.45, 1.0, 0.78), "nebbia": Color(0.3, 0.55, 0.5)},
+		"est": {"muro": Color(0.50, 0.12, 0.08), "pav": Color(0.42, 0.13, 0.08), "var": 3, "motivo": 3, "emblema": 4, "fregio": Color(1.0, 0.75, 0.3), "nebbia": Color(0.7, 0.4, 0.15)},
+		"tesoro": {"muro": Color(0.30, 0.25, 0.18), "pav": Color(0.34, 0.26, 0.12), "var": 6, "motivo": 2, "emblema": 4, "fregio": Color(1.0, 0.8, 0.3), "nebbia": Color(0.7, 0.55, 0.2)},
+		"boss": {"muro": Color(0.30, 0.25, 0.44), "pav": Color(0.26, 0.21, 0.38), "var": 0, "motivo": 0, "emblema": 0},
+	},
+	"forgia": {
+		"": {"emblema": 1},
+		"ovest": {"muro": Color(0.34, 0.24, 0.20), "pav": Color(0.26, 0.19, 0.16), "var": 5, "motivo": 5, "emblema": 4, "fregio": Color(1.0, 0.8, 0.25), "nebbia": Color(0.9, 0.3, 0.05)},
+		"est": {"muro": Color(0.30, 0.38, 0.46), "pav": Color(0.27, 0.34, 0.41), "var": 4, "motivo": 4, "emblema": 1, "fregio": Color(0.3, 0.8, 1.0), "nebbia": Color(0.45, 0.6, 0.7)},
+		"ponte": {"muro": Color(0.15, 0.12, 0.17), "pav": Color(0.17, 0.13, 0.19), "var": 7, "motivo": 6, "emblema": 3, "fregio": Color(1.0, 0.4, 0.15), "nebbia": Color(0.8, 0.25, 0.1)},
+		"tesoro": {"muro": Color(0.15, 0.12, 0.17), "pav": Color(0.17, 0.13, 0.19), "var": 7, "motivo": 6, "emblema": 3, "fregio": Color(1.0, 0.4, 0.15), "nebbia": Color(0.8, 0.25, 0.1)},
+		"boss": {"muro": Color(0.40, 0.22, 0.16), "pav": Color(0.30, 0.2, 0.17), "var": 0, "motivo": 0, "emblema": 4},
+	},
+}
 const TIPI_PAV := {"corridoio": 0.0, "cancello": 0.0, "ingresso": 0.2, "sala": 0.2, "bivio": 0.4, "boss": 0.6, "ponte": 0.8, "passerella": 0.8, "tesoro": 1.0}
 
 var origine := Vector2.ZERO
@@ -42,6 +65,8 @@ var _ostacoli: Array = []
 var _radici: Dictionary = {}
 var _luci: Array = []
 var _mat: Dictionary = {}
+var _mat_ala: Dictionary = {}        # chiave del tema → { muro, pav } (materiali dell'ala)
+var _base: Dictionary = {}           # i materiali delle sale comuni
 var _mobili: Dictionary = {}         # id porta → [{nodo, chiuso: Vector3, aperto: Vector3, sparisce: bool}]
 var _accesi: Dictionary = {}         # "rit:id" / "tes" → nodi da mostrare quando lo stato cambia
 var _fiamme: Array = []
@@ -232,6 +257,7 @@ func _costruisci() -> void:
 				_verso_boss[String(q.id)] = true
 	for s in _stanze:
 		_chiave = String(s.id)
+		_usa_tema(s)
 		_pavimento(s)
 		_arredo_stanza(s)
 		_segna()
@@ -243,14 +269,18 @@ func _costruisci() -> void:
 			var ov := _sovrapposizione(_stanze[i].r, _stanze[j].r)
 			if not ov.is_empty():
 				_varco(_stanze[i], _stanze[j], ov)
+	_usa_tema({})
 	_chiave = "vuoti"
 	for r in composta.vuoti:
 		_vuoto(r)
 	_segna()
 	for o in _ostacoli:
-		_chiave = String(_stanza_a(Vector2(float(o[0]), float(o[1]))).get("id", "resto"))
+		var so := _stanza_a(Vector2(float(o[0]), float(o[1])))
+		_chiave = String(so.get("id", "resto"))
+		_usa_tema(so)
 		_ostacolo(o)
 		_segna()
+	_usa_tema({})
 	_chiave = "resto"
 	for f in composta.frane:
 		_frana(f)
@@ -281,6 +311,7 @@ func _materiali() -> void:
 	pav.set_shader_parameter("brace", _T.lume)
 	pav.set_shader_parameter("stile", int(_T.stile))
 	_mat.pav = pav
+	_base = {"muro": muro, "pav": pav}
 	var fluido := ShaderMaterial.new()
 	fluido.shader = preload("res://shader/prova_fluido.gdshader")
 	fluido.set_shader_parameter("colore", _T.vuoto)
@@ -316,6 +347,43 @@ func _materiali() -> void:
 	bronzea.set_shader_parameter("materia", 1)
 	bronzea.set_shader_parameter("colore", Color(0.38, 0.3, 0.2))
 	_mat.statua_bronzo = bronzea
+
+
+## Quale tema di ALI_TEMI tocca a una stanza: boss, tesoro, la sua ala, oppure "" (sale comuni).
+func _chiave_tema(s: Dictionary) -> String:
+	if s.is_empty():
+		return ""
+	if String(s.get("tipo", "")) == "boss" or _verso_boss.has(String(s.get("id", ""))):
+		return "boss"
+	if String(s.get("ala", "")) == "tesoro" or String(s.get("tipo", "")) == "tesoro":
+		return "tesoro"
+	return String(s.get("ala", ""))
+
+
+func _tema_ala(s: Dictionary) -> Dictionary:
+	var t: Dictionary = ALI_TEMI.get(id_prova, {})
+	return t.get(_chiave_tema(s), t.get("", {}))
+
+
+## Da qui in poi muri e pavimenti prendono i materiali dell'ala di questa stanza (dizionario vuoto = sale comuni).
+func _usa_tema(s: Dictionary) -> void:
+	var k := _chiave_tema(s)
+	if not _mat_ala.has(k):
+		var t := _tema_ala(s)
+		var muro := (_base.muro as ShaderMaterial).duplicate() as ShaderMaterial
+		var pav := (_base.pav as ShaderMaterial).duplicate() as ShaderMaterial
+		if t.has("muro"):
+			muro.set_shader_parameter("colore", t.muro)
+			pav.set_shader_parameter("colore", t.pav)
+		if t.has("fregio"):
+			muro.set_shader_parameter("fregio", t.fregio)
+			muro.set_shader_parameter("fregio_luce", 0.24)
+		muro.set_shader_parameter("variante", int(t.get("var", 0)))
+		pav.set_shader_parameter("motivo", int(t.get("motivo", 0)))
+		pav.set_shader_parameter("emblema", int(t.get("emblema", 0)))
+		_mat_ala[k] = {"muro": muro, "pav": pav}
+	_mat.muro = _mat_ala[k].muro
+	_mat.pav = _mat_ala[k].pav
 
 
 func _luce_mat(tipo: int, verso: bool, forza := 1.0) -> ShaderMaterial:
@@ -533,6 +601,7 @@ func _muro(w: Array) -> void:
 		t.n = -t.n
 		st = _stanza_a(t.c + t.n * 0.6)
 	t["stanza"] = st
+	_usa_tema(st)
 	t["root"] = _radice(String(st.get("id", "resto")))
 	_chiave = String(st.get("id", "resto"))
 	if tipo == 1:
@@ -787,6 +856,7 @@ func _varco(sa: Dictionary, sb: Dictionary, ov: Array) -> void:
 	var est_b := (float(sb.r[2]) - float(sb.r[0])) if lungo_x else (float(sb.r[3]) - float(sb.r[1]))
 	var sala: Dictionary = sa if est_a >= est_b else sb
 	var entra: Dictionary = sb if est_a >= est_b else sa
+	_usa_tema(entra if _chiave_tema(entra) != "" else sala)      # il varco annuncia l'ala in cui porta
 	# il bordo della sala dentro la sovrapposizione
 	var bordo := 0.0
 	var fuori := 1.0                              # verso di chi esce dalla sala
@@ -942,7 +1012,8 @@ func _arredo_stanza(s: Dictionary) -> void:
 				_fili.append([Transform3D(Basis().scaled(Vector3(0.018, 6.0, 0.018)), p + Vector3(0, 3.0 + k * 0.6, 0)), Color(0.2, 0.18, 0.2)])
 		# nebbia bassa nelle sale, lame di luce polverosa in quelle grandi
 		if not stretto:
-			_nebbie.append([Transform3D(Basis().scaled(Vector3(x2 - x1 - 1.0, 1, z2 - z1 - 1.0)), c + Vector3(0, 0.35, 0)), Color(_T.nebbia.r, _T.nebbia.g, _T.nebbia.b, 0.55)])
+			var nb: Color = _tema_ala(s).get("nebbia", _T.nebbia)
+			_nebbie.append([Transform3D(Basis().scaled(Vector3(x2 - x1 - 1.0, 1, z2 - z1 - 1.0)), c + Vector3(0, 0.35, 0)), Color(nb.r, nb.g, nb.b, 0.55)])
 			for i in range(1 + int(area / 420.0)):
 				var p2 := Vector3(_rng.randf_range(x1 + 4, x2 - 4), 0, _rng.randf_range(z1 + 4, z2 - 4))
 				_fasci.append([Transform3D(Basis().scaled(Vector3(_rng.randf_range(2.2, 3.6), H + 3.0, 1)), p2 + Vector3(0, (H + 3.0) * 0.5, 0)), Color(_T.fascio.r, _T.fascio.g, _T.fascio.b, 0.5)])
@@ -958,7 +1029,8 @@ func _arredo_stanza(s: Dictionary) -> void:
 				_lanterne.append([Transform3D(Basis().scaled(Vector3(0.42, 0.5, 0.42)), p + Vector3(0, H + 1.5 - lunga - 0.2, 0)), Color(1.0, 0.45, 0.12, 0.9)])
 		if not stretto and tipo in ["sala", "bivio", "boss"]:
 			_canale(s, root)
-			_nebbie.append([Transform3D(Basis().scaled(Vector3(x2 - x1 - 1.0, 1, z2 - z1 - 1.0)), c + Vector3(0, 0.3, 0)), Color(0.8, 0.25, 0.05, 0.3)])
+			var nf: Color = _tema_ala(s).get("nebbia", Color(0.8, 0.25, 0.05))
+			_nebbie.append([Transform3D(Basis().scaled(Vector3(x2 - x1 - 1.0, 1, z2 - z1 - 1.0)), c + Vector3(0, 0.3, 0)), Color(nf.r, nf.g, nf.b, 0.3)])
 	match tipo:
 		"ingresso": _ingresso(s, root)
 		"boss": _sala_boss(s, root)

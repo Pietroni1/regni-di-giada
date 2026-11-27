@@ -1056,6 +1056,20 @@ affissi, boss e loro meccaniche sono quelli di prima.
   **Mappa della Prova**: la minimappa dentro una Prova è la pianta intera (ali colorate, porte chiuse, frane, boss,
   tesoro, braciere, compagni); tasto M: pianta grande con nomi, variante e forze di ogni strada (`Cripta.disegna_pianta`).
   Corretto: uscendo da una Prova o entrando in un'altra restavano a schermo i mostri di prima (`_svuota_entita`).
+- **Temi per ala** (l'autore, vedendo le prime foto: «dai dei temi ai dungeon mi raccomando, non tutti con grafica
+  uguale»): oltre al tema della Prova (`TEMI`), ogni ala ha il suo in `Cripta.ALI_TEMI[prova][chiave]` (chiave = ala,
+  `"boss"`, `"tesoro"` o `""` per le sale comuni): colori di muro e pavimento, `var` (variante di `prova_muro`),
+  `motivo` ed `emblema` (`prova_pavimento`), fregio acceso, nebbia bassa. `_usa_tema(stanza)` cambia `_mat.muro` e
+  `_mat.pav` prima di costruire stanza, muri, varchi (il varco prende il tema dell'ala in cui porta) e ostacoli.
+  **Cripta**: sale comuni pietra viola con greca e stella a petali; *Catacombe* ossario color osso (loculi coi teschi,
+  a qualcuno brillano le orbite; lastre irregolari su terra; luna); *Via dei Guardiani* bronzo e giada (pannelli lisci,
+  lesene borchiate, fili di giada accesi; scacchi diagonali lucidi; sigillo); *Galleria delle Lanterne* lacca rossa
+  (tavole, grata a rombi con la carta illuminata; assito; sole); *Camera delle Offerte* oro (fascia di dischi d'oro,
+  scacchi dorati). **Forgia**: sale comuni basalto e ferro con la ruota dentata; *Fonderia* scoria nera piena di crepe
+  accese; *Galleria dei Mantici* lamiera d'acciaio azzurra ribattuta, tubi di bronzo, filo freddo acceso; *Ponte e
+  Isola* ossidiana a faccette; *Cuore* sole a raggi. Una Prova nuova = una voce in `TEMI` e una in `ALI_TEMI`.
+  Viste in anteprima tutte le ali delle due Prove. Non viste in gioco dopo i temi (in gioco viste prima: ingresso,
+  rotonda, mappa, ossario, sala dei sigilli con i mostri).
 - **Anteprima senza server**: `godot --path godot res://scene/anteprima_prova.tscn --fixed-fps 30 -- --prova=cripta|forgia
   --var=0 [--porte=sigilli:1] [--rit=sigilli] [--tes=1] --cartella=DIR [--viste=nome:x,y,z:tx,ty,tz;…] [--alto=1]
   [--mappa=1] [--stat=1] [--conta=1]`.
@@ -1064,7 +1078,9 @@ affissi, boss e loro meccaniche sono quelli di prima.
   al boss camminando con le regole del client senza un passo respinto, leva, braciere, scrigno, completamento; in testa
   scatti e vista senza server). Aggiornate `gruppo.mjs` e `altolivello.mjs` (seguono la pianta dell'istanza).
 - Misura (`stat`, disegni / triangoli a fotogramma in gioco, prima → dopo; i mostri in vista cambiano da una prova
-  all'altra): MISURE
+  all'altra): Cripta ingresso 1123 / 148k → 960-989 / 177-183k, sala grande 1153 / 134k → bivio 922-951 / 155-167k,
+  boss 772 / 72k → 590 / 75k; Forgia ingresso 1603 / 225k → 1011 / 158k, sala 1580 / 282k → bivio 991 / 181k,
+  boss 643 / 76k → 541 / 62k. Meno disegni ovunque, triangoli circa uguali (di più nella Cripta all'ingresso).
 - **Non verificati**: una Prova giocata da un gruppo vero e i suoi tempi (le strade allungano il cammino: 15 e 18 minuti
   non sono stati ritarati), danni delle trappole a sigillo alto, mostri contro i muri con molti giocatori, scatti di
   tutte le classi in gioco (provata la funzione), l'apertura di cancello e ponte vista a schermo in gioco (viste in

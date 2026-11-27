@@ -504,6 +504,14 @@ func _prova_automatica() -> void:
 					if e.tipo == "n" and String(e.info.get("role", "")) == "custode":
 						Rete.manda({"t": "trial", "npc": e.id, "a": p[1], "p": p[2] if p.size() > 2 else "cripta"})
 						break
+			"prova_tp":
+				# prova_tp x z: dentro una Prova, teletrasporto GM in coordinate della pianta (shared/prove.js)
+				if gioco.cripta != null:
+					Rete.manda({"t": "chat", "m": "/tp %.1f %.1f" % [gioco.cripta.origine.x + float(p[1]), gioco.cripta.origine.y + float(p[2])]})
+			"finche_prova":   # aspetta (fino a 5 minuti veri) di essere dentro una Prova
+				var fino_p := Time.get_ticks_msec() + 300000
+				while gioco.cripta == null and Time.get_ticks_msec() < fino_p:
+					await get_tree().process_frame
 			"impara": Rete.manda({"t": "skup", "s": p[1]})
 			"cammina": gioco.intento = {"tipo": "muovi", "x": float(p[1]), "z": float(p[2])}
 			"suprema": gioco.usa_suprema()
