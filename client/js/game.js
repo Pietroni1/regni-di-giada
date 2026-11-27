@@ -567,7 +567,7 @@ export class Game {
     if (!me) return [];
     if (!me.mounted) return me.qb;
     const v = Array(QB_SIZE).fill(null);
-    MOUNT_SKILLS.forEach((s, i) => { v[i] = { k: 's', id: s }; });
+    (MOUNT_SKILLS[this.cls] || []).forEach((s, i) => { v[i] = { k: 's', id: s }; });
     v[QB_SIZE - 2] = me.qb[QB_SIZE - 2]; v[QB_SIZE - 1] = me.qb[QB_SIZE - 1];
     return v;
   }
@@ -586,7 +586,7 @@ export class Game {
   // ------------------------------------------------------------ abilità
   lvlOf(sid) {
     const sk = SKILLS[sid], me = this.me;
-    if (sk && sk.mount) return me && me.mounted && me.horse && me.horse.lvl >= sk.hlvl ? Math.min(20, me.horse.lvl) : 0;
+    if (sk && sk.mount) return me && me.mounted && sk.cls === this.cls && me.horse && me.horse.lvl >= sk.hlvl ? Math.min(20, me.horse.lvl) : 0;
     if (!sk || !me || sk.cls !== this.cls || me.lvl < sk.lvl) return 0;
     if (sk.via && sk.via !== me.via) return 0;
     return Math.max(1, me.sk[sid] || 0);

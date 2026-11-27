@@ -748,7 +748,8 @@ func _riempi_scuderia() -> void:
 	_compra_cavallo.visible = not (c is Dictionary)
 	_addestra.visible = c is Dictionary
 	if not (c is Dictionary):
-		_testo_scuderia.text = "Un Puledro costa %d tael (dal livello %d).\nIn sella ti muovi più in fretta e usi le tecniche a cavallo; il destriero cresce combattendo con te." % [int(H.price), int(H.minLevel)]
+		_testo_scuderia.text = "Un Puledro costa %d tael (dal livello %d).\nIn sella ti muovi più in fretta e usi le tecniche a cavallo della tua classe; il destriero cresce combattendo con te." % [int(H.price), int(H.minLevel)]
+		TecnicheDestriero.elenco_scuderia(_testo_scuderia, gioco.classe, 0)
 		_compra_cavallo.text = "Compra un Puledro (%d tael)" % int(H.price)
 		return
 	var lv := int(c.lvl)
@@ -760,11 +761,9 @@ func _riempi_scuderia() -> void:
 	else:
 		righe.append("Ha raggiunto il livello massimo.")
 		_addestra.visible = false
-	righe.append("Premi R per salire in sella o scendere.")
-	for sid in Dati.gioco.MOUNT_SKILLS:
-		var sk: Dictionary = Dati.SKILLS[sid]
-		righe.append("%s%s" % [sk.name,"" if lv >= int(sk.hlvl) else "  (dal livello %d)" % int(sk.hlvl)])
+	righe.append("Premi %s per salire in sella o scendere." % Tasti.nome("cavalcatura"))
 	_testo_scuderia.text = "\n".join(PackedStringArray(righe))
+	TecnicheDestriero.elenco_scuderia(_testo_scuderia, gioco.classe, lv)
 
 
 # ------------------------------------------------------------------ menu, impostazioni, aiuto

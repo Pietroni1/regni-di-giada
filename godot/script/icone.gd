@@ -70,8 +70,15 @@ const MAPPA := {
 	"occhio_ciclone": ["vento", "ciclone"], "tocco_curativo": ["cura", "loto_cura"], "scudo_giada": ["cura", "scudo_giada"],
 	"giudizio_tuoni": ["fulmine", "sup_tuoni", true], "mille_ombre": ["ombra", "sup_ombre", true],
 	"drago_celeste": ["chi", "sup_drago", true], "collera_cielo": ["cielo", "sup_collera", true],
-	"carica_destriero": ["terra", "dest_carica"], "fendente_corsa": ["ira", "dest_fendente"],
-	"zoccoli_tuono": ["terra", "dest_zoccoli"], "turbine_galoppo": ["vento", "dest_turbine"],
+	# tecniche a cavallo, quattro per classe (in basso a sinistra hanno tutte il ferro di cavallo)
+	"falciata_sella": ["fulmine", "cav_falciata"], "carica_travolgente": ["fulmine", "cav_carica"],
+	"impennata_ferro": ["fulmine", "cav_impennata"], "galoppo_tuono": ["fulmine", "cav_tuono"],
+	"lame_galoppo": ["ombra", "cav_lame"], "passaggio_tagliente": ["sangue", "cav_passaggio"],
+	"agguato_buio": ["ombra", "cav_agguato"], "branco_ombre": ["ombra", "cav_branco"],
+	"onda_ardente": ["chi", "cav_onda"], "zoccoli_fiamma": ["chi", "cav_zoccoli"],
+	"balzo_gru": ["chi", "cav_balzo"], "ruota_sole": ["chi", "cav_ruota"],
+	"dardi_astri": ["cielo", "cav_dardi"], "velo_stelle": ["cielo", "cav_velo"],
+	"cometa": ["cielo", "cav_cometa"], "pioggia_stelle": ["cielo", "cav_pioggia"],
 	# effetti attivi (BUFFS e stati)
 	"scintilla": ["luce", "scintilla"], "furia_tempesta": ["fulmine", "nube_saetta"], "pelle_pietra": ["terra", "roccia"],
 	"nell_ombra": ["ombra", "passo_ombra"], "fuoco_rapido": ["luce", "frecce_rapide"], "forma_perfetta": ["chi", "enso"],
@@ -446,6 +453,23 @@ class Pennello:
 			ci.draw_circle(m * Vector2(q[0], q[1]), 1.9 * k, col(SCURO))
 		chiudi()
 
+	## Testa di cavallo di profilo, rivolta a destra (tecniche a cavallo). c = mantello, criniera, occhio.
+	func testa_cavallo(x: float, y: float, s: float, c: Color, criniera: Color, occhio := SCURO, rot := 0.0) -> void:
+		apri(Vector2(x, y), rot, s)
+		pol([-30, 36, -31, 6, -24, -16, -12, -31, -5, -22, -13, -6, -17, 14, -15, 36], criniera, SCURO, 1.6)
+		pol([-6, -21, -8, -37, 0, -27], c.darkened(0.25), SCURO, 1.3)
+		pol([-20, 36, -16, 8, -10, -12, -3, -24, 1, -38, 6, -25, 13, -19, 26, 3, 33, 15, 31, 24, 22, 26, 12, 19, 4, 15, 2, 25, 7, 36], c, SCURO, 1.8)
+		pol([-18, 36, -13, 10, 2, 15, 2, 25, 7, 36], Color(0, 0, 0, 0.24), SCURO, 0.0)
+		lin(13, 0, 28, 12, 1.2, Color(0, 0, 0, 0.3))
+		disco(8, -9, 3.1, occhio, 0.0)
+		disco(28, 16, 1.7, SCURO, 0.0)
+		chiudi()
+
+	## Il segno delle tecniche a cavallo: un piccolo ferro di cavallo dorato nell'angolo in basso a sinistra.
+	func marchio() -> void:
+		pol([0, 70, 22, 70, 30, 78, 30, 100, 5, 100, 0, 95], Color(0.03, 0.02, 0.04, 0.72), SCURO, 0.0)
+		ferro(14, 86, 0.3, ORO, 180)
+
 	func teschio(x: float, y: float, s: float, c: Color) -> void:
 		apri(Vector2(x, y), 0.0, s)
 		unione([[0, -6, 24], [0, 16, 12]], c, 2.0)
@@ -808,27 +832,143 @@ class Pennello:
 					saetta(50 + (i - 2) * 17, 70 + abs(i - 2) * 4, 56 if i != 2 else 70, VIOLA_C if i != 2 else Color(1, 0.97, 0.7), ang * 0.5)
 				disco(50, 38, 8, ROSSO, 1.4)
 				disco(50, 38, 3, SCURO, 0.0)
-			"dest_carica":
+			# ------------------------------------------------ tecniche a cavallo
+			"cav_falciata":
+				# la lama spazza un cerchio largo attorno al destriero
+				mezz(50, 54, 46, 150, 390, 22, AZZURRO)
+				mezz(50, 54, 38, 170, 370, 9, BIANCO, false)
+				testa_cavallo(44, 58, 0.62, Color(0.36, 0.2, 0.12), Color(0.08, 0.07, 0.07))
+				lama(30, 40, 92, 22, 9)
+				marchio()
+			"cav_carica":
+				# il destriero carica: linee di corsa, scintille davanti
+				for i in 4:
+					lin(2, 30 + i * 14, 36 - i * 3, 30 + i * 14, 4.5, AZZURRO_C if i % 2 == 0 else AZZURRO)
+				testa_cavallo(56, 50, 1.05, Color(0.36, 0.2, 0.12), Color(0.08, 0.07, 0.07), SCURO, 8.0)
+				esplosione(90, 62, 4, 11, 6, BIANCO, 10, 1.0)
+				saetta(84, 26, 30, Color(1, 0.97, 0.7), 20, Color(0.15, 0.1, 0.45))
+				marchio()
+			"cav_impennata":
+				# gli zoccoli ferrati ricadono: schegge e scariche
+				for q in [[18, 84, -30], [36, 90, -12], [66, 90, 14], [84, 84, 32]]:
+					apri(Vector2(q[0], q[1]), q[2], 1.0)
+					pol([-7, 6, 0, -16, 7, 6], PIETRA_C, SCURO, 1.4)
+					chiudi()
+				crepa(50, 96, 14, 72, AZZURRO_C, 2.2)
+				crepa(50, 96, 86, 72, AZZURRO_C, 2.2)
+				ferro(34, 44, 0.62, ACCIAIO, 168)
+				ferro(66, 40, 0.62, ACCIAIO, 192)
+				esplosione(50, 76, 6, 16, 7, BIANCO, 0, 1.2)
+				marchio()
+			"cav_tuono":
+				# carica fra le saette
+				saetta(24, 30, 50, AZZURRO_C, -12, Color(0.12, 0.1, 0.4))
+				saetta(80, 34, 58, Color(1, 0.97, 0.7), 10, Color(0.15, 0.1, 0.45))
+				testa_cavallo(50, 58, 0.9, Color(0.3, 0.17, 0.11), Color(0.08, 0.07, 0.07), AZZURRO_C)
+				saetta(52, 16, 34, BIANCO, 0, Color(0.15, 0.1, 0.45))
+				marchio()
+			"cav_lame":
+				# tre lame da lancio in volo
+				for q in [[20, 30, 78, 16], [14, 54, 86, 50], [20, 78, 78, 86]]:
+					lin(q[0] - 12, q[1] + (q[1] - q[3]) * 0.2, q[0] + 8, q[1], 3.0, VIOLA_C)
+					lama(q[0], q[1], q[2], q[3], 9, ACCIAIO, ACCIAIO_O, VIOLA)
+				marchio()
+			"cav_passaggio":
+				# il corsiero attraversa: taglio e sangue
+				al = 0.4
+				testa_cavallo(30, 50, 0.8, Color(0.1, 0.08, 0.14), SCURO, VIOLA_C)
+				al = 1.0
+				testa_cavallo(62, 46, 0.95, Color(0.1, 0.08, 0.14), SCURO, VIOLA_C)
+				mezz(40, 60, 46, 200, 330, 16, ROSSO)
+				mezz(40, 60, 40, 215, 318, 6, ROSSO_C, false)
+				goccia(30, 84, 6, ROSSO)
+				goccia(50, 92, 4.5, ROSSO)
+				marchio()
+			"cav_agguato":
+				# dal fumo, alle spalle: un colpo solo
+				busto(36, 50, 0.78, Color(0.62, 0.6, 0.68))
+				nuvola(62, 40, 0.95, Color(0.22, 0.14, 0.34))
+				nuvola(68, 64, 0.8, Color(0.3, 0.2, 0.44))
+				disco(57, 37, 3.0, VIOLA_C, 0.0)
+				disco(69, 37, 3.0, VIOLA_C, 0.0)
+				lama(88, 8, 54, 50, 10, ACCIAIO, ACCIAIO_O, VIOLA)
+				marchio()
+			"cav_branco":
+				# le sagome del corsiero, una dietro l'altra
+				al = 0.5
+				testa_cavallo(26, 40, 0.7, VIOLA, Color(0.2, 0.1, 0.35), VIOLA_C)
+				al = 0.75
+				testa_cavallo(44, 48, 0.82, Color(0.3, 0.16, 0.5), Color(0.14, 0.08, 0.25), VIOLA_C)
+				al = 1.0
+				testa_cavallo(66, 56, 0.95, Color(0.08, 0.06, 0.12), SCURO, Color(0.8, 1.0, 0.45))
+				marchio()
+			"cav_onda":
+				# onda di fuoco che parte dal palmo
 				for i in 3:
-					lin(2, 30 + i * 18, 34, 30 + i * 18, 4.0, ORO_O)
-				ferro(56, 56, 1.0, ACCIAIO, 90)
-				for i in 2:
-					poli([Vector2(70 + i * 12, 20), Vector2(84 + i * 12, 50), Vector2(70 + i * 12, 80)], 5.0, SCURO)
-					poli([Vector2(70 + i * 12, 20), Vector2(84 + i * 12, 50), Vector2(70 + i * 12, 80)], 3.0, ORO)
-			"dest_fendente":
-				ferro(50, 70, 0.7, ACCIAIO, 180)
-				mezz(50, 62, 46, 185, 355, 26, ROSSO_C)
-				mezz(50, 62, 36, 200, 340, 10, BIANCO, false)
-				lama(16, 54, 84, 18, 9)
-			"dest_zoccoli":
-				crepa(10, 92, 50, 70, ORO, 2.2)
-				crepa(90, 92, 50, 70, ORO, 2.2)
-				ferro(50, 62, 0.9, ACCIAIO, 180)
-				saetta(50, 26, 40, Color(1, 0.97, 0.7), 0, Color(0.2, 0.1, 0.5))
-			"dest_turbine":
-				spirale(50, 50, 6, 44, 1.7, 0, 6.0, AZZURRO_C)
-				spirale(50, 50, 6, 44, 1.7, 180, 4.0, BIANCO)
-				ferro(50, 54, 0.6, ACCIAIO, 180)
+					arco(30, 50, 26 + i * 14, -50, 50, 8.0 - i * 1.5 + 2.4, SCURO)
+					arco(30, 50, 26 + i * 14, -50, 50, 8.0 - i * 1.5, ROSSO_C if i == 1 else AMBRA_C)
+				fiamma(84, 28, 0.3, ROSSO, AMBRA_C)
+				fiamma(86, 74, 0.26, ROSSO, AMBRA_C)
+				palmo(36, 48, 0.6, 90)
+				marchio()
+			"cav_zoccoli":
+				# gli zoccoli lasciano fuoco dove passano
+				fiamma(18, 62, 0.36, ROSSO, AMBRA_C)
+				fiamma(38, 70, 0.5, ROSSO, AMBRA_C)
+				fiamma(62, 66, 0.72, ROSSO, AMBRA_C)
+				ferro(64, 40, 0.74, AMBRA_C, 160)
+				fiamma(84, 80, 0.4, ROSSO, AMBRA_C)
+				marchio()
+			"cav_balzo":
+				# dalla sella un balzo ad arco e il palmo a terra
+				arco(46, 78, 40, 190, 345, 5.0, SCURO)
+				arco(46, 78, 40, 190, 345, 2.6, AMBRA_C)
+				corridore(46, 30, 0.6, Color(0.95, 0.92, 0.85), SCURO, 60.0)
+				esplosione(84, 76, 7, 18, 8, AMBRA_C, 0, 1.3)
+				disco(84, 76, 5, BIANCO, 0.0)
+				fiamma(72, 58, 0.26, ROSSO, AMBRA_C)
+				marchio()
+			"cav_ruota":
+				# una ruota di fuoco: il sole
+				spirale(50, 50, 20, 44, 0.9, 20, 7.0, ROSSO_C)
+				spirale(50, 50, 20, 44, 0.9, 200, 7.0, AMBRA_C)
+				esplosione(50, 50, 12, 24, 10, AMBRA_C, 0, 1.4)
+				disco(50, 50, 10, BIANCO, 1.2)
+				marchio()
+			"cav_dardi":
+				# tre dardi di stelle
+				for q in [[16, 40, 70, 16], [10, 66, 84, 46], [26, 88, 78, 80]]:
+					lin(q[0], q[1], q[2], q[3], 5.0, SCURO)
+					lin(q[0], q[1], q[2], q[3], 2.6, AZZURRO_C)
+					scint(q[2], q[3], 13, AMBRA_C, 1.2)
+					scint(q[2], q[3], 6, BIANCO, 0.0)
+				marchio()
+			"cav_velo":
+				# un velo di stelle a cupola sopra cavallo e cavaliere
+				arco(50, 74, 42, 180, 360, 9.0, SCURO)
+				arco(50, 74, 42, 180, 360, 5.5, AZZURRO_C)
+				arco(50, 74, 32, 195, 345, 2.0, BIANCO)
+				testa_cavallo(50, 66, 0.66, Color(0.9, 0.9, 0.95), Color(0.75, 0.78, 0.9))
+				for q in [[14, 46, 7], [30, 20, 9], [58, 12, 8], [82, 28, 9], [90, 56, 6]]:
+					scint(q[0], q[1], q[2], AMBRA_C, 1.0)
+				marchio()
+			"cav_cometa":
+				# la cometa cade in diagonale con la coda
+				for i in 4:
+					lin(8 + i * 7, 4 + i * 2, 58 + i * 3, 52 + i * 3, 9.0 - i * 2.0, AZZURRO if i < 2 else AZZURRO_C)
+				alone(68, 64, 30, AMBRA_C, 0.9)
+				esplosione(68, 64, 10, 22, 8, AMBRA_C, 22, 1.4)
+				disco(68, 64, 10, BIANCO, 1.4)
+				scint(90, 88, 6, BIANCO, 0.0)
+				scint(44, 90, 5, AMBRA_C, 0.8)
+				marchio()
+			"cav_pioggia":
+				# le stelle cadono lungo il percorso
+				for q in [[22, 30, 9], [42, 50, 11], [58, 26, 8], [74, 54, 10], [54, 80, 9], [84, 84, 7]]:
+					lin(q[0] + 12, q[1] - 24, q[0], q[1], 4.6, SCURO)
+					lin(q[0] + 12, q[1] - 24, q[0], q[1], 2.4, AZZURRO_C)
+					scint(q[0], q[1], q[2], AMBRA_C, 1.0)
+				marchio()
 			"ala_vento":
 				# folata di vento con tre penne che volano verso il bersaglio
 				for i in 3:

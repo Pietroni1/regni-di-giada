@@ -267,14 +267,24 @@ class Destriero:
 		elif voglio != "fermo":
 			player.speed_scale = ritmo
 
-	## Impennata (alla salita in sella): poco più di un secondo, poi riprende l'andatura.
-	func impenna() -> void:
+	## Impennata (alla salita in sella): poco più di un secondo, poi riprende l'andatura. ritmo > 1 la accorcia
+	## (tecniche a cavallo). Ritorna dopo quanti secondi gli zoccoli davanti ricadono a terra.
+	func impenna(ritmo := 1.0) -> float:
 		if player == null or not player.has_animation("impennata"):
-			return
+			return 0.0
 		_az = "impennata"
 		player.speed_scale = 1.0
-		player.play("impennata", 0.1, 1.0)
-		_impennata = player.get_animation("impennata").length
+		player.play("impennata", 0.1, ritmo)
+		_impennata = player.get_animation("impennata").length / ritmo
+		return _impennata * 0.8
+
+	## Galoppo forzato per un momento, anche da fermi (scatti delle tecniche a cavallo: la posizione è già quella d'arrivo).
+	func galoppa(durata: float) -> void:
+		if player == null or not player.has_animation("corsa"):
+			return
+		_az = "corsa"
+		player.play("corsa", 0.06, 1.2)
+		_impennata = durata
 
 	## Dove sta la sella, nello spazio del genitore del destriero (l'entità): origine sul seggio, assi inclinati come il dorso.
 	func posto() -> Transform3D:

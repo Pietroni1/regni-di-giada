@@ -19,7 +19,7 @@ npm start          # http://localhost:3000 — account GM: "admin" (server/confi
 Comandi GM in chat: `/level 99`, `/item id quantità potenziamento rarità`, `/spawn tipo n [raggio]`, `/tp x z`, `/destriero 20`, `/sigillo 15`, `/risorsa`, `/punti`, `/suprema`, `/abilita id livello`, `/aiuto`.
 
 ## Struttura
-- `server/` — Node.js (HTTP + WebSocket), logica autoritativa (`world.js`; moduli installati su World: `mappe.js`, `missioni.js`, `bottino.js`, `altolivello.js`), database JSON (`db.js`).
+- `server/` — Node.js (HTTP + WebSocket), logica autoritativa (`world.js`; moduli installati su World: `mappe.js`, `missioni.js`, `bottino.js`, `altolivello.js`, `prove.js`), database JSON (`db.js`).
 - `shared/` — dati (`data.js`: classi, abilità, oggetti, mostri, dungeon; `missioni.js`, `mappe.js`) e geografia (`world.js`: terreno, villaggi, strade).
 - `client/js/`
   - `main.js` avvio e caricamento asset; `game.js` gioco ed eventi di rete; `ui.js` interfaccia.
@@ -895,6 +895,26 @@ L'autore trova il client nel browser pesante e poco maneggevole: si passa a **Go
   redini e l'arma resta in pugno, ciocche della criniera piatte viste da vicino, la criniera lunga del Mistico al
   galoppo si alza troppo compatta, le fiamme perse dagli zoccoli del Monaco sono globi tondi, Ombra ai passi 1-2 poco
   diversa (nero su nero).
+- **Tecniche a cavallo per classe** (l'autore: «fammi anche le spell della cavalcatura dedicate per classe»): al posto
+  delle quattro uguali per tutti, quattro per classe (`MOUNT_SKILLS[classe]`, `mountSkillsOf` in `shared/data.js`), ai
+  livelli 1, 5, 10 e 15 del destriero (`hlvl`); il livello della tecnica è quello del destriero, non usano risorsa né
+  tempo di lancio, ognuna ha la sua ricarica e si usano galoppando. **Lama** Falciata dalla Sella · Carica Travolgente
+  (in linea, stordisce) · Impennata di Ferro · Galoppo del Tuono (carica lunga + tre scariche); **Ombra** Lame al Galoppo
+  (un Marchio a ogni colpito) · Passaggio Tagliente (attraversa il bersaglio, due Marchi) · Agguato dal Buio (alle
+  spalle, fa esplodere i Marchi e a catena quelli vicini) · Branco d'Ombre (quattro sagome che inseguono, un Marchio
+  l'una); **Monaco** Onda Ardente (in linea oltre il bersaglio) · Zoccoli di Fiamma (scia di fuoco per 5 s) · Balzo della
+  Gru Ardente · Ruota del Sole (tre giri che seguono il cavaliere, lasciano in fiamme); **Mistico** Dardi d'Astri · Velo
+  di Stelle (difesa e passo, anche al gruppo entro 15 m) · Cometa · Pioggia di Stelle (sei scrosci che seguono).
+  Campi nuovi del motore (`resolveSkill`, valgono per qualsiasi tecnica): `linea` (colpisce chi sta entro N metri dalla
+  linea percorsa; `lineaOltre`), `oltre` (lo scatto finisce N metri dopo il bersaglio), `segue: 'se'|'bersaglio'` (le
+  ondate seguono chi lancia o il bersaglio), `scia` (tratti a terra che bruciano chi li calpesta). Le tecniche
+  dell'Ombra erano nate con le Ferite del kit bocciato: ora usano `marca` ed `esplode` come a piedi.
+  Client: `tecniche_destriero.gd` (`TecnicheDestriero.tecnica`, chiamata da `Effetti.tecnica` quando la tecnica ha
+  `mount`: effetti per tecnica nei colori del destriero, niente segni a terra), barra in sella, icone, scuderia.
+  Prova: `node tools/prove/destriero.mjs [porta]` (134 verifiche; `--misura` dà i danni al secondo in sella).
+  Viste a schermo in gioco le quattro tecniche di ogni classe sui fantocci. **Non verificati**: taratura dei danni in
+  sella rispetto a quelli a piedi (non misurata dopo il passaggio ai Marchi), in movimento vero col galoppo, in gruppo,
+  il client nel browser (mostra le tecniche ma con gli effetti vecchi).
 - Da fare: corpi base originali con volto (il manichino resta il limite più evidente), edifici veri fatti in Blender,
   modelli per scimmie e banditi, resa con Forward+ da guardare su PC con GPU, suoni veri al posto di quelli sintetici.
 
@@ -945,7 +965,8 @@ in `server/altolivello.js` (installato su World come `mappe.js`/`missioni.js`), 
   entro 45 m o il 3% dei danni: 2 pezzi della classe (Rari o meglio), 25% un **pezzo unico** del boss (garantito alla 4ª
   uccisione senza: `ch.pieta`) con due bonus fissi (`fissi`), trofeo, essenze, gemma, tael, 6% di livello. I pezzi unici
   (`boss` nella voce) sono esclusi dal bottino normale (`bottino.js`). Le arene dei boss restano libere dai branchi.
-- **Forgia del Drago Addormentato** (`FORGIA`, dal livello 35, 18 min, stesso Sigillo della Cripta): 9 stanze (muri
+- **Forgia del Drago Addormentato** (`FORGIA`, dal livello 35, 18 min, stesso Sigillo della Cripta; la pianta è stata
+  rifatta: vedi «Prove del Sigillo: piante a strade»): allora 9 stanze (muri
   ricavati con `muriDaStanze`), Fabbri di Cenere, Cani di Brace, Spiriti della Fornace (lancio), Martellatori (élite con
   lancio ad area), boss **Yan, il Cuore della Fornace** (`general` ×2,2 rosso scuro: Colata Ardente da interrompere, Martello
   del Drago a terra, Cani al 75%, Corazza di Brace al 50% con 3 Mantici Ardenti da spegnere, furia al 20%). Le Prove ora
@@ -984,6 +1005,73 @@ in `server/altolivello.js` (installato su World come `mappe.js`/`missioni.js`), 
 - **Non verificati**: Forgia giocata da un gruppo vero e il suo tempo, aspetto dei boss (modelli esistenti riscalati e
   tinti: servono figure proprie), annunci e premi con molti giocatori, chiusura della stagione a cavallo della mezzanotte
   di lunedì col server acceso a lungo, client nel browser (non mostra nulla di tutto questo).
+## Prove del Sigillo: piante a strade, varianti settimanali, architettura (fatto)
+Richiesta dell'autore: «rifacciamo anche i dungeon, grafiche migliori e strade diverse». Le due Prove (Cripta delle
+Mille Lanterne, Forgia del Drago Addormentato) non sono più una fila di stanze. Tempo, forze richieste (100%), sigillo,
+affissi, boss e loro meccaniche sono quelli di prima.
+- **Dati** in `shared/prove.js` (nessun import; `PIANTE.cripta|forgia`): `stanze` (id, nome, `tipo` ingresso/corridoio/
+  bivio/sala/ponte/passerella/cancello/tesoro/boss, rettangolo, `ala`, `porta`), `ali` (nome, colore, nota), `porte`
+  (`apre: 'branco'|'leva'`), `leve`, `vuoti` (abisso, lago di lava: non si calpestano ma lasciano passare vista e colpi a
+  distanza), `ostacoli` [x, z, raggio, forma], `branchi` (con `ala`, `apre`, `tesoro`), `pericoli` (trappole a tempo),
+  `ritorni` (Braciere del Ritorno), `tesoro`, `varianti`. `componiPianta(id, v, porteAperte)` dà la pianta giocabile
+  (`rooms`, `walls` con tipo 0 muro / 1 parapetto / 2 roccia, `packs`, `frane`, `porte`, confini): `DUNGEON` e `FORGIA`
+  tengono la pianta «tutta aperta» (per chi non conosce le varianti: il client nel browser), il server compone quella
+  dell'istanza. Mostri nuovi `MOBS_PROVE`: Guardiano dei Sigilli, Avaro Sepolto, Scoria Vivente (élite).
+  - **Cripta**: Soglia → Discesa → **Rotonda dei Tre Sentieri** → tre strade fino alla **Sala dei Sigilli** → Custode.
+    Ovest *Catacombe dei Sussurri* (lunga, molte Ombre, forze 46%), centro *Via dei Guardiani* (corta: il Guardiano dei
+    Sigilli tiene chiuso il cancello, 33%), est *Galleria delle Lanterne* (lanterne che tirano da oltre l'abisso e i Fuochi
+    sul ponte, 44%); sale comuni 42%; dalla Sala dei Sigilli si scende alla **Camera delle Offerte** (Avaro Sepolto, 14%).
+    Varianti: una delle tre strade è franata (il varco murato si vede dalla sala).
+  - **Forgia**: Bocca → **Sala delle Incudini** affacciata sul **Lago del Crogiolo** → due archi attorno al lago fino
+    alla **Terrazza del Drago** → Cuore della Forgia. Ovest *Fonderia* (lunga, sfiati di lava, 52%), est *Galleria dei
+    Mantici* (due Martellatori e i magli, 46%), in mezzo il **Ponte del Crogiolo**, sommerso: lo fa emergere la leva sulla
+    Terrazza (scorciatoia per chi rinasce e unica via per l'**Isola** con la Scoria Vivente e lo scrigno, 14%); sale comuni
+    42%. Varianti: colata sul tratto di mezzo dell'arco ovest o est (le due metà restano vicoli ciechi), oppure ponte già emerso.
+  - Variante = settimana (`varianteSettimana`, le due Prove sfasate); il Custode la annuncia nella finestra e in chat.
+    Forze: le due ali aperte insieme superano sempre il 100%; un'ala sola + tesoro arriva al 100% con l'ala lunga.
+- **Server** `server/prove.js` (installato su World): `inst.dg` è la pianta dell'istanza e si ricompone quando una porta
+  si apre (`apriPortaProva`); `dg_start` porta `pianta` { v, stanze, porte, rit, tes }, `dg` ogni secondo `po`, `rit`,
+  `tes` e `chi` (posizioni dei compagni). **I muri ora valgono anche per il server** (prima solo il client li
+  rispettava): `passoLecitoProva` in `onMove` (margine 0,3 m; al più due varchi fra i due punti), `scattoProva`
+  (ci si ferma al primo muro, vuoto od ostacolo: niente Passo di Luce oltre l'abisso), mostri che camminano per stanze
+  (`prossimoPasso` sul grafo dei varchi, `fuoriDagliOstacoli`) e si accorgono/colpiscono solo con la vista libera
+  (`vedeProva`); `/tp` e nascite vanno al punto libero più vicino. Branchi legati (`m.pk`: il primo che ti nota chiama i
+  suoi), leve (un vivo entro 2,6 m), Braciere del Ritorno (chi cade rinasce lì), trappole (`tickProva`: preavviso `warn`,
+  poi danno a chi è nel cerchio), scrigno (un pezzo, un'essenza e il 30% di tael in più a fine Prova).
+  GM: `/pianta n` (forza la variante delle Prove che apri), `/invisibile` (i mostri non ti vedono: per foto e prove).
+- **Client Godot** `cripta.gd` riscritto: `Cripta.crea(ox, oz, id, pianta)`, `passo` (scivola lungo muri e ostacoli),
+  `visuale_libera`, `aggiorna_stato` (cancello che scende, ponte che emerge, braciere, scrigno), `Cripta.ambiente(id)`.
+  Tema per Prova (`TEMI`). Cripta: conci con fregio a greca, pilastri, nicchie con statue, sarcofagi, urne, radici,
+  stendardi, lanterne appese nel colore dell'ala, nebbia bassa, lame di luce, abisso con lanterne sospese, guardiano
+  gigante con l'aureola nella sala del boss. Forgia: basalto fasciato di ferro con fessure incandescenti, lago e colate di
+  lava, canali sotto le grate, incudini, crogioli, mantici che soffiano, catene, la fornace con gli occhi del drago; il
+  «Mantice Ardente» di Yan è un mantice vero (`Cripta.mantice_ardente`). **Segni**: ogni varco di un'ala ha due grandi
+  fiamme, stendardi e disco nel colore dell'ala, il boss il suo; ala chiusa = varco murato con assi in croce.
+  Shader nuovi `prova_muro`, `prova_pavimento` (UV = metri dal centro, UV2 = mezze misure, COLOR = tipo e colore),
+  `prova_fluido`, `prova_luce` (fiamme, aloni, fasci, nebbia: additivi in MultiMesh, colore per istanza),
+  `prova_lanterna`, `prova_stendardo`. Leggerezza: ogni stanza fusa per materiale (`Edifici.fondi`, vista 92 m),
+  lanterne e fili in un MultiMesh per stanza, luci vere solo entro 46 m.
+  **Da sapere**: un valore costante passato per vertice (UV2) arriva al frammento sporco di un niente: dentro `h21` dava
+  righe orizzontali su tutto il pavimento → arrotondarlo (`floor(UV2 * 2.0 + 0.5) * 0.5`).
+  **Mappa della Prova**: la minimappa dentro una Prova è la pianta intera (ali colorate, porte chiuse, frane, boss,
+  tesoro, braciere, compagni); tasto M: pianta grande con nomi, variante e forze di ogni strada (`Cripta.disegna_pianta`).
+  Corretto: uscendo da una Prova o entrando in un'altra restavano a schermo i mostri di prima (`_svuota_entita`).
+- **Anteprima senza server**: `godot --path godot res://scene/anteprima_prova.tscn --fixed-fps 30 -- --prova=cripta|forgia
+  --var=0 [--porte=sigilli:1] [--rit=sigilli] [--tes=1] --cartella=DIR [--viste=nome:x,y,z:tx,ty,tz;…] [--alto=1]
+  [--mappa=1] [--stat=1] [--conta=1]`.
+- **Prove**: `node tools/prove/prove_sigillo.mjs [porta]` (95 verifiche, ~12 min: per ogni Prova e variante la pianta di
+  `dg_start` coincide con server e `gioco.json`, forze per strada, muri/ali chiuse/cancello respingono, ogni strada porta
+  al boss camminando con le regole del client senza un passo respinto, leva, braciere, scrigno, completamento; in testa
+  scatti e vista senza server). Aggiornate `gruppo.mjs` e `altolivello.mjs` (seguono la pianta dell'istanza).
+- Misura (`stat`, disegni / triangoli a fotogramma in gioco, prima → dopo; i mostri in vista cambiano da una prova
+  all'altra): MISURE
+- **Non verificati**: una Prova giocata da un gruppo vero e i suoi tempi (le strade allungano il cammino: 15 e 18 minuti
+  non sono stati ritarati), danni delle trappole a sigillo alto, mostri contro i muri con molti giocatori, scatti di
+  tutte le classi in gioco (provata la funzione), l'apertura di cancello e ponte vista a schermo in gioco (viste in
+  anteprima), Forward+, client nel browser (disegna la pianta tutta aperta e il server lo respinge alle porte chiuse).
+  Difetti noti: le statue sono sagome di poche forme, la fornace del boss è povera, i massi della frana si confondono col
+  muro, i mostri attraversano gli angoli dei pilastri solo scivolando (niente vero aggiramento).
+
 ## Gioco in gruppo (prova con bot)
 L'autore gioca con 2-3 amici: `node tools/prove/gruppo.mjs [porta]` (65 verifiche, ~6 min; `--solo gruppo,auree,cure,
 difensore,serie,bottino,missioni,prova,arena,disconnessione`) con difensore Montagna, guaritrice Benedizione, Monaco del
@@ -1043,10 +1131,25 @@ Il client nel browser non ne sa nulla.
   `amico_on` + riga di sistema quando un amico entra. Sussurri: `/s nome testo`, `/r testo` (e `@nome` di prima); nomi cliccabili in
   chat (menu: Sussurra, Invita nel gruppo, Scambia, Amici), «Scambia» e «Amico» nel riquadro del bersaglio, tasto **F** (finestra Amici),
   anche `/amico nome`, `/amici`, `/scambia nome`.
-- **Tasti rimappabili**: `Tasti` (`tasti.gd`: tabella `AZIONI`, `codice`, `azione_di`, `premuto`, `assegna` che scambia i due tasti se
-  uno è occupato, salvataggio in `impostazioni.cfg` sezione `tasti` via `Impostazioni`). `gioco.gd` non usa più `KEY_*` direttamente
-  (restano fissi Esc, F1, F11, frecce). Pagina «Tasti…» nelle impostazioni (`PannelloTasti`). I testi hanno segnaposto `{azione}` e si
-  registrano con `Tasti.registra(controllo, modello)`: titoli delle finestre, aiuto (H), numeri della barra rapida, «Tecnica Suprema [V]».
+- **Tasti personalizzabili** (l'autore: «anche personalizzazione dei tasti»; la prima versione aveva un tasto solo per
+  azione, senza combinazioni né mouse): `Tasti` (`tasti.gd`). Ogni azione di `AZIONI` ha **due comandi** (principale e
+  alternativo); un comando è un intero: codice fisico del tasto | `MAIUSC` | `CTRL` | `ALT`, oppure `TOPO` | indice del
+  tasto del mouse (centrale 3, laterali 8 e 9). `codici(id)`, `azione_evento(ev)` (prima il comando esatto, poi lo stesso
+  tasto senza modificatori: W cammina anche con Maiusc premuto), `comando_evento(ev)`, `premuto(id)`, `assegna(id, posto,
+  comando)` (il comando viene tolto all'azione che lo aveva e ne restituisce l'id), `togli`, `senza_tasto()`,
+  `nome_tasto` («Maiusc+1», «Mouse 4») e `nome_breve` («M-1», «C-Q», «Ms4»: barra rapida). Fissi solo Esc, tasto
+  sinistro, destro e rotella; frecce, F1, F11 e Invio del tastierino sono alternativi predefiniti che si possono cambiare.
+  Azioni aggiunte: `autocorsa` (X o tasto centrale: `gioco.autocorsa`, si ferma con avanti/indietro, Esc o un clic),
+  `bersaglio_prec` (Maiusc+Tab), `attacca` (T), `imprese` (J, prima fisso), `schermo_intero` (F11), inventario anche su B.
+  `gioco._azione(az)` esegue le azioni da tastiera e dal mouse. Salvataggio in `impostazioni.cfg`, sezione `tasti`:
+  `id = [principale, alternativo]` (il vecchio formato con un intero si legge ancora; comandi doppi si tolgono al
+  caricamento). Pagina «Personalizza i tasti» (`PannelloTasti`: due caselle per azione; clic, poi il comando; Esc annulla,
+  Backspace o clic destro svuotano; avvisa delle azioni rimaste senza tasto), da Impostazioni e dal menu Esc. I testi
+  hanno segnaposto `{azione}` e si registrano con `Tasti.registra(controllo, modello)`.
+  Copione: `premi codice [maiusc] [ctrl] [alt]` e `mouse indice` mandano un evento vero (`Input.parse_input_event`),
+  `sociale cattura azione [posto]`, `sociale ripristina_tasti`, `sociale tasto azione codice [posto]`.
+  Visto a schermo con eventi simulati: cattura di Maiusc+1, Ctrl+G e Mouse 4, inventario aperto col tasto laterale, corsa
+  automatica, «M-1» sulla barra. **Non verificato**: tastiera e mouse veri, layout non QWERTY, browser.
 - **Extra**: «Ordina» nell'inventario (`{t:'ordina'}`: raggruppa le pile, ordina per tipo/livello/nome/rarità; anche il deposito),
   «Vendi comuni» nel negozio (`{t:'vendi_comuni', npc}`: equipaggiamento bianco senza potenziamenti né gemme e trofei «Si vende ai
   mercanti»; non tocca materiali del fabbro, pozioni, gemme), Maiusc+clic su un oggetto dell'inventario lo mostra in chat (`[[3]]` →

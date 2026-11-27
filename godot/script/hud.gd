@@ -945,6 +945,7 @@ class Tasto:
 				spento = spento or not gratis
 			var nome_pts := String(Dati.CLASSES.get(String(sk.get("cls", "")), {}).get("pts", {}).get("name", "Punti"))
 			tooltip_text = "%s%s\n%s%s%s" % [nome, ("  —  " + Hud.NOMI_RUOLO[ruolo]) if Hud.NOMI_RUOLO.has(ruolo) else "", sk.get("desc", ""), ("\nCosto: %d" % int(sk.cost)) if sk.has("cost") else "", ("\nCosto: %d %s" % [pts_costo, nome_pts]) if pts_costo > 0 else ""]
+			TecnicheDestriero.imposta_tasto(self, sk, io)      # tecniche a cavallo: livello del destriero richiesto
 		elif v is Dictionary and v.get("k") == "i" and Dati.ITEMS.has(v.id):
 			var it: Dictionary = Dati.ITEMS[v.id]
 			ogg = String(v.id)
@@ -1061,6 +1062,7 @@ class Tasto:
 		draw_string(f, Vector2(5, 14), Tasti.nome_barra(indice), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.9, 0.85))
 		if Hud.RUOLI.has(ruolo):
 			draw_rect(Rect2(8, size.y - 6, size.x - 16, 3), Hud.RUOLI[ruolo])
+		TecnicheDestriero.disegna_tasto(self)
 
 
 # ------------------------------------------------------------------ icona di un effetto attivo

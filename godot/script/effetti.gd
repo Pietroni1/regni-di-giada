@@ -521,6 +521,7 @@ func fumo(pos: Vector3, colore: Color, quante := 10, raggio := 0.8, durata := 1.
 	p.gravity = Vector3(0, sale, 0)
 	p.damping_min = 0.5
 	p.damping_max = 1.0
+	p.preprocess = 0.07      # senza, nei primi due fotogrammi le particelle non ancora partite si vedono come una macchia nera
 	var sf := Gradient.new()
 	sf.offsets = PackedFloat32Array([0.0, 0.3, 1.0])
 	sf.colors = PackedColorArray([Color(colore.r, colore.g, colore.b, 0.0), Color(colore.r, colore.g, colore.b, 0.75), Color(colore.r, colore.g, colore.b, 0.0)])
@@ -555,6 +556,7 @@ func nube(pos: Vector3, raggio: float, durata := 1.4, colore := Color(0.3, 0.1, 
 	p.gravity = Vector3(0, 0.25, 0)
 	p.scale_amount_min = 0.8
 	p.scale_amount_max = 1.8
+	p.preprocess = 0.07
 	var sf := Gradient.new()
 	sf.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
 	sf.colors = PackedColorArray([Color(colore.r, colore.g, colore.b, 0.0), Color(colore.r, colore.g, colore.b, 0.7), Color(colore.r, colore.g, colore.b, 0.0)])
@@ -676,6 +678,7 @@ func petali(pos: Vector3, colore: Color, quante := 16, raggio := 1.0, durata := 
 	p.angle_max = 360.0
 	p.angular_velocity_min = -180.0
 	p.angular_velocity_max = 180.0
+	p.preprocess = 0.07
 	if c2.a > 0.0:
 		var ini := Gradient.new()
 		ini.colors = PackedColorArray([colore, c2])
@@ -820,6 +823,9 @@ func tecnica(sk: Dictionary, da: Entita, su: Entita, m: Dictionary) -> void:
 			"raggio": float(sk.get("radius", 3.0)), "forte": String(sk.get("ruolo", "")) == "potente", "tipo": tipo,
 			"area": tipo.begins_with("aoe"), "g": g, "k": 1.0 + 0.08 * g, "mano": qui + Vector3(0, 1.5, 0),
 			"fx": String(sk.get("fx", "")), "tema": tema, "cls": String(sk.get("cls", ""))}
+	if sk.get("mount", false):
+		TecnicheDestriero.tecnica(self, c)      # tecniche a cavallo: effetti propri per classe, niente segni a terra
+		return
 	if sk.get("sup", false):
 		_suprema(c)
 		_arricchisci(c)

@@ -612,7 +612,7 @@ export class UI {
         c.vie.map(v => `<div style="margin-bottom:6px"><b>${VIE[v].name}</b> <span class="meta">(${VIE[v].role})</span><div class="pd">${VIE[v].desc}</div></div>`).join('');
     }
     html += `<div class="via-title">Tecniche a cavallo</div><div class="pd" style="margin:2px 0 6px">${me.horse ? `Destriero di livello ${me.horse.lvl}: le tecniche salgono con lui. Si usano in sella (R).` : 'Richiedono un destriero: parla con lo Stalliere del villaggio dal livello 10.'}</div>` +
-      MOUNT_SKILLS.map(sid => { const sk = SKILLS[sid]; const ok = me.horse && me.horse.lvl >= sk.hlvl;
+      (MOUNT_SKILLS[this.g.cls] || []).map(sid => { const sk = SKILLS[sid]; const ok = me.horse && me.horse.lvl >= sk.hlvl;
         return `<div class="skill-row ${ok ? '' : 'locked'}"><div class="slot" data-skill-info="${sid}">${skillIconHtml(sid, !ok)}</div><div class="si" data-skill-info="${sid}"><div class="sn">${esc(sk.name)}</div><div class="sl">${ok ? `Livello ${Math.min(20, me.horse.lvl)}` : `Destriero di livello ${sk.hlvl}`}</div><div class="meta">ric. ${sk.cd} s</div></div></div>`; }).join('');
     $('skills-body').innerHTML = html;
     $('skills-body').querySelectorAll('[data-up]').forEach(b => { b.onclick = () => this.g.net.send({ t: 'skup', s: b.dataset.up }); });
@@ -730,7 +730,7 @@ export class UI {
         <div class="bar"><div class="fill" style="width:${maxed ? 100 : Math.min(100, h.exp / h.need * 100)}%"></div><span>${maxed ? 'Livello massimo' : `${h.exp} / ${h.need}`}</span></div>
         <div>Velocità in sella: <b>+${Math.round((HORSE.speed(h.lvl) - 1) * 100)}%</b></div>
         <div class="tt">Il destriero guadagna esperienza quando combatti in sella. Ai livelli 10 e 20 cambia aspetto.</div>
-        <div style="margin-top:6px">${MOUNT_SKILLS.map(sid => { const sk = SKILLS[sid]; return `<div class="ms ${h.lvl >= sk.hlvl ? '' : 'lock'}"><div class="slot" data-skill-info="${sid}">${skillIconHtml(sid, h.lvl < sk.hlvl)}</div><div>${esc(sk.name)}<br><small class="tt">${h.lvl >= sk.hlvl ? 'disponibile' : 'dal livello ' + sk.hlvl}</small></div></div>`; }).join('')}</div>
+        <div style="margin-top:6px">${(MOUNT_SKILLS[this.g.cls] || []).map(sid => { const sk = SKILLS[sid]; return `<div class="ms ${h.lvl >= sk.hlvl ? '' : 'lock'}"><div class="slot" data-skill-info="${sid}">${skillIconHtml(sid, h.lvl < sk.hlvl)}</div><div>${esc(sk.name)}<br><small class="tt">${h.lvl >= sk.hlvl ? 'disponibile' : 'dal livello ' + sk.hlvl}</small></div></div>`; }).join('')}</div>
         <div class="row" style="justify-content:center"><button class="btn" id="st-train" ${!maxed && me.tael >= cost ? '' : 'disabled'}>Addestra (+${HORSE.trainPct}% · ${cost.toLocaleString('it-IT')} tael)</button></div>`;
     }
     $('stable-body').innerHTML = html;

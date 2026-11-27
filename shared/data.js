@@ -181,6 +181,8 @@ export const BUFFS = {
   velo_ombra: { name: "Aura d'Ombra", glyph: '幽', aura: true, dur: 0, stats: { critPct: [8, 0.3], spdPct: [8, 0.2] }, desc: 'Aura: probabilità di critico e velocità di movimento aumentate finché resta accesa.' },
   respiro_drago: { name: 'Aura del Drago', glyph: '龍', aura: true, dur: 0, stats: { hastePct: [6, 0.2], lifesteal: [3, 0.12] }, desc: 'Aura: rapidità aumentata e i tuoi colpi ti curano di una parte dei danni, finché resta accesa.' },
   benedizione_astri: { name: 'Aura degli Astri', glyph: '星', aura: true, dur: 0, stats: { matkPct: [5, 0.2], atkPct: [4, 0.15], resRegenPct: [15, 0.5] }, desc: 'Aura: attacco e rigenerazione della risorsa aumentati finché resta accesa.' },
+  // tecniche a cavallo
+  velo_stelle: { name: 'Velo di Stelle', glyph: '帳', dur: 8, stats: { dmgTaken: [-12, -0.4], spdPct: [8, 0.2] }, desc: 'Danni subiti ridotti e velocità di movimento aumentata.' },
   // effetti sui nemici
   veleno: { name: 'Veleno', glyph: '毒', dur: 10, debuff: true, tipo: 'veleno', desc: 'Subisce danni nel tempo. Morso e Ventaglio fanno più male ai bersagli avvelenati.' },
   ferita: { name: 'Ferita', glyph: '血', dur: 10, debuff: true, tipo: 'sangue', desc: 'Sanguina: subisce danni nel tempo. I colpi pesanti e il Ventaglio dell\'Ombra fanno più male ai bersagli feriti.' },
@@ -289,15 +291,46 @@ Object.assign(SKILLS, {
 });
 export const supremaOf = (cls) => Object.values(SKILLS).find((s) => s.sup && s.cls === cls) || null;
 
-// ======================= TECNICHE A CAVALLO (tutte le classi, solo in sella)
-// hlvl: livello del destriero richiesto. dmg 'best': il maggiore tra attacco fisico e magico.
+// ======================= TECNICHE A CAVALLO (quattro per classe, solo in sella sul destriero della classe)
+// hlvl: livello del destriero richiesto (1, 5, 10, 15); il livello della tecnica è quello del destriero.
+// Non usano la risorsa della classe e non hanno tempo di lancio: si usano galoppando, ognuna con la sua ricarica.
+// dmg 'best': il maggiore tra attacco fisico e magico. Campi del motore nati per loro (valgono per qualsiasi tecnica):
+//   linea: N        il colpo prende anche chi sta entro N metri dalla linea percorsa (dalla partenza all'arrivo dello
+//                   scatto; senza scatto, da chi colpisce al bersaglio e `lineaOltre` metri più in là);
+//   oltre: N        lo scatto attraversa il bersaglio e finisce N metri dopo di lui;
+//   segue: 'se' | 'bersaglio'   le ondate (`waves`) seguono chi le ha lanciate o il bersaglio, invece di restare sul posto;
+//   scia: { dur, ogni, vita, raggio, mult }   per `dur` secondi si lascia una scia a terra (un tratto ogni `ogni` secondi,
+//                   che resta `vita` secondi): chi la calpesta subisce `mult` a ogni scatto e si vede bruciare.
 Object.assign(SKILLS, {
-  carica_destriero: { name: 'Carica del Destriero', cls: '*', mount: true, hlvl: 1, type: 'strike', dash: true, range: 15, dmg: 'best', mult: [1.4, 0.07], splash: 3.5, stun: [0.8, 0.02], cd: 8, glyph: '駆', color: 0xffd27a, fx: 'dash', desc: 'Il destriero carica il bersaglio travolgendo chi gli sta intorno.' },
-  fendente_corsa: { name: 'Fendente in Corsa', cls: '*', mount: true, hlvl: 1, type: 'aoe_self', dmg: 'best', mult: [1.1, 0.06], radius: 5.5, cd: 2, glyph: '疾', color: 0xffe0a0, fx: 'spin', desc: 'Un ampio fendente dalla sella su tutti i nemici intorno. Il colpo base del grind a cavallo.' },
-  zoccoli_tuono: { name: 'Zoccoli di Tuono', cls: '*', mount: true, hlvl: 8, type: 'aoe_self', dmg: 'best', mult: [1.6, 0.08], radius: 7, stun: [1.2, 0.02], cd: 10, glyph: '蹄', color: 0xc9a66b, fx: 'quake', desc: 'Il destriero si impenna e pesta il suolo: danni ad area e stordimento.' },
-  turbine_galoppo: { name: 'Turbine al Galoppo', cls: '*', mount: true, hlvl: 15, type: 'aoe_self', dmg: 'best', mult: [2.4, 0.1], radius: 8, cd: 18, glyph: '旋', color: 0x9fd4ff, fx: 'wind', desc: 'Un turbine di colpi in pieno galoppo su un\'area molto ampia.' },
+  // --- Lama: urto e mischia dal destriero da guerra
+  falciata_sella: { name: 'Falciata dalla Sella', cls: 'lama', mount: true, hlvl: 1, type: 'aoe_self', dmg: 'best', mult: [1.1, 0.06], radius: 5.5, cd: 2, glyph: '薙', color: 0x9fd4ff, fx: 'spin', desc: 'Un fendente largo dalla sella su tutti i nemici attorno al destriero. Si ripete di continuo: è il colpo con cui si falcia galoppando.' },
+  carica_travolgente: { name: 'Carica Travolgente', cls: 'lama', mount: true, hlvl: 5, type: 'strike', dash: true, linea: 2.4, range: 16, dmg: 'best', mult: [1.4, 0.07], stun: [1, 0.02], cd: 9, glyph: '駆', color: 0x9fd4ff, fx: 'dash', desc: 'Il destriero carica in linea retta fino al bersaglio: travolge e stordisce lui e chiunque trovi sulla strada.' },
+  impennata_ferro: { name: 'Impennata di Ferro', cls: 'lama', mount: true, hlvl: 10, type: 'aoe_self', dmg: 'best', mult: [1.6, 0.08], radius: 6.5, stun: [1.5, 0.03], cd: 11, glyph: '蹄', color: 0x9fd4ff, fx: 'quake', desc: 'Il destriero si impenna e ricade con tutto il peso: gli zoccoli ferrati schiacciano e stordiscono i nemici attorno.' },
+  galoppo_tuono: { name: 'Galoppo del Tuono', cls: 'lama', mount: true, hlvl: 15, type: 'strike', dash: true, linea: 2.6, range: 24, dmg: 'best', mult: [0.75, 0.035], splash: 7, radius: 7, waves: 3, waveGap: 0.4, stun: [1, 0.02], cd: 20, glyph: '轟', color: 0x9fd4ff, fx: 'dash', desc: 'Una carica da lontano fra le saette: travolge chi sta sulla linea e, all\'arrivo, tre scariche di fulmini cadono su tutti i nemici attorno al bersaglio, stordendoli.' },
+  // --- Ombra: mordi e fuggi dal corsiero nero; incide Marchi come a piedi e l'Agguato li fa esplodere
+  lame_galoppo: { name: 'Lame al Galoppo', cls: 'ombra', mount: true, hlvl: 1, type: 'aoe_target', range: 16, radius: 4.5, dmg: 'best', mult: [0.72, 0.036], marca: 1, cd: 2, glyph: '投', color: 0xb08ae0, fx: 'arrow', desc: 'Senza fermarti scagli un ventaglio di lame (di frecce, con l\'arco) fino a 16 metri: una sul bersaglio e una su ogni nemico entro 4,5 metri da lui. Ogni lama incide un Marchio.' },
+  passaggio_tagliente: { name: 'Passaggio Tagliente', cls: 'ombra', mount: true, hlvl: 5, type: 'strike', dash: true, oltre: 5, linea: 3, range: 14, dmg: 'best', mult: [1.45, 0.07], marca: 2, cd: 8, glyph: '疾', color: 0xb08ae0, fx: 'dash', desc: 'Il corsiero attraversa il bersaglio e prosegue oltre: tutti i nemici sfiorati lungo la corsa restano con due Marchi.' },
+  agguato_buio: { name: 'Agguato dal Buio', cls: 'ombra', mount: true, hlvl: 10, type: 'strike', dash: true, behindDash: true, range: 20, dmg: 'best', mult: [1.05, 0.052], esplode: { pct: 45, raggio: 6, catena: 60, energia: 0 }, slow: { dur: 3 }, cd: 12, glyph: '潜', color: 0x7a5aa8, fx: 'dash', desc: 'Cavallo e cavaliere svaniscono nel fumo e riappaiono alle spalle del bersaglio con un colpo solo che lo rallenta e fa esplodere i suoi Marchi (+45% a Marchio); i nemici marchiati entro 6 metri saltano a catena.' },
+  branco_ombre: { name: "Branco d'Ombre", cls: 'ombra', mount: true, hlvl: 15, type: 'strike', range: 18, dmg: 'best', mult: [0.68, 0.034], splash: 5, radius: 5, waves: 4, waveGap: 0.4, segue: 'bersaglio', marca: 1, cd: 18, glyph: '群', color: 0x7a5aa8, fx: 'rain', desc: 'Dal corsiero si staccano quattro sagome d\'ombra che inseguono il bersaglio una dopo l\'altra, travolgendo lui e chi gli sta accanto: ogni sagoma incide un Marchio. Tu intanto continui a galoppare.' },
+  // --- Monaco: chi e fuoco dal sauro
+  onda_ardente: { name: 'Onda Ardente', cls: 'monaco', mount: true, hlvl: 1, type: 'strike', linea: 2, lineaOltre: 3, range: 12, dmg: 'best', mult: [1.05, 0.055], cd: 2.5, glyph: '波', color: 0xffa040, fx: 'wave', desc: 'Dal palmo parte un\'onda di chi infuocato che corre dritta fino al bersaglio e lo oltrepassa, colpendo tutti i nemici sulla sua strada.' },
+  zoccoli_fiamma: { name: 'Zoccoli di Fiamma', cls: 'monaco', mount: true, hlvl: 5, type: 'aoe_self', radius: 3, dmg: 'best', mult: [0.5, 0.025], scia: { dur: 5, ogni: 0.5, vita: 3, raggio: 2.3, mult: [0.14, 0.007] }, cd: 12, glyph: '炎', color: 0xff7a30, fx: 'fire', desc: 'Per 5 secondi gli zoccoli del sauro incendiano il suolo: dove passi resta una scia di fiamme per 3 secondi e chi la calpesta brucia. Fatti inseguire e portali sul fuoco.' },
+  balzo_gru: { name: 'Balzo della Gru Ardente', cls: 'monaco', mount: true, hlvl: 10, type: 'aoe_target', range: 13, radius: 4.5, dmg: 'best', mult: [1.7, 0.085], stun: [1.2, 0.03], cd: 10, glyph: '鶴', color: 0xffa040, fx: 'quake', desc: 'Balzi dalla sella fino al bersaglio, a 13 metri, colpisci il suolo con un palmo di fuoco che stordisce chi è lì attorno e torni in sella d\'un salto.' },
+  ruota_sole: { name: 'Ruota del Sole', cls: 'monaco', mount: true, hlvl: 15, type: 'aoe_self', radius: 6, dmg: 'best', mult: [0.8, 0.04], waves: 3, waveGap: 0.3, segue: 'se', dot: { mult: [0.1, 0.005], dur: 6, every: 2, tipo: 'fuoco' }, cd: 16, glyph: '輪', color: 0xffb04a, fx: 'spin', desc: 'Ti alzi sulla sella e ruoti tre calci di fuoco tutt\'attorno, senza smettere di galoppare: i nemici colpiti restano in fiamme.' },
+  // --- Mistico: magia a distanza dal bianco destriero
+  dardi_astri: { name: "Dardi d'Astri", cls: 'mistico', mount: true, hlvl: 1, type: 'strike', range: 20, dmg: 'best', mult: [1.1, 0.06], splash: 5, cd: 2, glyph: '星', color: 0xa0d8ff, fx: 'bolt', desc: 'Tre dardi di luce stellare partono dalla sella, fino a 20 metri: colpiscono il bersaglio e chi gli sta accanto. Si lanciano galoppando, senza tempo di lancio.' },
+  velo_stelle: { name: 'Velo di Stelle', cls: 'mistico', mount: true, hlvl: 5, type: 'buff', buff: 'velo_stelle', gruppo: 15, offgcd: true, cd: 20, glyph: '帳', color: 0xd8f0ff, fx: 'shield', desc: 'Un velo di stelle avvolge te e i compagni di gruppo entro 15 metri per 8 secondi: danni subiti ridotti e passo più svelto.' },
+  cometa: { name: 'Cometa', cls: 'mistico', mount: true, hlvl: 10, type: 'aoe_target', range: 22, radius: 6, dmg: 'best', mult: [2.0, 0.1], stun: [1, 0.02], cd: 12, glyph: '彗', color: 0xa0d8ff, fx: 'meteor', desc: 'Chiami una cometa dal cielo sul bersaglio, fino a 22 metri: esplode su tutta la zona e stordisce chi è sotto.' },
+  pioggia_stelle: { name: 'Pioggia di Stelle', cls: 'mistico', mount: true, hlvl: 15, type: 'aoe_self', radius: 6.5, dmg: 'best', mult: [0.5, 0.025], waves: 6, waveGap: 0.5, segue: 'se', slow: { dur: 2 }, cd: 18, glyph: '雨', color: 0xa0d8ff, fx: 'rain', desc: 'Per 3 secondi le stelle cadono attorno a te e ti seguono lungo il percorso: sei scrosci su tutti i nemici vicini al destriero, rallentati dal primo.' },
 });
-export const MOUNT_SKILLS = ['carica_destriero', 'fendente_corsa', 'zoccoli_tuono', 'turbine_galoppo'];
+// Le quattro tecniche a cavallo di ogni classe, in ordine di livello del destriero (la barra rapida in sella).
+export const MOUNT_SKILLS = {
+  lama: ['falciata_sella', 'carica_travolgente', 'impennata_ferro', 'galoppo_tuono'],
+  ombra: ['lame_galoppo', 'passaggio_tagliente', 'agguato_buio', 'branco_ombre'],
+  monaco: ['onda_ardente', 'zoccoli_fiamma', 'balzo_gru', 'ruota_sole'],
+  mistico: ['dardi_astri', 'velo_stelle', 'cometa', 'pioggia_stelle'],
+};
+export const mountSkillsOf = (cls) => MOUNT_SKILLS[cls] || [];
 
 for (const [id, sk] of Object.entries(SKILLS)) sk.id = id;
 

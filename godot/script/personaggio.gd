@@ -615,7 +615,7 @@ func _singola(n: String, durata_max := 0.8) -> void:
 	var vel := maxf(1.0, lung / durata_max)
 	if _albero != null:
 		_nodo_colpo.animation = nome
-		_nodo_singola.filter_enabled = _muove
+		_nodo_singola.filter_enabled = _muove or in_sella      # in sella il colpo prende solo la parte alta: le gambe restano sul cavallo
 		_albero.set("parameters/vel_colpo/scale", vel)
 		_albero.set("parameters/singola/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 		return

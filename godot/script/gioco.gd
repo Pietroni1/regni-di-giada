@@ -750,12 +750,12 @@ func livello_tecnica(sid: String) -> int:
 	return int(io.get("sk", {}).get(sid, 0))
 
 
-## Barra rapida in uso: in sella ci sono le tecniche a cavallo.
+## Barra rapida in uso: in sella ci sono le quattro tecniche a cavallo della propria classe.
 func barra() -> Array:
 	if int(io.get("mounted", 0)) != 1:
 		return io.get("qb", [])
 	var b: Array = []
-	for sid in Dati.gioco.MOUNT_SKILLS:
+	for sid in TecnicheDestriero.della_classe(classe):
 		b.append({"k": "s", "id": sid})
 	return b
 
@@ -819,7 +819,9 @@ func usa_tecnica(sid: String) -> void:
 			return
 		me.guarda(bersaglio)
 		id_b = bersaglio.id
-		intento = {"tipo": "attacco", "id": bersaglio.id}
+		# le tecniche a cavallo a distanza (o che attraversano il bersaglio) si lanciano galoppando: non ci si butta in mischia
+		if not (sk.get("mount", false) and (not sk.get("dash", false) or sk.has("oltre"))):
+			intento = {"tipo": "attacco", "id": bersaglio.id}
 	elif bersaglio != null:
 		id_b = bersaglio.id
 	if tipo == "blink":

@@ -110,7 +110,7 @@ function pulisciTecniche(ch) {
     ch.skillPts = (ch.skillPts || 0) + Math.max(0, Math.min(ch.skills[sid], SKILL_MAX_POINTS) - 1);
     delete ch.skills[sid];
   }
-  if (Array.isArray(ch.qb)) ch.qb = ch.qb.map(q => (q && q.k === 's' && !SKILLS[q.id] ? null : q));
+  if (Array.isArray(ch.qb)) ch.qb = ch.qb.map(q => (q && q.k === 's' && (!SKILLS[q.id] || SKILLS[q.id].mount) ? null : q));
 }
 
 // Adegua i personaggi creati con versioni precedenti dei dati.
@@ -363,7 +363,7 @@ export class World {
       kind: 'player', sess, ch, name: ch.name, cls: ch.cls, kingdom: ch.kingdom, lvl: ch.lvl,
       x: ch.x, z: ch.z, r: 0, hp: ch.hp, buffs: [], hots: [], dots: [], debuffs: [], cds: {},
       rtype: CLASSES[ch.cls].res, res: 0, rmax: 100, pts: 0, gcdUntil: 0, casting: null, chainIdx: 0, chainAt: 0,
-      shield: 0, shieldUntil: 0, dmgPct: 0, haste: 0, mounted: false, mountUntil: 0, slancio: 0, slancioUntil: 0, sup: 0, waves: [],
+      shield: 0, shieldUntil: 0, dmgPct: 0, haste: 0, mounted: false, mountUntil: 0, slancio: 0, slancioUntil: 0, sup: 0, waves: [], scie: [],
       serie: 0, serieUntil: 0,
       nextAttack: 0, dead: false, known: new Map(), knownVis: new Map(), stunUntil: 0, slowUntil: 0,
       lastMoveAt: NOW(), lastCombat: 0, selfDirty: true, invDirty: true, resDirty: false, gm: !!sess.gm, online: true,
@@ -451,7 +451,8 @@ export class World {
   // Livello effettivo di un'abilità per il giocatore (0 = non disponibile).
   lvlOf(p, sid) {
     const sk = SKILLS[sid];
-    if (sk && sk.mount) return p.mounted && p.ch.horse && p.ch.horse.lvl >= sk.hlvl ? Math.min(SKILL_MAX, p.ch.horse.lvl) : 0;
+    // tecniche a cavallo: quelle della propria classe, in sella, col destriero al livello richiesto (livello = quello del destriero)
+    if (sk && sk.mount) return p.mounted && sk.cls === p.cls && p.ch.horse && p.ch.horse.lvl >= sk.hlvl ? Math.min(SKILL_MAX, p.ch.horse.lvl) : 0;
     if (!sk || sk.cls !== p.cls || p.lvl < sk.lvl) return 0;
     if (sk.via && sk.via !== p.ch.via) return 0;
     if (sk.finoVia && p.ch.via) return 0;                    // il finale di base lascia il posto a quello della Via
@@ -681,6 +682,9 @@ export class World {
       p.waves = p.waves.filter(w => w.at > t);
       for (const w of due) {
         const sk = SKILLS[w.sid], rad = sk.radius || 0;
+        if (sk.mount && !p.mounted) continue;
+        if (sk.segue === 'se') { w.x = p.x; w.z = p.z; }
+        else if (sk.segue === 'bersaglio') { const b = this.ents.get(w.tid); if (b && this.canAttack(p, b)) { w.x = b.x; w.z = b.z; } }
         const list = rad ? this.hostilesAround(p, w.x, w.z, rad) : [this.ents.get(w.tid)].filter(e => this.canAttack(p, e));
         for (const e of list) {
           for (let i = 0; i < (rad ? 1 : (sk.hits || 1)); i++) if (this.canAttack(p, e)) this.hit(p, e, w.dmg * (1 + this.vulnFrom(e, p) / 100), { sk: w.sid, aoe: rad > 0, i, post: w.post });
@@ -688,6 +692,7 @@ export class World {
         }
       }
     }
+    if (p.scie.length) this.tickScie(p, t);
     // risorsa
     const R = RESOURCES[p.rtype], ooc = t - p.lastCombat > 6000, old = p.res;
     const inSerie = p.serie > 0 && t <= p.serieUntil;
@@ -702,6 +707,29 @@ export class World {
       p.hp = Math.min(p.maxHp, p.hp + p.maxHp * (ooc ? 0.02 : 0.004) + p.maxHp * p.hpRegen / 100);
       p.resDirty = true; this.touch(p);
     }
+  }
+
+  // Scie a terra (campo `scia` della tecnica, es. Zoccoli di Fiamma): finché dura, chi l'ha lanciata lascia un tratto
+  // dove passa; a ogni scatto chi sta su un tratto ancora acceso subisce il colpo (una volta sola, anche su più tratti)
+  // e si vede bruciare. Una tecnica a cavallo smette di lasciare tratti scendendo di sella; quelli già a terra restano.
+  tickScie(p, t) {
+    for (const s of p.scie) {
+      if (t < s.prox) continue;
+      const sk = SKILLS[s.sid], sc = sk.scia;
+      s.prox += sc.ogni * 1000;
+      if (t < s.fino && !(sk.mount && !p.mounted)) s.punti.push({ x: p.x, z: p.z, fino: t + sc.vita * 1000 });
+      s.punti = s.punti.filter(q => q.fino > t);
+      if (!s.punti.length) continue;
+      for (const e of this.ents.values()) {
+        if ((e.kind !== 'mob' && e.kind !== 'player') || !this.canAttack(p, e)) continue;
+        const rg = sc.raggio + this.radiusOf(e);
+        if (!s.punti.some(q => Math.hypot(e.x - q.x, e.z - q.z) <= rg)) continue;
+        this.hit(p, e, s.dmg * (1 + this.vulnFrom(e, p) / 100), { sk: s.sid, aoe: true });
+        this.fx(e, { k: 'aff', d: e.id, a: s.sid, ms: Math.round(sc.ogni * 1000 + 400) });
+        p.lastCombat = t;
+      }
+    }
+    p.scie = p.scie.filter(s => t < s.fino || s.punti.length);
   }
 
   tickDots(e, t) {
@@ -1139,7 +1167,7 @@ export class World {
     if (up) {
       const name = HORSE.names[HORSE.tierOf(h.lvl)];
       this.send(p, { t: 'notice', m: `Il tuo destriero è salito al livello ${h.lvl}!` });
-      const unlocked = MOUNT_SKILLS.filter(s => SKILLS[s].hlvl === h.lvl).map(s => SKILLS[s].name);
+      const unlocked = (MOUNT_SKILLS[p.cls] || []).filter(s => SKILLS[s].hlvl === h.lvl).map(s => SKILLS[s].name);
       if (unlocked.length) this.sys(p, `Nuova tecnica a cavallo: ${unlocked.join(', ')}`);
       if (h.lvl === 10 || h.lvl === 20) this.sys(p, `Il tuo cavallo è diventato un ${name}!`);
       this.recalc(p); p.vis++; this.touch(p);
@@ -1185,7 +1213,7 @@ export class World {
 
   playerDie(p, killer) {
     p.dead = true; p.hp = 0; p.deadAt = NOW();
-    p.buffs = []; p.hots = []; p.dots = []; p.waves = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0; p.serie = 0;
+    p.buffs = []; p.hots = []; p.dots = []; p.waves = []; p.scie = []; p.debuffs = []; p.casting = null; p.pts = 0; p.shield = 0; p.serie = 0;
     if (p.aura) { p.aura = null; this.fx(p, { k: 'aura', s: p.id, a: '' }); }
     p.mounted = false; p.mountUntil = 0; p.vis++;
     this.recalc(p);
@@ -1374,6 +1402,17 @@ export class World {
     return out;
   }
 
+  // Nemici entro `larg` metri dal segmento (x1,z1)-(x2,z2): cariche che travolgono, onde che corrono dritte.
+  hostilesLinea(p, x1, z1, x2, z2, larg) {
+    const out = [], dx = x2 - x1, dz = z2 - z1, l2 = dx * dx + dz * dz || 1e-6;
+    for (const e of this.ents.values()) {
+      if ((e.kind !== 'mob' && e.kind !== 'player') || !this.canAttack(p, e)) continue;
+      const k = clamp(((e.x - x1) * dx + (e.z - z1) * dz) / l2, 0, 1);
+      if (Math.hypot(e.x - (x1 + dx * k), e.z - (z1 + dz * k)) <= larg + this.radiusOf(e)) out.push(e);
+    }
+    return out;
+  }
+
   friendly(p, target, range) {
     return (target && target.kind === 'player' && this.alleato(p, target) && !target.dead && dist(target, p) <= range + 2) ? target : p;
   }
@@ -1425,7 +1464,7 @@ export class World {
     const t = NOW();
     const lvl = this.lvlOf(p, sid);
     if (p.mounted && !sk.mount) return this.skfail(p, sid, 'Scendi da cavallo per usare le tecniche della tua classe (R)');
-    if (!lvl) return this.skfail(p, sid, sk.mount ? (p.mounted ? `Il destriero deve essere di livello ${sk.hlvl}` : 'Le tecniche a cavallo si usano in sella (R)') : 'Non conosci ancora questa abilità');
+    if (!lvl) return this.skfail(p, sid, sk.mount ? (sk.cls !== p.cls ? 'Questa tecnica a cavallo è di un\'altra classe' : p.mounted ? `Il destriero deve essere di livello ${sk.hlvl}` : 'Le tecniche a cavallo si usano in sella (R)') : 'Non conosci ancora questa abilità');
     if (p.stunUntil > t) return this.skfail(p, sid, 'Sei stordito!');
     if ((p.cds[sid] || 0) > t + 150) return this.skfail(p, sid, 'Abilità in ricarica');
     if (!sk.offgcd && (p.gcdUntil > t + 150 || p.casting)) return this.skfail(p, sid);
@@ -1592,6 +1631,7 @@ export class World {
     if (ris) fxd.ris = 1;                                 // finale ad area: il client lo mostra su tutta la zona
     switch (sk.type) {
       case 'strike': {
+        const partenza = { x: p.x, z: p.z };
         if (sk.dash) {
           const ang = Math.atan2(target.x - p.x, target.z - p.z);
           const off = this.radiusOf(target) + 1.1;
@@ -1602,18 +1642,31 @@ export class World {
           if (sk.behindDash) { dx = -Math.sin(target.r || 0) * off; dz = -Math.cos(target.r || 0) * off; fxd.tp = 1; }
           // riposizionamento (Ala di Vento): si arriva a dashDist metri dal bersaglio, sulla linea fra lui e te
           if (sk.dashDist) { const l = Math.hypot(p.x - target.x, p.z - target.z) || 1; dx = (p.x - target.x) / l * sk.dashDist; dz = (p.z - target.z) / l * sk.dashDist; }
+          // passaggio (oltre): lo scatto attraversa il bersaglio e finisce più in là, sulla stessa linea
+          if (sk.oltre) { dx = Math.sin(ang) * sk.oltre; dz = Math.cos(ang) * sk.oltre; }
           // arrivo dello scatto: dentro i limiti della zona in cui si è (mondo o istanza della cripta) e, nella cripta,
           // su un punto calpestabile — altrimenti si arretra lungo la traiettoria finché lo è
           const [ax, az] = this.arrivoScatto(p, target.x + dx, target.z + dz);
           p.x = ax; p.z = az;
-          p.r = Math.atan2(target.x - p.x, target.z - p.z);
+          p.r = sk.oltre ? ang : Math.atan2(target.x - p.x, target.z - p.z);
           if (p.casting) p.casting = null;
           this.touch(p);
           this.send(p, { t: 'pos', x: r1(p.x), z: r1(p.z), r: r2(p.r) });
           fxd.fx = from.x; fxd.fz = from.z; fxd.tx = r1(p.x); fxd.tz = r1(p.z);
         }
         for (let i = 0; i < (sk.hits || 1); i++) strikeOne(target, i, sk.hits || 1);
-        if (sk.splash) for (const e of this.hostilesAround(p, target.x, target.z, sk.splash)) if (e !== target) { strikeOne(e); control(e); }
+        const presi = new Set([target]);
+        if (sk.splash) for (const e of this.hostilesAround(p, target.x, target.z, sk.splash)) if (e !== target) { presi.add(e); strikeOne(e); control(e); }
+        if (sk.linea) {
+          // colpo in linea: dalla partenza all'arrivo dello scatto, oppure (senza scatto) fino al bersaglio e un po' oltre
+          let ax = p.x, az = p.z;
+          if (!sk.dash) {
+            const l = Math.hypot(target.x - p.x, target.z - p.z) || 1, piu = sk.lineaOltre || 0;
+            ax = target.x + (target.x - p.x) / l * piu; az = target.z + (target.z - p.z) / l * piu;
+            fxd.tx = r1(ax); fxd.tz = r1(az);
+          }
+          for (const e of this.hostilesLinea(p, partenza.x, partenza.z, ax, az, sk.linea)) if (!presi.has(e)) { presi.add(e); strikeOne(e); control(e); }
+        }
         if (ris) { for (const e of this.hostilesAround(p, target.x, target.z, COMBAT.risRaggio)) if (e !== target) { strikeOne(e); control(e); } fxd.x = r1(target.x); fxd.z = r1(target.z); }
         if (sk.interrupt) this.interrompi(p, target);
         control(target);
@@ -1668,7 +1721,7 @@ export class World {
           const party = this.parties.get(p.party);
           for (const id of (party ? party.members : [])) {
             const q = this.ents.get(id);
-            if (q && q !== p && !q.dead && this.alleato(p, q) && dist(p, q) <= sk.gruppo) { this.addBuff(q, sk.buff, lvl, true); this.recalc(q); }
+            if (q && q !== p && !q.dead && this.alleato(p, q) && dist(p, q) <= sk.gruppo) { this.addBuff(q, sk.buff, lvl, true); this.recalc(q); this.fx(q, { k: 'sk', s: q.id, sk: sid, ally: 1 }); }
           }
         }
         if (sk.manaPct && p.rtype === 'mana') { p.res = Math.min(p.rmax, p.res + p.rmax * sk.manaPct / 100); p.resDirty = true; }
@@ -1761,6 +1814,10 @@ export class World {
         for (const e of presi) strikeOne(e, 1);
       }
       scalaColpo = 1;
+    }
+    if (sk.scia) {
+      p.scie = p.scie.filter(s => s.sid !== sid);
+      p.scie.push({ sid, fino: t + sk.scia.dur * 1000, prox: t, punti: [], dmg: base * skillVal(sk.scia.mult, lvl) * (1 + (p.dmgPct + bonus) / 100) });
     }
     if (sk.waves > 1 && offensive) {
       const cx = sk.type === 'aoe_self' ? p.x : target.x, cz = sk.type === 'aoe_self' ? p.z : target.z;
@@ -2463,7 +2520,7 @@ export class World {
       }
       case 'abilita': {                                                          // per le prove: /abilita id livello
         const sk = SKILLS[a[0]];
-        if (!sk || sk.cls !== p.cls) return sys('Abilità inesistente o di un\'altra classe.');
+        if (!sk || sk.cls !== p.cls || sk.mount) return sys('Abilità inesistente o di un\'altra classe.');
         p.ch.skills[a[0]] = clamp(parseInt(a[1], 10) || 1, 1, SKILL_MAX);
         p.selfDirty = true;
         return sys(`${sk.name} portata al livello ${p.ch.skills[a[0]]}.`);
@@ -2682,7 +2739,7 @@ export class World {
 
   onSkillUp(p, sid) {
     const sk = SKILLS[sid];
-    if (!sk || sk.cls !== p.cls) return;
+    if (!sk || sk.cls !== p.cls || sk.mount) return;
     if (sk.via && p.ch.via !== sk.via) return this.err(p, "Questa abilità appartiene a un'altra Via");
     const cur = this.lvlOf(p, sid);
     if (!cur) return this.err(p, `Si sblocca al livello ${sk.lvl}`);
@@ -2712,7 +2769,7 @@ export class World {
     if (i < 0 || i >= QB_SIZE) return;
     if (v === null) { p.ch.qb[i] = null; p.selfDirty = true; return; }
     if (!v || typeof v !== 'object') return;
-    if (v.k === 's' && SKILLS[v.id] && SKILLS[v.id].cls === p.cls) p.ch.qb[i] = { k: 's', id: v.id };
+    if (v.k === 's' && SKILLS[v.id] && SKILLS[v.id].cls === p.cls && !SKILLS[v.id].mount) p.ch.qb[i] = { k: 's', id: v.id };
     else if (v.k === 'i' && ITEMS[v.id]) p.ch.qb[i] = { k: 'i', id: v.id };
     else return;
     p.selfDirty = true;
