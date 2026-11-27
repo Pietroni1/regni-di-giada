@@ -1068,8 +1068,9 @@ affissi, boss e loro meccaniche sono quelli di prima.
   scacchi dorati). **Forgia**: sale comuni basalto e ferro con la ruota dentata; *Fonderia* scoria nera piena di crepe
   accese; *Galleria dei Mantici* lamiera d'acciaio azzurra ribattuta, tubi di bronzo, filo freddo acceso; *Ponte e
   Isola* ossidiana a faccette; *Cuore* sole a raggi. Una Prova nuova = una voce in `TEMI` e una in `ALI_TEMI`.
-  Viste in anteprima tutte le ali delle due Prove. Non viste in gioco dopo i temi (in gioco viste prima: ingresso,
-  rotonda, mappa, ossario, sala dei sigilli con i mostri).
+  Viste in anteprima tutte le ali delle due Prove; in gioco col server ingresso, rotonda, mappa (M), sala dei sigilli
+  con i mostri e, coi temi, Catacombe e Galleria delle Lanterne. Non viste in gioco le ali della Forgia. Da sapere: i
+  pilastri non si dissolvono davanti alla visuale (in una sala piena di colonne possono coprire il personaggio).
 - **Anteprima senza server**: `godot --path godot res://scene/anteprima_prova.tscn --fixed-fps 30 -- --prova=cripta|forgia
   --var=0 [--porte=sigilli:1] [--rit=sigilli] [--tes=1] --cartella=DIR [--viste=nome:x,y,z:tx,ty,tz;…] [--alto=1]
   [--mappa=1] [--stat=1] [--conta=1]`.
