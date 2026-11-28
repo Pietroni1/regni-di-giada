@@ -36,6 +36,8 @@ func _ready() -> void:
 	for i in range(gradi.size()):
 		var g: int = gradi[i]
 		var wear := Entita.completo(classe, g, colori)
+		if _arg.has("tenebra") and Tenebra.ha_modelli(modello, classe):
+			wear = {classe + "_base": colori, classe + "_t": colori, classe + "_te": colori}
 		if classe == "dama":
 			# --classe=dama: gli abiti delle PNG donne (gradi 0-2), con le tinte di prova
 			wear = {"dama_%d" % g: {"stoffa": [Color(0.55, 0.08, 0.12), Color(0.1, 0.35, 0.45), Color(0.5, 0.06, 0.05)][clampi(g, 0, 2)],
@@ -50,7 +52,8 @@ func _ready() -> void:
 		var p := Personaggio.umano(modello, wear, ARMI.get(classe, "sword"), clampi(g, 1, 4), Color(0.8, 0.56, 0.4), colori.fascia)
 		if _arg.has("tenebra"):                    # prova dello stile dark fantasy: copricapo, occhi, mantello e velo
 			var acc: Color = Tenebra.ACCENTI.get(classe, Color(0.6, 0.7, 1.0))
-			Tenebra.trucca(p, classe, acc)
+			if not Tenebra.ha_modelli(modello, classe):
+				Tenebra.trucca(p, classe, acc)
 			Tenebra.vela_corpo(p, acc, 0.5, 1.25)
 		var stile := String(look.get("hairStyle", "short"))
 		if donna and stile in ["topknot", "bald"]:

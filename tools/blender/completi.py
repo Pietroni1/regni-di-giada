@@ -2621,6 +2621,260 @@ def chioma(S, T):
         ciocca(pts, [0.05, 0.06, 0.056, 0.02], n_testa, m=12, spess=0.004, arco=0.008)
 
 
+# ======================= stile «tenebra»: completi dark fantasy (ramo prova-dark-fantasy) =======================
+# Un completo e un copricapo per classe, capi `<classe>_t` e `<classe>_te`, costruiti con gli stessi strumenti degli
+# altri. Figure di genere (cavaliere nero, sicario incappucciato, pellegrino, veggente bendata), niente di copiato.
+# I colori qui sono quelli di ripiego: il gioco li dà per parte (Tenebra.colori in godot/script/tenebra.gd).
+FERRO_N = (0.075, 0.08, 0.10)
+BRUNITO = (0.17, 0.18, 0.21)
+CUOIO_N = (0.05, 0.04, 0.035)
+OSSO_T = (0.52, 0.48, 0.40)
+ARGENTO_T = (0.45, 0.5, 0.6)
+BRACE = (1.0, 0.25, 0.1)
+
+
+def mantello_lacero(S, C, parte, colore, z_fondo, largo=110, stacco=0.07, cols=21, strappo=0.22, seme=3):
+    """Mantello dietro le spalle con l'orlo a brandelli: ogni colonna finisce a una quota sua, a denti irregolari."""
+    u = S.u
+    zt = S.z_collo - 0.03 * u
+    angoli = [90 - largo / 2 + largo * i / (cols - 1) for i in range(cols)]
+    fondi = []
+    for i in range(cols):
+        dente = abs(((i * 0.37 + seme * 0.13) % 1.0) - 0.5) * 2
+        rotto = 0.55 + 0.45 * abs(math.sin(i * 12.9898 + seme * 78.233))
+        fondi.append(z_fondo + strappo * u * (0.12 + 0.88 * dente * rotto))
+    n = max(5, int((zt - z_fondo) / (0.05 * u)))
+    inv = [0.0] * cols
+    righe = []
+    for k in range(n + 1):
+        t = k / n
+        riga = []
+        for i, a in enumerate(angoli):
+            z = zt - (zt - fondi[i]) * t
+            c = S.centro(_lim(z, S.z_cavallo, S.z_collo))
+            r = S.raggio(c, S.dir(a), 0.04 * u, 0.32 * u)
+            inv[i] = max(inv[i], r)
+            rr = inv[i] + stacco + 0.05 * u * t ** 1.5 + 0.022 * u * t * (0.5 + 0.5 * math.cos(2 * math.pi * 4 * i / (cols - 1)))
+            riga.append(Vector((c.x, c.y, z)) + S.dir(a) * rr)
+        righe.append(riga)
+    righe.reverse()
+    zmin = min(fondi)
+    pesi = lambda co: (lambda t: {'chest': 1 - t, 'spine_1': t * 0.6, 'spine': t * 0.4})(_lim((zt - co.z) / (zt - zmin), 0, 1))
+    S.griglia(C, parte, righe, colore, spessore=0.006 * u, pesi=pesi)
+
+
+def _raggio_elmo(T, stacco, becco=0.0):
+    """Raggio di un guscio attorno alla testa: mai più stretto del cranio (il volto e il collo restano dentro)."""
+    u = T.S.u
+    z0 = T.zf + 0.02 * u
+    z_naso = T.zf - 0.09 * u
+
+    def raggio(fa, z):
+        base = max(T.r(fa, min(z, z0)), T.r(fa, T.zf) * 0.95) + stacco
+        if becco:
+            base += becco * max(0.0, math.cos(math.radians(fa))) ** 3 * math.exp(-((z - z_naso) / (0.06 * u)) ** 2)
+        return base
+    return raggio
+
+
+def _calotta(S, T, C, parte, colore, raggio, z0, zt, indietro=0.0, aguzza=False, na=28, avanti=0.0):
+    """Cupola chiusa da z0 alla cima zt. aguzza: profilo a punta invece che tondo; indietro: la cima piega verso la
+    nuca; avanti: l'orlo sporge sulla fronte (cappucci)."""
+    u = S.u
+    fas = [-180 + 360 * i / na for i in range(na)]
+    righe = []
+    nd = 8
+    for k in range(nd + 1):
+        t = k / nd * 0.985
+        z = z0 + (zt - z0) * t
+        sc = (1 - t ** 1.25) ** 0.8 if aguzza else (1 - t * t) ** 0.5
+        riga = []
+        for fa in fas:
+            r = raggio(fa, z0) + avanti * max(0.0, math.cos(math.radians(fa))) ** 2 * (1 - t)
+            riga.append(Vector((0, T.cy + indietro * t * t, z)) + T.n(fa) * r * sc)
+        righe.append(riga)
+    cen = Vector((0, T.cy, T.zf))
+    S.griglia(C, parte, righe, colore, chiusa=True, spessore=0.006 * u, pesi=PT, fuori=lambda p: (Vector(p) - cen).normalized())
+    return Vector((0, T.cy + indietro * 0.97, zt))
+
+
+def _elmo_chiuso(S, T, C, parte, colore, stacco, punta=0.0, becco=0.0, na=28):
+    """Elmo che chiude tutta la testa, dal collo alla cima; ritorna (raggio(fa, z), cima)."""
+    u = S.u
+    raggio = _raggio_elmo(T, stacco, becco)
+    z0 = T.zf + 0.02 * u
+    zb = T.z_collo + 0.012 * u
+    fas = [-180 + 360 * i / na for i in range(na)]
+    righe = []
+    for k in range(8):
+        z = zb + (z0 - zb) * k / 7
+        righe.append([Vector((0, T.cy, z)) + T.n(fa) * raggio(fa, z) for fa in fas])
+    cen = Vector((0, T.cy, T.zf))
+    S.griglia(C, parte, righe, colore, chiusa=True, spessore=0.006 * u, pesi=PT, fuori=lambda p: (Vector(p) - cen).normalized())
+    cima = _calotta(S, T, C, parte, colore, raggio, z0, T.cima.z + stacco + punta, aguzza=punta > 0.05 * u, na=na)
+    return raggio, cima
+
+
+def _cappuccio(S, T, C, parte, colore, stacco, punta=0.05, indietro=0.05, mezzo=50, cade=0.07):
+    """Cappuccio aperto sul volto: calotta che sporge sulla fronte, fianchi e nuca che scendono e si allargano sulle spalle."""
+    u = S.u
+    base = _raggio_elmo(T, stacco)
+    z0 = T.zf + 0.035 * u
+    zb = T.z_collo - 0.03 * u
+
+    def raggio(fa, z):
+        giu = max(0.0, (T.zf - 0.10 * u - z) / (0.13 * u))
+        return base(fa, z) + cade * giu ** 1.3
+    na = 22
+    fas = [mezzo + (360 - 2 * mezzo) * i / (na - 1) for i in range(na)]
+    righe = []
+    for k in range(8):
+        z = zb + (z0 - zb) * k / 7
+        righe.append([Vector((0, T.cy, z)) + T.n(fa) * raggio(fa, z) for fa in fas])
+    cen = Vector((0, T.cy, T.zf))
+    S.griglia(C, parte, righe, colore, spessore=0.005 * u, pesi=PT, fuori=lambda p: (Vector(p) - cen).normalized())
+    return _calotta(S, T, C, parte, colore, raggio, z0, T.cima.z + stacco + punta, indietro=indietro, aguzza=punta > 0.08 * u,
+                    avanti=0.03 * u)
+
+
+def _occhi_accesi(S, T, C, z, colore, apri=17, r=0.009):
+    for s in (1, -1):
+        S.gemma(C, 'gemma', T.p(s * apri, z, 0.003 * S.u), r * S.u, T.n(s * apri), colore, pesi=PT)
+
+
+def tenebra(S, T, classe):
+    """Il completo dark fantasy della classe (capo `<classe>_t`) e il suo copricapo (`<classe>_te`)."""
+    u = S.u
+    C = f'{classe}_t'
+    E = f'{classe}_te'
+    zv = S.z_vita
+    AV = Vector((0, -1, 0))
+    z_occhi = T.zf - 0.052 * u
+    zp = S.B['chest'].head_local.z + S.B['chest'].length * 0.42
+    if classe == 'lama':
+        # cavaliere dell'eclissi: piastre nere, spallaccio sinistro enorme con tre lame, gorgiera alta, mantello a brandelli
+        corazza(S, C, 'piastre', FERRO_N, zv - 0.10 * u, file=5, dente=0.016, stacco=0.042, scollo=0.05)
+        spallacci(S, C, 'piastre', FERRO_N, file=5, lungo=0.74, stacco=0.055, dente=0.02, apertura=175, gonfia=0.035,
+                  orlo=(0.024 * u, 'bordo', BRUNITO), calotta=(0.78, 'piastre', FERRO_N), lati='L')
+        spallacci(S, C, 'piastre', FERRO_N, file=3, lungo=0.5, stacco=0.04, dente=0.016, apertura=160, gonfia=0.015,
+                  orlo=(0.024 * u, 'bordo', BRUNITO), lati='R')
+        a, b = S.ossa('upper_arm_L')
+        sx = 1 if a.x > 0 else -1
+        for k in range(3):
+            base = a + Vector((sx * (0.02 + 0.055 * k), 0.0, 0.10 - 0.012 * k)) * u
+            S.lama(C, 'bordo', base, base + Vector((sx * (0.09 + 0.03 * k), 0.03 * (k - 1), 0.19 - 0.035 * k)) * u, 0.05 * u, AV,
+                   spessore=0.008 * u, colore=BRUNITO, n=5)
+        z_cint = zv - 0.08 * u
+        cintura(S, C, 'cuoio', CUOIO_N, z_cint, alto=0.09, stacco=0.07, fibbia=('bordo', BRUNITO, 0.06))
+        centri = [-90 + 360 / 6 * (k + 0.5) for k in range(6)]
+        S.falde(C, 'piastre', centri, 52, zv - 0.09 * u, 0.5 * u, apri=0.12 * u, file=5, dente=0.012 * u, cols=5,
+                gioco=0.05 * u, colore=FERRO_N, spessore=0.005 * u, orlo=(0.022 * u, 'bordo', BRUNITO))
+        sottoveste(S, C, 'stoffa2', [c + 30 for c in centri], 40, zv - 0.09 * u, 0.6 * u, gioco=0.035)
+        bracciale(S, C, 'piastre', FERRO_N, 0.3, 0.94, stacco=0.022, file=3, bordo=('bordo', BRUNITO))
+        schiniere(S, C, 'piastre', FERRO_N, 0.06, 0.66, stacco=0.036, file=3, ginocchiera=0.08, bordo=('bordo', BRUNITO))
+        na, nb = S.ossa('neck')
+        S.arto(C, 'piastre', [na - (nb - na) * 0.6, nb], 0.0, 0.6, na=24, colore=FERRO_N,
+               livelli=[(0.0, 0.0), (0.25, 0.006 * u), (0.6, 0.03 * u)], stacco=0.034 * u, spessore=0.006 * u, rmax=0.2,
+               pesi={'chest': 0.6, 'neck': 0.4})
+        p, n = _sul_busto(S, zp, -90, 0.062 * u)
+        S.gemma(C, 'gemma', p, 0.03 * u, (0, -1, 0.1), BRACE, pesi={'chest': 1.0})
+        mantello_lacero(S, C, 'stoffa', (1, 1, 1), S.z_ginocchio - 0.14 * u, largo=120, stacco=0.085 * u, strappo=0.32, seme=3)
+        # elmo chiuso a becco: feritoia accesa, pinna sulla cima, due corna piegate all'indietro
+        rag, cima = _elmo_chiuso(S, T, E, 'piastre', FERRO_N, 0.02 * u, punta=0.03 * u, becco=0.032 * u)
+        for s in (1, -1):
+            for k in range(3):
+                fa0, fa1 = s * 14 * k, s * 14 * (k + 1)
+                pa = Vector((0, T.cy, z_occhi)) + T.n(fa0) * (rag(fa0, z_occhi) + 0.004 * u)
+                pb = Vector((0, T.cy, z_occhi + 0.004 * u * (k + 1))) + T.n(fa1) * (rag(fa1, z_occhi) + 0.004 * u)
+                S.lama(E, 'gemma', pa, pb, 0.017 * u, T.n((fa0 + fa1) / 2), spessore=0.003 * u, colore=BRACE, pesi=PT, n=3,
+                       forma=lambda t: 1.0)
+        S.lama(E, 'bordo', Vector((0, T.cy - 0.08 * u, T.cima.z + 0.005 * u)), Vector((0, T.cy + 0.14 * u, T.cima.z + 0.16 * u)),
+               0.13 * u, (1, 0, 0), spessore=0.006 * u, colore=BRUNITO, pesi=PT, n=7,
+               forma=lambda t: math.sin(math.pi * (0.12 + 0.82 * t)) ** 0.8)
+        for s in (1, -1):
+            zc = T.zf + 0.035 * u
+            base = Vector((0, T.cy, zc)) + T.n(s * 82) * (rag(s * 82, zc) - 0.004 * u)
+            S.lama(E, 'bordo', base, base + Vector((s * 0.12, 0.11, 0.13)) * u, 0.06 * u, AV, spessore=0.009 * u, colore=BRUNITO,
+                   pesi=PT, n=6, forma=lambda t: (1 - t) ** 0.6)
+        return
+    if classe == 'ombra':
+        # sicario: gilet di cuoio nero, due cinghie a croce, uno spallaccio dentato, lame sugli avambracci, mantellina lacera
+        corazza(S, C, 'cuoio', CUOIO_N, zv - 0.06 * u, file=1, stacco=0.03, scollo=0.14)
+        spallacci(S, C, 'piastre', FERRO_N, file=3, lungo=0.46, stacco=0.04, dente=0.016, apertura=160, lati='L',
+                  orlo=(0.02 * u, 'bordo', BRUNITO))
+        bandoliera(S, C, 'cuoio', CUOIO_N, da_destra=True, stacco=0.05)
+        bandoliera(S, C, 'cuoio', CUOIO_N, da_destra=False, stacco=0.058)
+        cintura(S, C, 'cuoio', CUOIO_N, zv - 0.07 * u, alto=0.07, stacco=0.048, fibbia=('bordo', BRUNITO, 0.04))
+        bracciale(S, C, 'piastre', FERRO_N, 0.35, 0.92, stacco=0.018, file=3)
+        for s in 'LR':
+            a, b = S.ossa('forearm_' + s)
+            d = b - a
+            su = Vector((0, 0, 0.05 * u))
+            S.lama(C, 'bordo', a + d * 0.3 + su, a + d * 1.22 + su * 1.2, 0.055 * u, (0, 0, 1), spessore=0.006 * u, colore=BRUNITO, n=5,
+                   forma=lambda t: (1 - t) ** 0.5)
+        schiniere(S, C, 'cuoio', CUOIO_N, 0.05, 0.6, stacco=0.024, file=1)
+        mantello_lacero(S, C, 'stoffa', (1, 1, 1), zv - 0.02 * u, largo=104, stacco=0.055 * u, strappo=0.26, seme=5)
+        _cappuccio(S, T, E, 'stoffa', (1, 1, 1), 0.02 * u, punta=0.03 * u, indietro=0.07 * u)
+        _maschera(S, E, 'fascia', stacco=0.012)
+        _occhi_accesi(S, T, E, z_occhi, BRACE)
+        return
+    if classe == 'monaco':
+        # pellegrino: grani d'osso, due teli laceri in vita, bende, una spalla di cuoio, lo stendardo delle preghiere sulla schiena
+        collana(S, C, 'grani', OSSO_T, 0.03 * u, 0.22 * u)
+        cintura(S, C, 'cuoio', CUOIO_N, zv - 0.07 * u, alto=0.06, stacco=0.04)
+        S.falde(C, 'stoffa', [-90, 90], 70, zv - 0.08 * u, 0.6 * u, apri=0.03 * u, file=1, cols=7, gioco=0.04 * u,
+                colore=(1, 1, 1), spessore=0.004 * u)
+        for osso in ('forearm_L', 'forearm_R'):
+            spirale(S, C, 'stoffa2', (1, 1, 1), osso, 0.2, 0.95, giri=6)
+        for osso in ('shin_L', 'shin_R'):
+            spirale(S, C, 'stoffa2', (1, 1, 1), osso, 0.35, 0.9, giri=5, stacco=0.016)
+        spallacci(S, C, 'cuoio', CUOIO_N, file=2, lungo=0.38, stacco=0.03, dente=0.012, apertura=150, lati='R')
+        p, n = _sul_busto(S, zp, 90, 0.05 * u)
+        cima_asta = p + Vector((0.2, 0.09, 0.72)) * u            # l'asta pende di lato: lo stendardo si vede accanto al cappello
+        S.tubo(C, 'cuoio', [p + Vector((0, 0, -0.25 * u)), cima_asta], 0.012 * u, CUOIO_N, lati=6, pesi={'chest': 1.0})
+        S.tubo(C, 'cuoio', [cima_asta + Vector((-0.17 * u, 0, -0.04 * u)), cima_asta + Vector((0.17 * u, 0, -0.04 * u))], 0.009 * u,
+               CUOIO_N, lati=6, pesi={'chest': 1.0})
+        for k in range(3):
+            x = (k - 1) * 0.12 * u
+            top = cima_asta + Vector((x, 0.004 * u, -0.05 * u))
+            S.lama(C, 'carta', top, top + Vector((0, 0.01 * u, -(0.3 + 0.07 * (k % 2)) * u)), 0.075 * u, (0, 1, 0), spessore=0.002 * u,
+                   colore=(0.55, 0.5, 0.4), pesi={'chest': 1.0}, n=5, forma=lambda t: 1.0 - 0.15 * t)
+        S.gemma(C, 'gemma', cima_asta + Vector((0, 0, 0.03 * u)), 0.03 * u, (0, 0, 1), BRACE, pesi={'chest': 1.0})
+        # largo cappello a cono con le strisce di carta appese alla tesa
+        zb = T.zf + 0.008 * u
+        na = 28
+        fas = [-180 + 360 * i / na for i in range(na)]
+        righe = [[Vector((0, T.cy, zb + 0.18 * u * h)) + T.n(fa) * 0.31 * u * k for fa in fas]
+                 for k, h in ((1.0, 0.0), (0.74, 0.27), (0.48, 0.54), (0.24, 0.8), (0.03, 1.0))]
+        S.griglia(E, 'cuoio', righe, (0.1, 0.075, 0.05), chiusa=True, spessore=0.006 * u, pesi=PT, fuori=lambda q: Vector((0, 0, 1)))
+        for fa in (-150, -105, -60, 60, 105, 150):
+            base = Vector((0, T.cy, zb - 0.002 * u)) + T.n(fa) * 0.285 * u
+            S.lama(E, 'carta', base, base + Vector((0, 0, -(0.14 + 0.04 * (abs(fa) % 2)) * u)), 0.04 * u, T.n(fa), spessore=0.002 * u,
+                   colore=(0.55, 0.5, 0.4), pesi=PT, n=4, forma=lambda t: 1.0 - 0.2 * t)
+        _occhi_accesi(S, T, E, z_occhi, BRACE)
+        return
+    if classe == 'mistico':
+        # veggente: spallacci d'argento brunito, colletto alto, catena con la placca, anello di lame dietro la testa, mantello fino ai piedi
+        mantello_lacero(S, C, 'stoffa', (1, 1, 1), S.z_caviglia + 0.10 * u, largo=130, stacco=0.08 * u, strappo=0.36, seme=9)
+        spallacci(S, C, 'piastre', BRUNITO, file=3, lungo=0.5, stacco=0.04, dente=0.016, apertura=165, gonfia=0.02,
+                  orlo=(0.022 * u, 'bordo', ARGENTO_T), ala=(1.2, 'bordo', ARGENTO_T))
+        na, nb = S.ossa('neck')
+        S.arto(C, 'stoffa', [na - (nb - na) * 0.5, nb], 0.0, 0.75, na=24, colore=(1, 1, 1),
+               livelli=[(0.0, 0.008 * u), (0.35, 0.03 * u), (0.75, 0.075 * u)], stacco=0.03 * u, spessore=0.005 * u, rmax=0.24,
+               pesi={'chest': 0.6, 'neck': 0.4})
+        collana(S, C, 'bordo', ARGENTO_T, 0.012 * u, 0.2 * u)
+        p, n = _sul_busto(S, zp - 0.04 * u, -90, 0.05 * u)
+        placca(S, C, 'piastre', BRUNITO, p, 0.07 * u, 0.09 * u, (0, -1, 0.1), SU, {'chest': 1.0})
+        S.gemma(C, 'gemma', p + Vector((0, -0.012 * u, 0)), 0.022 * u, (0, -1, 0.1), (0.5, 0.75, 1.0), pesi={'chest': 1.0})
+        h0, h1 = S.ossa('head')
+        aureola(S, C, 'bordo', ARGENTO_T, 0.24 * u, dietro=0.11, z=h0.z + 0.13 * u, spessore=0.012, raggi=12, osso='head')
+        # cappuccio a punta, benda sugli occhi, un occhio solo acceso in fronte
+        _cappuccio(S, T, E, 'stoffa', (1, 1, 1), 0.022 * u, punta=0.15 * u, indietro=0.06 * u, mezzo=46)
+        _fascia_testa(S, T, E, 'fascia', (1, 1, 1), z_occhi, 0.045, cala=0.0)
+        S.gemma(E, 'gemma', T.p(0, T.zf + 0.012 * u, 0.006 * u), 0.014 * u, AV, (0.5, 0.75, 1.0), pesi=PT)
+        return
+
+
 DISEGNI = {'lama': lama, 'ombra': ombra, 'monaco': monaco, 'mistico': mistico}
 
 
@@ -2642,4 +2896,8 @@ def crea_completi(corpo, arm, H, classi=CLASSI, gradi=('base', 0, 1, 2, 3, 4), d
         if c in DISEGNI and elmi:
             for g in (1, 2, 3, 4):
                 copricapo(S, T, c, g)
+    # stile «tenebra» (ramo di prova): un completo e un copricapo dark fantasy per classe
+    for c in classi:
+        if c in DISEGNI and elmi:
+            tenebra(S, T, c)
     return S.oggetti()

@@ -302,6 +302,9 @@ func _giocatore() -> Personaggio:
 		if Tenebra.attivo():
 			tinte = Tenebra.colori(classe, regno)          # stile dark fantasy: stoffe quasi nere, metalli bruniti
 		wear = completo(classe, grado, tinte)
+		if Tenebra.ha_modelli(modello, classe):
+			# completo e copricapo dark fantasy modellati (tools/blender/completi.py, `tenebra`): al posto di quelli per grado
+			wear = {classe + "_base": tinte, classe + "_t": tinte, classe + "_te": tinte}
 	else:
 		# modelli senza completi: vesti ricavate dal corpo e armature uguali per tutte le classi
 		wear = {"veste": Dati.colore(look.get("robe", 0x555555)), "pantaloni": Dati.colore(look.get("pants", 0x333333))}
@@ -315,7 +318,8 @@ func _giocatore() -> Personaggio:
 		wear[String(Dati.ITEMS.get(String(info.f), {}).get("aspetto", info.f))] = true
 	else:
 		wear["sandali"] = true          # senza calzari equipaggiati: sandali, non piedi nudi
-	if info.get("h") != null:
+	var oscuro := Tenebra.ha_modelli(modello, classe)
+	if info.get("h") != null and not oscuro:
 		# copricapo della classe (fasce, frontali, diademi: tools/blender/completi.py) secondo il grado del pezzo;
 		# sui modelli che non li hanno resta l'elmo uguale per tutti
 		var voce_h: Dictionary = Dati.ITEMS.get(String(info.h), {})
@@ -336,7 +340,7 @@ func _giocatore() -> Personaggio:
 	var stile := String(look.get("hairStyle", "short"))
 	if donna and stile in ["topknot", "bald"]:
 		stile = "long"
-	if info.get("h") != null:
+	if info.get("h") != null or oscuro:
 		stile = "short" if stile != "bald" else "bald"      # sotto l'elmo niente crocchie o code
 	p.metti_testa(stile, Dati.colore(look.get("hair", 0x1a1210)) if look.get("hair") != null else Color(0.1, 0.08, 0.07), Dati.colore(look.get("robe", 0x26293a)))
 	p.metti_effetti(int(info.get("wu", 0)), int(info.get("wr", 0)), int(info.get("bu", 0)), int(info.get("br", 0)), io)

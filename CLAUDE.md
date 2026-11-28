@@ -954,6 +954,27 @@ Fatto senza toccare modelli e dati: cambia l'aria. `godot/script/tenebra.gd` (`T
   Vetrina: `--tenebra=1`. Figure di genere, niente di copiato da altri giochi. Limiti della bozza: copricapi e
   mantelli sono forme semplici e rigide (l'elmo è una sfera con becco e corna), i capelli lunghi spuntano dai
   cappucci, PNG e bestie non cambiano forma.
+- **Completi dark fantasy modellati** (l'autore, vista la bozza da codice: «proprio di modelli e armature, fammi una
+  bozza»). In `tools/blender/completi.py`, sezione «stile tenebra»: `tenebra(S, T, classe)` (chiamata da
+  `crea_completi`) costruisce per ogni classe, su tutti e due i corpi, un completo `capo_<classe>_t__<parte>` e un
+  copricapo `capo_<classe>_te__<parte>`, con gli strumenti di sempre più `mantello_lacero` (orlo a brandelli: ogni
+  colonna finisce a una quota sua), `_elmo_chiuso` / `_calotta` / `_raggio_elmo` (guscio attorno alla testa, mai più
+  stretto del cranio), `_cappuccio` (aperto sul volto, sporge sulla fronte, ricade sulle spalle), `_occhi_accesi`.
+  **Lama** cavaliere: corazza, scarselle, bracciali e schinieri a piastre nere, spallaccio sinistro enorme con tre lame
+  e destro più piccolo, gorgiera alta, pietra accesa al petto, mantello lacero; elmo chiuso a becco con la feritoia
+  accesa (parte `gemma`), pinna sulla cima e due corna. **Ombra** sicario: gilet di cuoio, cinghie a croce, uno
+  spallaccio, lame sugli avambracci, mantellina lacera; cappuccio, mezza maschera, occhi accesi. **Monaco**
+  pellegrino: grani d'osso, due teli laceri in vita, bende a braccia e gambe, una spalla di cuoio, stendardo di
+  preghiere sulla schiena (asta di lato, tre strisce di carta, una pietra accesa in cima); largo cappello a cono con le
+  strisce appese, occhi accesi. **Mistico** veggente: mantello lacero fino ai piedi, spallacci ad ala, colletto alto,
+  catena con placca e pietra, anello di lame dietro la testa; cappuccio a punta, benda sugli occhi, un occhio solo
+  acceso in fronte. Client: `Tenebra.ha_modelli(modello, classe)` → `Entita._giocatore` e la vetrina indossano
+  `{<classe>_base, <classe>_t, <classe>_te}` (un solo completo per classe, il grado non conta; sotto il copricapo i
+  capelli corti), i colori li dà `Tenebra.colori` per parte (`gemma` = accento della classe) e il trucco da codice
+  (`Tenebra.trucca`) resta solo per i modelli che non li hanno. `base_uomo.glb` 13,7 MB, `base_donna.glb` 16,1 MB.
+  Visti in vetrina: le quattro classi davanti e dietro (Lama e Monaco uomo, Ombra e Mistico donna). Limiti: un solo
+  completo per classe (niente gradi), piedi scalzi o coi sandali, la calotta dell'elmo è liscia, mantelli rigidi (pesi
+  dal busto), niente prova in corsa e in attacco.
 - `tenebra_cielo.gdshader`: cupola che segue la visuale (non un `Sky`: così `TIME` non costa il ricalcolo della
   radianza), nubi a fasce, eclissi con corona o luna, guglie nere all'orizzonte. L'ambiente all'aperto è uno solo
   (`Tenebra.env`, sfondo a colore, luce d'ambiente a colore fisso, nebbia fitta colorata).

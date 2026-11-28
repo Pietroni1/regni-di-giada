@@ -255,10 +255,23 @@ static func vela_corpo(corpo: Node3D, colore: Color, forza: float, bordo: float)
 			mi.set_meta("ten_velo", true)
 
 
+## Stile acceso e modello con il completo dark fantasy della classe (`<classe>_t`, fatto in Blender)?
+static func ha_modelli(modello: String, classe: String) -> bool:
+	return attivo() and (Dati.indice.get("modelli", {}).get(modello, {}).get("capi", []) as Array).has(classe + "_t")
+
+
 ## I colori dei completi nello stile: stoffe quasi nere, metalli bruniti, un solo colore d'accento per classe.
 ## Le chiavi sono le parti dei completi (personaggio.gd: stoffa, stoffa2, fascia, regno, piastre, lamelle, bordo, cuoio…).
 static func colori(classe: String, regno: Color) -> Dictionary:
 	var r := regno.darkened(0.6)
+	var base := _colori_classe(classe, r)
+	base["gemma"] = ACCENTI.get(classe, Color(0.6, 0.7, 1.0))      # feritoie, occhi e pietre: luce nel colore della classe
+	if not base.has("carta"):
+		base["carta"] = Color(0.5, 0.46, 0.38)
+	return base
+
+
+static func _colori_classe(classe: String, r: Color) -> Dictionary:
 	match classe:
 		"lama":
 			return {"stoffa": Color(0.06, 0.07, 0.12), "stoffa2": Color(0.04, 0.04, 0.06), "fascia": Color(0.16, 0.24, 0.42), "regno": r,
@@ -300,7 +313,9 @@ func _vela_un_po() -> void:
 	if e.corpo.scheletro != null and not e.corpo.has_meta("ten_trucco") and (e.tipo == "p" or e.tipo == "m"):
 		e.corpo.set_meta("ten_trucco", true)
 		if e.tipo == "p":
-			trucca(e.corpo, String(e.info.get("cls", "")), colore)
+			# chi ha il completo modellato non prende copricapo e mantello fatti da codice
+			if not ha_modelli(e.corpo.modello, String(e.info.get("cls", ""))):
+				trucca(e.corpo, String(e.info.get("cls", "")), colore)
 		elif e.corpo.scheletro.find_bone("head") >= 0 and e.corpo.scheletro.find_bone("hand_R") >= 0:
 			occhi(e.corpo, Color(1.0, 0.12, 0.05))          # i nemici in forma d'uomo: occhi di brace
 	vela_corpo(e.corpo, colore, forza, bordo)
