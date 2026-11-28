@@ -297,8 +297,11 @@ func _giocatore() -> Personaggio:
 	var wear := {}
 	if ha_completi(modello, classe):
 		# completo della classe: colori del «look» della classe, accento nel colore del regno
-		wear = completo(classe, grado, {"stoffa": Dati.colore(look.get("robe", 0x555555)), "stoffa2": Dati.colore(look.get("pants", 0x333333)),
-				"fascia": Dati.colore(look.get("trim", 0x8a7a5a)), "regno": regno})
+		var tinte := {"stoffa": Dati.colore(look.get("robe", 0x555555)), "stoffa2": Dati.colore(look.get("pants", 0x333333)),
+				"fascia": Dati.colore(look.get("trim", 0x8a7a5a)), "regno": regno}
+		if Tenebra.attivo():
+			tinte = Tenebra.colori(classe, regno)          # stile dark fantasy: stoffe quasi nere, metalli bruniti
+		wear = completo(classe, grado, tinte)
 	else:
 		# modelli senza completi: vesti ricavate dal corpo e armature uguali per tutte le classi
 		wear = {"veste": Dati.colore(look.get("robe", 0x555555)), "pantaloni": Dati.colore(look.get("pants", 0x333333))}

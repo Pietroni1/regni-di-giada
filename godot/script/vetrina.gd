@@ -28,6 +28,8 @@ func _ready() -> void:
 	var regno := Color(0.16, 0.42, 0.82)
 	var colori := {"stoffa": Dati.colore(look.get("robe", 0x555555)), "stoffa2": Dati.colore(look.get("pants", 0x333333)),
 			"fascia": Dati.colore(look.get("trim", 0x8a7a5a)), "regno": regno}
+	if _arg.has("tenebra"):
+		colori = Tenebra.colori(classe, regno)
 	var modello := String(_arg.get("modello", "base_donna" if donna else "base_uomo"))
 	var passo := float(_arg.get("passo", "1.5"))
 	var yaw := float(_arg.get("yaw", "0"))
@@ -46,6 +48,10 @@ func _ready() -> void:
 			else:
 				wear["%s_e%d" % [classe, clampi(g, 1, 4)]] = colori
 		var p := Personaggio.umano(modello, wear, ARMI.get(classe, "sword"), clampi(g, 1, 4), Color(0.8, 0.56, 0.4), colori.fascia)
+		if _arg.has("tenebra"):                    # prova dello stile dark fantasy: copricapo, occhi, mantello e velo
+			var acc: Color = Tenebra.ACCENTI.get(classe, Color(0.6, 0.7, 1.0))
+			Tenebra.trucca(p, classe, acc)
+			Tenebra.vela_corpo(p, acc, 0.5, 1.25)
 		var stile := String(look.get("hairStyle", "short"))
 		if donna and stile in ["topknot", "bald"]:
 			stile = "long"

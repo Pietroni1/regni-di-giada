@@ -938,6 +938,22 @@ Fatto senza toccare modelli e dati: cambia l'aria. `godot/script/tenebra.gd` (`T
   un'entità a fotogramma (i modelli si rifanno quando cambia l'equipaggiamento) e salta le parti che fanno luce
   (materiali senza ombreggiatura o additivi: `_fa_luce`); spegnendo lo stile `_togli_veli` li leva. È una bozza: per
   figure davvero in quello stile (scheletriche, incappucciate, armature nere) servono modelli nuovi.
+- **Aspetto dei personaggi nello stile** (l'autore: «possiamo provare anche un cambio di stile dei personaggi più
+  verso questo tema»). Tutto da codice sopra i completi di sempre, si toglie spegnendo lo stile:
+  `Tenebra.colori(classe, regno)` dà ai completi stoffe quasi nere e metalli bruniti con un solo accento per classe
+  (le chiavi sono le parti dei completi: il dizionario `wear` accetta un colore per ogni parte, anche `piastre`,
+  `lamelle`, `bordo`, `cuoio`, `grani`); `Tenebra.trucca(p, classe, accento)` aggancia alle ossa `head` e `chest`
+  (con gli strumenti degli accessori dei banditi: `Mostri._testa`, `_cil`, `_sfera`, `_striscia`, `_nastro`) un
+  copricapo che nasconde il volto, occhi accesi e un mantello a brandelli (`_mantello`: strisce di lunghezze diverse
+  che ondeggiano). **Lama** cavaliere: elmo chiuso nero con la feritoia accesa, cresta e corna, lungo mantello;
+  **Ombra** sicario: cappuccio, bavaglio cremisi, occhi rossi, mantellina a brandelli e code di sciarpa; **Monaco**
+  pellegrino: largo cappello a cono con strisce di carta appese, volto in ombra, occhi di brace, due stole;
+  **Mistico** veggente: cappuccio a punta, occhi pallidi, anello spezzato dietro la testa, mantello fino ai piedi.
+  I nemici in forma d'uomo prendono solo gli occhi di brace (`Tenebra.occhi`). I colori scuri valgono per i modelli
+  costruiti a stile acceso (cambiando stile in gioco restano quelli di prima finché il personaggio non si rifà).
+  Vetrina: `--tenebra=1`. Figure di genere, niente di copiato da altri giochi. Limiti della bozza: copricapi e
+  mantelli sono forme semplici e rigide (l'elmo è una sfera con becco e corna), i capelli lunghi spuntano dai
+  cappucci, PNG e bestie non cambiano forma.
 - `tenebra_cielo.gdshader`: cupola che segue la visuale (non un `Sky`: così `TIME` non costa il ricalcolo della
   radianza), nubi a fasce, eclissi con corona o luna, guglie nere all'orizzonte. L'ambiente all'aperto è uno solo
   (`Tenebra.env`, sfondo a colore, luce d'ambiente a colore fisso, nebbia fitta colorata).
